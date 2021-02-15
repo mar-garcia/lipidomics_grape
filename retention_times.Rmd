@@ -1,0 +1,77 @@
+---
+title: "Retention times"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: false
+    number_sections: false
+    toc_float: false
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+# Read data
+
+```{r}
+files = list.files("data/")
+files_area = files[grep("AREA", files)]
+files_rt = files[grep("RT", files)]
+data_area = list()
+data_rt = list()
+for(i in 1:length(files_area)){
+  data_area[[i]] = read.table(paste0("data/", files_area[i]), 
+                  sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
+                  col.names = colnames(read.table(paste0("data/", files_area[i]),
+                    sep = "\t", header = T)))
+  colnames(data_area[[i]]) = gsub(
+    paste0("X", gsub("_all_AREA.txt", "", files_area[i]), "_"), "", 
+    colnames(data_area[[i]]))
+  
+  data_rt[[i]] = read.table(paste0("data/", files_rt[i]), 
+                  sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
+                  col.names = colnames(read.table(paste0("data/", files_rt[i]),
+                    sep = "\t", header = T)))
+  colnames(data_rt[[i]]) = gsub(
+    paste0("X", gsub("_all_RT.txt", "", files_rt[i]), "_"), "", 
+    colnames(data_rt[[i]]))
+}
+data_area <- do.call("rbind", data_area)
+data_rt <- do.call("rbind", data_rt)
+rm(i, files, files_area, files_rt)
+```
+
+
+## Delete those compounds not detected in any sample
+
+```{r}
+data_area <- data_area[!apply(
+  data_area, 1, function(x) length(which(is.na(x)))) == ncol(data_area),]
+data_rt <- data_rt[rownames(data_rt) %in% rownames(data_area),]
+```
+
+
+# Which compounds have the largest range of RT values?
+
+```{r}
+rt_range = apply(data_rt, 1, function(x) max(x, na.rm = T)) - 
+  apply(data_rt, 1, function(x) min(x, na.rm = T))
+rt_range = rt_range[rt_range > 0.1]
+round(rt_range[order(rt_range, decreasing = T)], 2)
+```
+
+
+# Calculate the median of RT for each compound
+
+```{r}
+round(apply(data_rt, 1, function(x) median(x, na.rm = T)), 2)
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
