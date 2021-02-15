@@ -1,0 +1,123 @@
+---
+title: "Retention times"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: false
+    number_sections: false
+    toc_float: false
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+# Read data
+
+```{r}
+files = list.files("data/")
+files = files[grep("AREA", files)]
+data = list()
+for(i in 1:length(files)){
+  data[[i]] = read.table(paste0("data/", files[i]), 
+                         sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
+                         col.names = colnames(read.table(paste0("data/", files[i]),
+                                                         sep = "\t", header = T)))
+  colnames(data[[i]]) = gsub(
+    paste0("X", gsub("_all_AREA.txt", "", files[i]), "_"), "", 
+    colnames(data[[i]]))
+}
+data <- do.call("rbind", data)
+rm(i, files)
+```
+
+
+## Select only "entire" samples
+
+```{r}
+data = data[, grep("entire", colnames(data))]
+```
+
+## Delete those compounds not detected in any sample
+
+```{r}
+data <- data[!apply(
+  data, 1, function(x) length(which(is.na(x)))) == ncol(data),]
+```
+
+
+## Replace missing data by a low-, random-value
+
+```{r}
+set.seed(20200221)
+data_tf <- xcms::imputeRowMinRand(data, method = "from_to",
+                                  min_fraction = 1/1000,
+                                  min_fraction_from = 1/10000)
+```
+
+# PCA
+
+```{r}
+data_tf = data.frame(t(log10(data_tf)))
+scaling.pareto <- BioMark::scalefun(sc.p = "pareto")
+data_tf = data.frame(scaling.pareto(data_tf))
+
+pc = prcomp(data_tf, center = F, scale. = F)
+
+par(mfrow = c(1, 2))
+plot(pc$x[,1], pc$x[,2], type = "n",
+     xlab = paste0("PC1: ",
+                   format(summary(pc)$importance[2,1] * 100, digits = 3), 
+                   "%"),
+     ylab = paste0("PC2: ",
+                   format(summary(pc)$importance[2,2] * 100, digits = 3), 
+                   "%"),
+     xlim = c(min(pc$x[,1]) - 5, max(pc$x[,1]) + 5),
+     main = "Score plot")
+text(pc$x[,1], pc$x[,2], rownames(pc$x))
+grid()
+abline(v = 0, h = 0, lty = 2)
+
+plot(pc$rotation[,1], pc$rotation[,2],
+     xlab = "PC1", ylab = "PC2", main = "Loading plot")
+grid()
+abline(v = 0, h = 0, lty = 2)
+```
+
+The 1st PC separates the oxidated samples (on the left) from the non-oxidated ones (on the right),
+whereas the 2nd PC separates the samples from time 1 (upper part) from the ones from time 11 (bottom part).  
+
+There is a group of compounds that seems characteristic from non-oxidated samples, let's see which are:
+
+```{r}
+plot(pc$rotation[,1], pc$rotation[,2],
+     xlab = "PC1", ylab = "PC2", main = "Loading plot")
+idx = pc$rotation[,1] > 0.12
+points(pc$rotation[idx,1], pc$rotation[idx,2], pch = 16, col = 2)
+grid()
+abline(v = 0, h = 0, lty = 2)
+
+rownames(pc$rotation)[idx]
+
+data[is.na(data)] = 0
+
+for(i in 1:length(which(idx))){
+  plot(t(data[which(idx)[i],]), 
+       main = rownames(data)[which(idx)[i]],
+       xlab = "sample", ylab = "intensity", xaxt="n")
+  axis(side = 1, at = seq(ncol(data)), labels = colnames(data))
+}
+
+gplots::heatmap.2(as.matrix(data_tf), 
+                  scale = "none", density.info = "none", trace = "none", 
+                  distfun = function(x) dist(x,method = 'euclidean'),
+                  margins = c(5, 13))
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
