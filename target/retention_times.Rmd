@@ -58,8 +58,7 @@ data_rt <- data_rt[rownames(data_rt) %in% rownames(data_area),]
 rt_range = apply(data_rt, 1, function(x) max(x, na.rm = T)) - 
   apply(data_rt, 1, function(x) min(x, na.rm = T))
 rt_range = rt_range[rt_range > 0.1]
-round(rt_range[#order(rt_range, decreasing = T)
-  ], 2)
+round(rt_range[order(rt_range, decreasing = T)], 2)
 ```
 
 
