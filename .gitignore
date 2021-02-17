@@ -1,2 +1,7 @@
+*.csv
 *.html
+*.mzData
+*.mzXML
+*.raw
 *.txt
+*.xlsx
