@@ -3,5 +3,6 @@
 *.mzData
 *.mzXML
 *.raw
+*.RData
 *.txt
 *.xlsx
