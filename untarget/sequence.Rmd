@@ -1,0 +1,161 @@
+---
+title: "Sequence"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+In this document I'm going to generate the injection list of samples.
+
+# Parameters
+
+```{r parameters}
+scan <- "FS" # specify "FS" or "DDA"
+mode <- "POS" # specify "POS" or "NEG"
+library(readxl)
+```
+
+
+# Data import
+
+```{r import}
+data <- read_xlsx("data/sample_list_unt_lipidomics_CORRECT.xlsx", skip = 1)
+data$type <- "sample"
+
+position <- c()
+racks <- c("G", "B", "R")
+for(j in 1:3){
+  for(i in 1:5){
+    position <- c(position, paste0(racks[j], toupper(letters)[i], seq(8)))
+  }
+}
+position <- position[1:nrow(data)]
+data$Position <- position
+data$Inj <- 5
+rm(position, i)
+```
+
+
+# Linearity QCs
+
+```{r}
+QC_lin <- data.frame(matrix(nrow = 18, ncol = ncol(data)))
+colnames(QC_lin) <- colnames(data)
+QC_lin$type <- c(rep("QCdl", 9), rep("QCrw", 9))
+QC_lin$Rep. <- rep(seq(3), 6)
+QC_lin$Code <- rep(c(rep(2, 3), rep(5, 3), rep(10, 3)), 2)
+QC_lin$Code <- paste0(QC_lin$type, "_", sprintf("%02d", QC_lin$Code), 
+                      "uL_", sprintf("%02d", QC_lin$Rep.))
+QC_lin$Code <- gsub("QC_dil", "dil", QC_lin$Code)
+QC_lin$Code <- gsub("QC_raw", "raw", QC_lin$Code)
+QC_lin$Position <- c(rep("RA5", 9), rep("RA4", 9))
+QC_lin$Inj <- rep(c(rep(2.5, 3), rep(5, 3), rep(10, 3)),2)
+data <- rbind(data, QC_lin)
+rm(QC_lin)
+```
+
+
+# Randomization
+
+```{r randomization}
+set.seed(20210217)
+data$random_inj <- sample(1:nrow(data), nrow(data), replace=FALSE)
+data <- data[order(data$random_inj),]
+```
+
+
+# Injection list
+
+```{r injection-list}
+solv_QC <- data.frame(matrix(nrow = (2 + 2 + 2 + 5 + 
+                                       (ceiling(nrow(data)/10)+1)*3), 
+                             ncol = ncol(data)))
+colnames(solv_QC) <- colnames(data)
+solv_QC$type <- c(rep("solveq", 2), rep("blank", 2), rep("STDmix", 2), rep("QCeq", 5), 
+                  rep(c("solv", "QC", "QC"), ceiling(nrow(data)/10)+1))
+solv_QC$Position[solv_QC$type == "blank"]   <- "RA1"
+solv_QC$Position[solv_QC$type == "STDmix"]  <- "RA2"
+solv_QC$Position[solv_QC$type == "solv"]    <- "RA3"
+solv_QC$Position[solv_QC$type == "solveq"]  <- "RA3"
+solv_QC$Position[solv_QC$type == "QC"]      <- "RA4"
+solv_QC$Position[solv_QC$type == "QCeq"]    <- "RA4"
+solv_QC$Inj <- 5
+solv_QC <- solv_QC[order(solv_QC$type), ]
+for(i in 1:length(unique(solv_QC$type))){
+  solv_QC$repl[solv_QC$type == unique(solv_QC$type)[i]] = 
+    seq(sum(solv_QC$type == unique(solv_QC$type)[i]))
+}
+solv_QC <- solv_QC[order(as.numeric(rownames(solv_QC))),]
+block <- rep(0, 2+2+2+5)
+for(i in 1:(ceiling(nrow(data)/10)+1)){
+  block <- c(block, rep(i, 3))
+}
+solv_QC$block <- block
+data$repl <- 0
+block <- c()
+for(i in 1:ceiling(nrow(data)/10)){
+  block <- c(block, rep(i, 10))
+}
+block <- block[1:nrow(data)]
+```
+
+If the last block is constituted by just only 1 sample, join this sample with the previous block and remove the last block of solv-QC-QC:
+
+```{r injection-list2}
+if(length(which(as.factor(block) == levels(as.factor(block))[length(levels(as.factor(block)))])) == 1){
+  block[which(as.factor(block) == levels(as.factor(block))[
+    length(levels(as.factor(block)))])] <- levels(as.factor(block))[
+      length(levels(as.factor(block)))-1]
+  solv_QC <- solv_QC[1:which(solv_QC$block == levels(as.factor(solv_QC$block))[
+    length(levels(as.factor(solv_QC$block)))])[1]-1,]
+}
+data$block <- block
+data <- rbind(solv_QC, data)
+data <- data[order(data$block), ]
+rm(solv_QC, block, i)
+```
+
+
+# Sample name
+
+```{r}
+data$ID <- data$Code
+idx <- is.na(data$ID)
+data$ID[idx] <- paste0("xx_00_", data$type[idx], "_", 
+                       sprintf("%02d", data$repl[idx]))
+data$ID[data$type == "solveq"] <- gsub("xx_00", "xx", data$ID[data$type == "solveq"])
+data$ID[data$type == "blank"] <- gsub("xx_00", "xxx", data$ID[data$type == "blank"])
+data$ID[data$type == "STDmix"] <- gsub("xx_00", "xx", data$ID[data$type == "STDmix"])
+data$ID[data$type == "QCeq"] <- gsub("xx_00", "xx_0", data$ID[data$type == "QCeq"])
+data$ID[data$type == "solv"] <- gsub("solv", "slv", data$ID[data$type == "solv"])
+data$ID[data$type == "QC"] <- gsub("QC", "xQC", data$ID[data$type == "QC"])
+
+data$id <- paste(sprintf("x%03d", 1:nrow(data)), "lipidgrape",  
+                 data$ID, 
+                 #sprintf("r%02d", data$repl), 
+                 mode, scan, sep = "_")
+```
+
+
+# Sequence
+
+```{r}
+knitr::kable(data[,c("id", "Position", "Inj")])
+write.csv(data, paste0("data/sequence_", mode, "_", scan, ".csv"), 
+          row.names = FALSE)
+```
+
+
+# Session information
+
+```{r sessinfo}
+Sys.time()-startpoint
+devtools::session_info()
+```
