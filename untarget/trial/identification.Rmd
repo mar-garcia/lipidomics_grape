@@ -1,0 +1,48 @@
+---
+title: "Identification"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+# Preliminaries
+
+## Parameters
+
+```{r parameters}
+polarity <- "POS" # specify "POS" or "NEG"
+```
+
+
+## Libraries
+
+```{r libraries, message = FALSE}
+library(xcms)
+```
+
+
+# Data import
+
+```{r}
+cmps <- read.csv("data/compounds.csv")
+
+
+load(paste0("data/RData/data_XCMS_", polarity, ".RData"))
+
+```
+
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
