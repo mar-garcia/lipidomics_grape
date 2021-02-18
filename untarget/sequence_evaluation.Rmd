@@ -53,6 +53,8 @@ tmp$type[tmp$type == "Rep" | tmp$type == "MIX"] <- "study"
 injections <- cbind(injections, tmp)
 rm(tmp)
 
+injections <- injections[26:27,]
+
 # Read the data
 data_raw <- readMSData(
   paste0("data/", polarity, "_FS_fixed/" , injections$filename),
@@ -68,6 +70,7 @@ data_raw <- readMSData(
 cmps <- read.csv("data/compounds.csv")
 cmps <- cmps[cmps$type == "equiSPLASH" & cmps$formula != "",]
 cmps <- cmps[cmps$RT > 0, ]
+cmps <- cmps[1:2, ]
 cmps$mz <- NA
 for(i in 1:nrow(cmps)){
   cmps$mz[i] <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
@@ -86,6 +89,8 @@ peaks <- manualChromPeaks(data_raw,
                           samples = seq_along(fileNames(data_raw)),
                           BPPARAM = bpparam(),
                           msLevel = 1L)
+data <- data.frame(matrix(ncol = nrow(cmps.mx), 
+                          nrow = length(data_raw$filename)))
 ```
 
 
