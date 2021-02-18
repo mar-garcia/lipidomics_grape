@@ -1,0 +1,185 @@
+---
+title: "Identification"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+# Preliminaries
+
+## Parameters
+
+```{r parameters}
+polarity <- "POS" # specify "POS" or "NEG"
+```
+
+
+## Libraries
+
+```{r libraries, message = FALSE}
+library(xcms)
+library(plotly)
+```
+
+
+# Data import
+
+```{r import}
+cmps <- read.csv("data/compounds.csv")
+cmps$mz <- NA
+cmps$NH4 <- NA
+cmps$Na <- NA
+for(i in 1:nrow(cmps)){
+  if(cmps$formula[i] != ""){
+    cmps$mz[i] <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
+      cmps$formula[i])$exactmass, "[M+H]+"))
+    cmps$NH4[i] <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
+      cmps$formula[i])$exactmass, "[M+NH4]+"))
+    cmps$Na[i] <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
+      cmps$formula[i])$exactmass, "[M+Na]+"))
+  }
+}
+DT::datatable(cmps[,-2])
+
+load(paste0("data/RData/data_XCMS_", polarity, ".RData"))
+features <- data.frame(featureDefinitions(xdata))
+```
+
+
+# Study database
+
+## Build database
+
+### Pseudo-molecular ions
+
+```{r database}
+cmps <- read.csv("data/compounds.csv")
+
+# Calculate the mz values of the molecular ion
+if(polarity == "POS"){
+  ion <- 1.007276
+  smbl <- "+"
+  pol <- 1
+} else if(polarity == "NEG"){
+  ion <- "NEG"
+  smbl <- "-"
+  pol  <- (-1)
+}
+cmps$mz <- NA
+for(i in 1:nrow(cmps)){
+  if(cmps$formula[i] != ""){
+    cmps$mz[i] <- Rdisop::getMolecule(cmps$formula[i])$exactmass + ion
+  }
+}
+cmps$annotation <- paste0("[M", smbl, "H]", smbl)
+rm(i, ion, smbl)
+```
+
+
+### Other ions
+
+```{r other-ions}
+cmps_ions <- read.csv("data/compounds_ions.csv")
+ions_long <- cmps[, c("C", "RT", "mz", "annotation")]
+
+for(i in 2:ncol(cmps_ions)){      # compound "i"
+  for(j in seq(nrow(cmps_ions))){ # ion "j"
+    if((cmps_ions[j, i] == 2) | (cmps_ions[j, i] == pol)){
+      ions_loop <- data.frame(matrix(ncol = ncol(ions_long), nrow = 1))
+      colnames(ions_loop) <- colnames(ions_long)
+      ions_loop$C <- colnames(cmps_ions)[i]
+      idx <- which(cmps$C == colnames(cmps_ions)[i])
+      ions_loop$RT <- cmps$RT[idx]
+      if(grepl("13C", cmps_ions$ID[j])){
+        ions_loop$mz <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
+          cmps$formula[idx])$exactmass, 
+          gsub("13C", "", cmps_ions$ID[j]))) + 1.003355
+      } else {
+        ions_loop$mz <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
+          cmps$formula[idx])$exactmass, cmps_ions$ID[j]))
+      }
+      ions_loop$annotation <- cmps_ions$ID[j] 
+      ions_long <- rbind(ions_long, ions_loop)
+    }
+  }
+}
+rm(i, j, ions_loop, idx, pol)
+```
+
+
+## Matching
+
+```{r matching, warning=FALSE, message=FALSE}
+features$C <- NA
+features$compound <- NA
+features$annotation <- NA
+features$ppm <- NA
+for(i in 1:nrow(features)){
+  rtr <- c(features$rtmed[i], features$rtmed[i]) + 10 * c(-1, 1)
+  cmp.i <- ions_long[unlist(
+    CompoundDb::matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 20)), ]
+  cmp.i <- cmp.i[cmp.i$RT > rtr[1] & cmp.i$RT < rtr[2], ]
+  features$C[i] <- paste(cmp.i$C, collapse = "; ")
+  features$compound[i] <- paste(cmps$name[cmps$C %in% cmp.i$C], collapse = "; ")
+  features$annotation[i] <- paste(cmp.i$annotation, collapse = "; ")
+  features$ppm[i] <- paste(sprintf("%.1f", round(abs((
+    (features$mzmed[i] - cmp.i$mz)/cmp.i$mz)*1e6), 1)), collapse = "; ")
+  rm(rtr, cmp.i)
+}
+rm(i)
+
+features$mzmed <- sprintf("%.4f", round(features$mzmed, 4))
+features$rtmed <- round(features$rtmed)
+#features$ppm <- sprintf("%.1f", round(abs(features$ppm), 1))
+features <- features[order(features$rtmed), ]
+```
+
+
+# Identifications
+
+```{r identifications}
+DT::datatable(
+  features[,c("mzmed", "rtmed", "C", "compound", "annotation", "ppm")])
+```
+
+# PCA
+
+```{r pca}
+data <- featureValues(xdata, method = "sum", value = "into")
+set.seed(123)
+data <- t(imputeRowMinRand(data, method = "from_to",
+                           min_fraction = 1/100,
+                           min_fraction_from = 1/1000
+))
+dt <- log10(data)
+scaling.pareto <- BioMark::scalefun(sc.p="pareto")
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = gsub(".mzData", "", rownames(tmp)),
+        color = xdata$type)
+
+
+tmp <- data.frame(pca$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = paste(features$C, features$compound, features$annotation, 
+                     "mz:", round(as.numeric(features$mzmed), 4), 
+                     "RT:", round(features$rtmed)), 
+        color = features$compound != "", colors = "Set2")
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
