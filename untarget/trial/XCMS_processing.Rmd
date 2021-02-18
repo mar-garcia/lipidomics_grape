@@ -19,7 +19,7 @@ startpoint <- Sys.time()
 
 ```{r parameters}
 polarity <- "POS" # specify "POS" or "NEG"
-int <- 1e6
+int <- 5e7
 ```
 
 
@@ -139,9 +139,9 @@ plotAdjustedRtime(xdata, col = paste0(col_type[factor(xdata$type)],80))
 # Correspondance
 
 ```{r correspondance}
-pdp <- PeakDensityParam(sampleGroups = xdata$type,
-                        minFraction = 0.66,
-                        minSamples = 2,
+pdp <- PeakDensityParam(sampleGroups = 1,#xdata$type,
+                        #minFraction = 0.66,
+                        minSamples = 1,
                         binSize = 0.02,
                         bw = 1)
 xdata <- groupChromPeaks(xdata, param = pdp)
