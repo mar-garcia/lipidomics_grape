@@ -52,8 +52,15 @@ tmp$time[idx] <- 0
 tmp$type[tmp$type == "Rep" | tmp$type == "MIX"] <- "study"
 injections <- cbind(injections, tmp)
 rm(tmp)
-
-injections <- injections[26:27,]
+injections$color <- 1
+injections$color[injections$type == "xQC"] <- 2   # red
+injections$color[injections$type == "study"] <- 3 # green
+injections$color[injections$type == "slv"] <- 4   # blue
+injections$color[injections$type == "slveq"] <- 5 # cyan
+injections$color[injections$type == "QCeq"] <- 6  # pink
+injections$color[grep("QCdl", injections$type)] <- 7 # yellow
+injections$color[grep("QCrw", injections$type)] <- 7 # yellow
+injections$color[injections$type == "STDmix"] <- 8  # grey
 
 # Read the data
 data_raw <- readMSData(
@@ -66,21 +73,20 @@ data_raw <- readMSData(
 
 # Get the data of interest
 
-```{r}
+```{r manualchrompeaks}
 cmps <- read.csv("data/compounds.csv")
-cmps <- cmps[cmps$type == "equiSPLASH" & cmps$formula != "",]
+cmps <- cmps[cmps$type == "equiSPLASH" & cmps$formula != "" & cmps$POS != "",]
 cmps <- cmps[cmps$RT > 0, ]
-cmps <- cmps[1:2, ]
 cmps$mz <- NA
 for(i in 1:nrow(cmps)){
   cmps$mz[i] <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
-    cmps$formula[i])$exactmass, "[M+H]+"))
+    cmps$formula[i])$exactmass, cmps$POS[i]))
 }
 
 cmps.mx <- cbind(c(cmps$mz - 0.01), 
                  c(cmps$mz + 0.01), 
-                 c(cmps$RT*60 - 10), 
-                 c(cmps$RT*60 + 10))
+                 c(cmps$RT - 10), 
+                 c(cmps$RT + 10))
 rownames(cmps.mx) <- cmps$abr
 colnames(cmps.mx) <- c("mzmin", "mzmax", "rtmin", "rtmax")
 
@@ -89,10 +95,49 @@ peaks <- manualChromPeaks(data_raw,
                           samples = seq_along(fileNames(data_raw)),
                           BPPARAM = bpparam(),
                           msLevel = 1L)
-data <- data.frame(matrix(ncol = nrow(cmps.mx), 
-                          nrow = length(data_raw$filename)))
+data <- data.frame(chromPeaks(peaks))
+data$id <- substr(data_raw$filename[data$sample], 17, 28)
+data$compound <- NA
+for(i in 1:nrow(data)){
+  data$compound[i] <- paste(cmps$name[unlist(CompoundDb::matchWithPpm(
+    data$mz[i], cmps$mz, ppm = 10))], collapse = "; ")
+}
+table(data$compound)
+for(i in seq(nrow(cmps))){
+  idx <- which(data$compound == cmps$name[i])
+  print(cmps$name[i])
+  
+  plot(data$rt[idx]/60, xlab = "", ylab = "", 
+       main = paste("RT (delta =", 
+                    sprintf("%.2f", round(max(data$rt[idx]/60) - 
+                                            min(data$rt[idx]/60), 2)), "min)"), 
+       pch = 16, col = data_raw$color[data$sample[idx]],
+       ylim = c(min(min(data$rt[idx]/60), mean(data$rt[idx]/60) - 1/60),
+                max(min(data$rt[idx]/60), mean(data$rt[idx]/60) + 1/60)))
+  abline(h = mean(data$rt[idx]/60), lty = 2)
+  abline(h = mean(data$rt[idx]/60) + 1/60 *c(-1, 1), lty = 2, col = "grey")
+  
+  ppm <- ((data$mz[idx] - cmps$mz[i])/cmps$mz[i])*1e6
+  plot(ppm, xlab = "", ylab = "", main = "mz deviations (ppm)", pch = 16, 
+       col = data_raw$color[data$sample[idx]],
+       ylim = c(min(min(ppm), -2), max(max(ppm), 2)))
+  abline(h = 0, lty = 2)
+  abline(h = c(-2, 2), lty = 2, col = "grey")
+  
+  plot(data$into[idx], xlab = "", ylab = "", 
+       main = paste("Intensity: CV(QC) =", 
+                    round(
+                      (sd(data$into[idx][grep("xQC", data$id[idx])]) / 
+                         mean(data$into[idx][grep("xQC", data$id[idx])]))*100), 
+                    "%"),
+       pch = 16, col = data_raw$color[data$sample[idx]])
+  points(grep("xQC", data$id[idx]), data$into[idx][grep("xQC", data$id[idx])], 
+         type = "b", lty = 2, col = "grey")
+  abline(h = mean(data$into[idx][grep("xQC", data$id[idx])]) + 
+           sd(data$into[idx][grep("xQC", data$id[idx])]) * c(-1, 1), 
+         lty = 3, col = "grey")
+}
 ```
-
 
 
 # Session information
