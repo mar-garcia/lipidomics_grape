@@ -18,6 +18,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
+k <- 1
 polarity <- "POS" # specify "POS" or "NEG"
 ```
 
@@ -110,17 +111,16 @@ for(i in 1:nrow(data)){
 # Plots
 
 ```{r plots}
-i <- 1
-print(cmps$name[i])
-cmps.mx.i <- matrix(cmps.mx[i, ], nrow = 1)
-colnames(cmps.mx.i) <- c("mzmin", "mzmax", "rtmin", "rtmax")
+print(cmps$name[k])
+cmps.mx.k <- matrix(cmps.mx[k, ], nrow = 1)
+colnames(cmps.mx.k) <- c("mzmin", "mzmax", "rtmin", "rtmax")
 peaks <- manualChromPeaks(data_raw,
-                          chromPeaks = cmps.mx.i,
+                          chromPeaks = cmps.mx.k,
                           samples = seq_along(fileNames(data_raw)),
                           BPPARAM = bpparam(),
                           msLevel = 1L)
 data <- data.frame(chromPeaks(peaks))
-data$ppm <- ((data$mz - cmps$mz[i])/cmps$mz[i])*1e6
+data$ppm <- ((data$mz - cmps$mz[k])/cmps$mz[k])*1e6
 
 plot_ly(y = data$rt/60, x = data$sample, 
         color = factor(data_raw$color[data$sample]), 
