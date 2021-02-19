@@ -20,6 +20,7 @@ files_area = files[grep("AREA", files)]
 files_rt = files[grep("RT", files)]
 data_area = list()
 data_rt = list()
+class <- c()
 for(i in 1:length(files_area)){
   data_area[[i]] = read.table(paste0("data/", files_area[i]), 
                   sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
@@ -36,10 +37,17 @@ for(i in 1:length(files_area)){
   colnames(data_rt[[i]]) = gsub(
     paste0("X", gsub("_all_RT.txt", "", files_rt[i]), "_"), "", 
     colnames(data_rt[[i]]))
+  
+  class <- c(class, rep(substring(gsub("_all_AREA.txt", "", files_area[i]), 10), 
+                        nrow(data_area[[i]])))
 }
 data_area <- do.call("rbind", data_area)
 data_rt <- do.call("rbind", data_rt)
-rm(i, files, files_area, files_rt)
+cmps <- data.frame(class = class,
+                   compound = rownames(data_area))
+rm(i, files, files_area, files_rt, class)
+n <- nrow(cmps)
+tb <- data.frame(table(cmps$class))
 ```
 
 
@@ -49,7 +57,15 @@ rm(i, files, files_area, files_rt)
 data_area <- data_area[!apply(
   data_area, 1, function(x) length(which(is.na(x)))) == ncol(data_area),]
 data_rt <- data_rt[rownames(data_rt) %in% rownames(data_area),]
+cmps <- cmps[cmps$compound %in% rownames(data_area), ]
+tb <- merge(tb, data.frame(table(cmps$class)), by = "Var1")
+colnames(tb) <- c("class", "original", "filtered")
 ```
+
+The total number of compounds originally included in the methods is `r n`, 
+whereas after applying the filter it is `r nrow(cmps)` 
+(i.e., there is a loss of `r round(100-(90800/4415))`% compounds).   
+They are distributed in the following classes: `r knitr::kable(tb)`
 
 
 # Which compounds have the largest range of RT values?
@@ -58,8 +74,8 @@ data_rt <- data_rt[rownames(data_rt) %in% rownames(data_area),]
 rt_range = apply(data_rt, 1, function(x) max(x, na.rm = T)) - 
   apply(data_rt, 1, function(x) min(x, na.rm = T))
 rt_range = rt_range[rt_range > 0.1]
-round(rt_range#[order(rt_range, decreasing = T)]
-      , 2)
+round(rt_range[order(rt_range, decreasing = T)], 2)
+round(rt_range, 2)
 ```
 
 
