@@ -18,7 +18,7 @@ In this document I'm going to generate the injection list of samples.
 
 ```{r parameters}
 scan <- "FS" # specify "FS" or "DDA"
-mode <- "POS" # specify "POS" or "NEG"
+mode <- "NEG" # specify "POS" or "NEG"
 library(readxl)
 ```
 
@@ -65,7 +65,7 @@ rm(QC_lin)
 # Randomization
 
 ```{r randomization}
-set.seed(20210217)
+set.seed(20210222)
 data$random_inj <- sample(1:nrow(data), nrow(data), replace=FALSE)
 data <- data[order(data$random_inj),]
 ```
