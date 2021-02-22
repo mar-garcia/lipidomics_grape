@@ -62,6 +62,8 @@ injections$color[grep("QCdl", injections$type)] <- 7 # yellow
 injections$color[grep("QCrw", injections$type)] <- 7 # yellow
 injections$color[injections$type == "STDmix"] <- 8  # grey
 
+injections <- injections[grep("slv_01", injections$filename):nrow(injections),]
+
 # Read the data
 data_raw <- readMSData(
   paste0("data/", polarity, "_FS_fixed/" , injections$filename),
