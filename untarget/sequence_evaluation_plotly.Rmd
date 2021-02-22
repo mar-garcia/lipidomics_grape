@@ -94,18 +94,18 @@ cmps.mx <- cbind(c(cmps$mz - 0.01),
 rownames(cmps.mx) <- cmps$abr
 colnames(cmps.mx) <- c("mzmin", "mzmax", "rtmin", "rtmax")
 
-peaks <- manualChromPeaks(data_raw,
-                          chromPeaks = cmps.mx,
-                          samples = seq_along(fileNames(data_raw)),
-                          BPPARAM = bpparam(),
-                          msLevel = 1L)
-data <- data.frame(chromPeaks(peaks))
-data$id <- substr(data_raw$filename[data$sample], 17, 28)
-data$compound <- NA
-for(i in 1:nrow(data)){
-  data$compound[i] <- paste(cmps$name[unlist(CompoundDb::matchWithPpm(
-    data$mz[i], cmps$mz, ppm = 10))], collapse = "; ")
-}
+#peaks <- manualChromPeaks(data_raw,
+#                          chromPeaks = cmps.mx,
+#                          samples = seq_along(fileNames(data_raw)),
+#                          BPPARAM = bpparam(),
+#                          msLevel = 1L)
+#data <- data.frame(chromPeaks(peaks))
+#data$id <- substr(data_raw$filename[data$sample], 17, 28)
+#data$compound <- NA
+#for(i in 1:nrow(data)){
+#  data$compound[i] <- paste(cmps$name[unlist(CompoundDb::matchWithPpm(
+#    data$mz[i], cmps$mz, ppm = 10))], collapse = "; ")
+#}
 ```
 
 # Plots
