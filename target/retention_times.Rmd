@@ -123,6 +123,7 @@ dt <- dt[, colnames(dt) != "RT"]
 cmps <- merge(cmps, dt, by = "ID")
 rm(i, tmp, sheets, dt, rt_range)
 knitr::kable(cmps)
+cmps <- subset(cmps, select = c("class", "Q1", "Q3", "RT", "ID", "DP (volts)", "EP (volts)", "CE (volts)", "CXP (volts)"))
 write.csv(cmps, "data/target_detected_RT_MRM.csv", row.names = FALSE)
 ```
 
