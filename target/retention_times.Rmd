@@ -15,26 +15,28 @@ startpoint <- Sys.time()
 # Read data
 
 ```{r}
-files = list.files("data/")
-files_area = files[grep("AREA", files)]
-files_rt = files[grep("RT", files)]
-data_area = list()
-data_rt = list()
+library(readxl)
+
+files <- list.files("data/")
+files_area <- files[grep("AREA", files)]
+files_rt <- files[grep("RT", files)]
+data_area <- list()
+data_rt <- list()
 class <- c()
 for(i in 1:length(files_area)){
-  data_area[[i]] = read.table(paste0("data/", files_area[i]), 
-                  sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
+  data_area[[i]] <- read.table(paste0("data/", files_area[i]), 
+                  sep = "\t", na.strings = "N/A", skip = 3, #row.names = 1, 
                   col.names = colnames(read.table(paste0("data/", files_area[i]),
                     sep = "\t", header = T)))
-  colnames(data_area[[i]]) = gsub(
+  colnames(data_area[[i]]) <- gsub(
     paste0("X", gsub("_all_AREA.txt", "", files_area[i]), "_"), "", 
     colnames(data_area[[i]]))
   
-  data_rt[[i]] = read.table(paste0("data/", files_rt[i]), 
-                  sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
+  data_rt[[i]] <- read.table(paste0("data/", files_rt[i]), 
+                  sep = "\t", na.strings = "N/A", skip = 3, #row.names = 1, 
                   col.names = colnames(read.table(paste0("data/", files_rt[i]),
                     sep = "\t", header = T)))
-  colnames(data_rt[[i]]) = gsub(
+  colnames(data_rt[[i]]) <-gsub(
     paste0("X", gsub("_all_RT.txt", "", files_rt[i]), "_"), "", 
     colnames(data_rt[[i]]))
   
@@ -44,7 +46,7 @@ for(i in 1:length(files_area)){
 data_area <- do.call("rbind", data_area)
 data_rt <- do.call("rbind", data_rt)
 cmps <- data.frame(class = class,
-                   compound = rownames(data_area))
+                   ID = data_area$Sample.Name)
 rm(i, files, files_area, files_rt, class)
 n <- nrow(cmps)
 tb <- data.frame(table(cmps$class))
@@ -54,10 +56,16 @@ tb <- data.frame(table(cmps$class))
 ## Delete those compounds not detected in any sample
 
 ```{r}
+# Delete the rows corresponding to the internal standards
+IS <- read_excel("data/metodi_screening_MRM_all_lipidomics_finali.xlsx", sheet = "Int_STD")
+data_area <- data_area[!data_area$Sample.Name %in% IS$ID, ]
+data_rt <- data_rt[!data_rt$Sample.Name %in% IS$ID, ]
+
 data_area <- data_area[!apply(
-  data_area, 1, function(x) length(which(is.na(x)))) == ncol(data_area),]
-data_rt <- data_rt[rownames(data_rt) %in% rownames(data_area),]
-cmps <- cmps[cmps$compound %in% rownames(data_area), ]
+  data_area[,2:ncol(data_area)], 1, function(x) length(which(is.na(x)))) == ncol(data_area)-1,]
+data_rt <- data_rt[data_rt$Sample.Name %in% data_area$Sample.Name,]
+cmps <- cmps[cmps$ID %in% data_area$Sample.Name, ]
+cmps <- cmps[!duplicated(cmps$ID),]
 tb <- merge(tb, data.frame(table(cmps$class)), by = "Var1")
 colnames(tb) <- c("class", "original", "filtered")
 ```
@@ -71,9 +79,12 @@ They are distributed in the following classes: `r knitr::kable(tb)`
 # Which compounds have the largest range of RT values?
 
 ```{r}
-rt_range = apply(data_rt, 1, function(x) max(x, na.rm = T)) - 
-  apply(data_rt, 1, function(x) min(x, na.rm = T))
-rt_range = rt_range[rt_range > 0.1]
+rm(n, tb, IS)
+
+rt_range <- apply(data_rt[,-1], 1, function(x) max(x, na.rm = T)) - 
+  apply(data_rt[,-1], 1, function(x) min(x, na.rm = T))
+names(rt_range) <- data_rt$Sample.Name
+rt_range <- rt_range[rt_range > 0.1]
 round(rt_range[order(rt_range, decreasing = T)], 2)
 round(rt_range, 2)
 ```
@@ -82,7 +93,37 @@ round(rt_range, 2)
 # Calculate the median of RT for each compound
 
 ```{r}
-round(apply(data_rt, 1, function(x) median(x, na.rm = T)), 2)
+rts <- apply(data_rt[,-1], 1, function(x) median(x, na.rm = T))
+names(rts) <- data_rt$Sample.Name
+
+cmps$RT <- NA
+for(i in 1:nrow(cmps)){
+  cmps$RT[i] <- rts[which(names(rts) == cmps$ID[i])]
+}
+rm(i, rts)
+
+sheets <- excel_sheets(
+  "data/metodi_screening_MRM_all_lipidomics_finali.xlsx")
+sheets <- sheets[sheets != "parametri strumentali"]
+dt <- data.frame(matrix(ncol = ncol(read_excel(
+  "data/metodi_screening_MRM_all_lipidomics_finali.xlsx", sheet = 1)), 
+  nrow = 0))
+colnames(dt) <- colnames(read_excel(
+  "data/metodi_screening_MRM_all_lipidomics_finali.xlsx", sheet = 1))
+for(i in seq(length(sheets))){
+  tmp <- read_excel(
+    "data/metodi_screening_MRM_all_lipidomics_finali.xlsx", sheet = sheets[i])
+  tmp <- tmp[!is.na(tmp$ID), ]
+  tmp <- tmp[, colnames(tmp) %in% colnames(dt)]
+  tmp <- tmp[tmp$ID %in% cmps$ID, ]
+  dt <- rbind(dt, tmp)
+}
+dt <- dt[!duplicated(dt$ID), ]
+dt <- dt[, colnames(dt) != "RT"]
+cmps <- merge(cmps, dt, by = "ID")
+rm(i, tmp, sheets, dt, rt_range)
+knitr::kable(cmps)
+write.csv(cmps, "data/target_detected_RT_MRM.csv", row.names = FALSE)
 ```
 
 
