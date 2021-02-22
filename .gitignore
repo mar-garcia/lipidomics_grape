@@ -1,8 +1,10 @@
 *.csv
 *.html
 *.mzData
+*.mzML
 *.mzXML
 *.raw
 *.RData
+*.sld
 *.txt
 *.xlsx
