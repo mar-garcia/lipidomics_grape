@@ -75,7 +75,7 @@ tmp$type[tmp$type == "Rep" | tmp$type == "MIX"] <- "study"
 injections <- cbind(injections, tmp)
 rm(tmp)
 
-injections <- injections[!injections$type %in% c("solveq", "blank", "slv"), ]
+injections <- injections[!injections$type %in% c("solveq", "blank", "STDmix", "QCeq", "slv"), ]
 
 # Read the data
 data_raw <- readMSData(
