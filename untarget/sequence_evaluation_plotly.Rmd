@@ -122,9 +122,12 @@ peaks <- manualChromPeaks(data_raw,
 data <- data.frame(chromPeaks(peaks))
 data$ppm <- ((data$mz - cmps$mz[k])/cmps$mz[k])*1e6
 
+names <- paste0(substr(data_raw$filename[data$sample], 1, 5), 
+                substr(data_raw$filename[data$sample], 17, 28))
+
 plot_ly(y = data$rt/60, x = data$sample, 
         color = factor(data_raw$color[data$sample]), 
-        text = substr(data_raw$filename[data$sample], 17, 28)) %>% 
+        text = names) %>% 
   layout(showlegend  = F, title = "RT") %>% 
   add_segments(x = 0, xend = nrow(injections), 
                y = mean(data$rt)/60, yend = mean(data$rt)/60, 
@@ -141,7 +144,7 @@ plot_ly(y = data$rt/60, x = data$sample,
 
 plot_ly(y = data$ppm, x = data$sample, 
         color = factor(data_raw$color[data$sample]), 
-        text = substr(data_raw$filename[data$sample], 17, 28)) %>% 
+        text = names) %>% 
   layout(showlegend  = F, title = "mz deviations (ppm)") %>% 
   add_segments(x = 0, xend = nrow(injections), 
                y =-2, yend = -2, 
@@ -154,7 +157,7 @@ plot_ly(y = data$ppm, x = data$sample,
 
 plot_ly(y = data$into, x = data$sample, 
         color = factor(data_raw$color[data$sample]), 
-        text = substr(data_raw$filename[data$sample], 17, 28)) %>% 
+        text = names) %>% 
   layout(showlegend  = F, 
          title = paste("Intensity: CV(QC) =", 
                        round(
