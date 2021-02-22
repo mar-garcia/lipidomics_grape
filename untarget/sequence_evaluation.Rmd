@@ -109,6 +109,13 @@ for(i in seq(nrow(cmps))){
   idx <- which(data$compound == cmps$name[i])
   print(cmps$name[i])
   
+  for(j in 1:10){
+    if(data_raw$type[data$sample[idx]][which.max(abs(mean(data$rt[idx]) - 
+                                                     data$rt[idx]))] == "slv"){
+      idx0 <- idx
+      idx <- idx[-which.max(abs(mean(data$rt[idx]) - data$rt[idx]))]
+    }
+  }
   plot(data$rt[idx]/60, xlab = "", ylab = "", 
        main = paste("RT (delta =", 
                     sprintf("%.2f", round(max(data$rt[idx]/60) - 
@@ -118,13 +125,28 @@ for(i in seq(nrow(cmps))){
                 max(min(data$rt[idx]/60), mean(data$rt[idx]/60) + 1/60)))
   abline(h = mean(data$rt[idx]/60), lty = 2)
   abline(h = mean(data$rt[idx]/60) + 1/60 *c(-1, 1), lty = 2, col = "grey")
+  if(exists("idx0")){
+    idx <- which(data$compound == cmps$name[i])
+    rm(idx0)
+  }
   
   ppm <- ((data$mz[idx] - cmps$mz[i])/cmps$mz[i])*1e6
+  for(j in 1:10){
+    if(data_raw$type[data$sample[idx]][which.max(abs(ppm))] == "slv"){
+      idx0 <- idx
+      idx <- idx[-which.max(abs(ppm))]
+      ppm <- ((data$mz[idx] - cmps$mz[i])/cmps$mz[i])*1e6
+    }
+  }
   plot(ppm, xlab = "", ylab = "", main = "mz deviations (ppm)", pch = 16, 
        col = data_raw$color[data$sample[idx]],
        ylim = c(min(min(ppm), -2), max(max(ppm), 2)))
   abline(h = 0, lty = 2)
   abline(h = c(-2, 2), lty = 2, col = "grey")
+  if(exists("idx0")){
+    idx <- which(data$compound == cmps$name[i])
+    rm(idx0)
+  }
   
   plot(data$into[idx], xlab = "", ylab = "", 
        main = paste("Intensity: CV(QC) =", 
