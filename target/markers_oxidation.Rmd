@@ -79,7 +79,7 @@ plot(pc$x[,1], pc$x[,2], type = "n",
      ylab = paste0("PC2: ",
                    format(summary(pc)$importance[2,2] * 100, digits = 3), 
                    "%"),
-     xlim = c(min(pc$x[,1]) - 5, max(pc$x[,1]) + 5),
+     xlim = c(min(pc$x[,1]) - 10, max(pc$x[,1]) + 10),
      main = "Score plot")
 text(pc$x[,1], pc$x[,2], rownames(pc$x))
 grid()
@@ -94,7 +94,7 @@ abline(v = 0, h = 0, lty = 2)
 plot(0,0, type = "n", xaxt="n", yaxt="n", xlab="", ylab = "", bty='n')
 plot(0,0, type = "n", xaxt="n", yaxt="n", xlab="", ylab = "", bty='n')
 legend("top", legend =levels(as.factor(cmps$class)), 
-           pch = 16, col = seq(3))
+           pch = 16, col = seq(3), ncol = 2, cex = 0.8)
 ```
 
 The 1st PC separates the oxidated samples (on the left) from the non-oxidated ones (on the right),
@@ -105,7 +105,7 @@ There is a group of compounds that seems characteristic from non-oxidated sample
 ```{r}
 plot(pc$rotation[,1], pc$rotation[,2],
      xlab = "PC1", ylab = "PC2", main = "Loading plot")
-idx = pc$rotation[,1] > 0.2
+idx = pc$rotation[,1] > 0.05
 points(pc$rotation[idx,1], pc$rotation[idx,2], pch = 16, col = 2)
 grid()
 abline(v = 0, h = 0, lty = 2)
@@ -118,13 +118,41 @@ data[is.na(data)] = 0
 
 ```{r, fig.height = 9, fig.width = 7}
 par(mfrow = c(3, 2))
-for(i in 1:length(which(idx))){
+for(i in 1:6#length(which(idx))
+    ){
   plot(t(data[which(idx)[i],]), 
        main = rownames(data)[which(idx)[i]],
        xlab = "sample", ylab = "intensity", xaxt="n")
   axis(side = 1, at = seq(ncol(data)), labels = colnames(data))
 }
 ```
+
+Regarding the group of compounds that seems characteristic from oxided samples:
+
+
+```{r}
+plot(pc$rotation[,1], pc$rotation[,2],
+     xlab = "PC1", ylab = "PC2", main = "Loading plot")
+idx = pc$rotation[,1] < -0.05
+points(pc$rotation[idx,1], pc$rotation[idx,2], pch = 16, col = 4)
+grid()
+abline(v = 0, h = 0, lty = 2)
+
+rownames(pc$rotation)[idx]
+```
+
+
+```{r, fig.height = 9, fig.width = 7}
+par(mfrow = c(3, 2))
+for(i in 1:6#length(which(idx))
+    ){
+  plot(t(data[which(idx)[i],]), 
+       main = rownames(data)[which(idx)[i]],
+       xlab = "sample", ylab = "intensity", xaxt="n")
+  axis(side = 1, at = seq(ncol(data)), labels = colnames(data))
+}
+```
+
 
 # Heatmap
 
