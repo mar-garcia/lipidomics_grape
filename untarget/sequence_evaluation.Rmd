@@ -114,9 +114,23 @@ for(i in 1:nrow(data)){
     data$mz[i], cmps$mz, ppm = 10))], collapse = "; ")
 }
 table(data$compound)
+
+palette <- colorRampPalette(colors=c("#F5C710", "#DF536B"))
+cols <- palette(length(data_raw$filename))
+```
+
+## Plots
+
+```{r manualchrompeaks-plot}
 for(i in seq(nrow(cmps))){
   idx <- which(data$compound == cmps$name[i])
   print(cmps$name[i])
+  
+  chr <- chromatogram(data_raw, 
+                      mz = c(cmps.mx[i,1], cmps.mx[i,2]), 
+                      rt = c(cmps.mx[i,3]-10, cmps.mx[i,4]+10))
+  plot(chr, col = cols)
+  abline(v=c(cmps.mx[i, 3:4]), col = "grey", lty = 2)
   
   for(j in 1:10){
     if(data_raw$type[data$sample[idx]][which.max(abs(mean(data$rt[idx]) - 
@@ -131,7 +145,7 @@ for(i in seq(nrow(cmps))){
                                             min(data$rt[idx]/60), 2)), "min)"), 
        pch = 16, col = data_raw$color[data$sample[idx]],
        ylim = c(min(min(data$rt[idx]/60), mean(data$rt[idx]/60) - 1/60),
-                max(min(data$rt[idx]/60), mean(data$rt[idx]/60) + 1/60)))
+                max(max(data$rt[idx]/60), mean(data$rt[idx]/60) + 1/60)))
   abline(h = mean(data$rt[idx]/60), lty = 2)
   abline(h = mean(data$rt[idx]/60) + 1/60 *c(-1, 1), lty = 2, col = "grey")
   if(exists("idx0")){
@@ -149,7 +163,8 @@ for(i in seq(nrow(cmps))){
   }
   plot(ppm, xlab = "", ylab = "", main = "mz deviations (ppm)", pch = 16, 
        col = data_raw$color[data$sample[idx]],
-       ylim = c(min(min(ppm), -2), max(max(ppm), 2)))
+       ylim = c(min(min(ppm), -2), 
+                max(max(ppm), 2)))
   abline(h = 0, lty = 2)
   abline(h = c(-2, 2), lty = 2, col = "grey")
   if(exists("idx0")){
@@ -170,7 +185,53 @@ for(i in seq(nrow(cmps))){
            sd(data$into[idx][grep("xQC", data$id[idx])]) * c(-1, 1), 
          lty = 3, col = "grey")
 }
+rm(i, j, idx, peaks, chr, ppm)
 ```
+
+
+# Aligment
+
+```{r aligment}
+cwp <- CentWaveParam(ppm = 20,
+                     peakwidth = c(2, 20),
+                     prefilter = c(5, 1e5),
+                     snthresh = 5,
+                     noise = 1000,
+                     mzdiff = 0.001,
+                     integrate = 2)
+xdata <- findChromPeaks(data_raw, param = cwp)
+pdp <- PeakDensityParam(sampleGroups = xdata$type,
+                        minFraction = 0.75,
+                        binSize = 0.02,
+                        bw = 3)
+xdata <- groupChromPeaks(xdata, param = pdp)
+pgp <- PeakGroupsParam(span = 0.3,
+                       subset = which(xdata$type == "xQC"),
+                       subsetAdjust = "average",
+                       minFraction = 1)
+xdata <- adjustRtime(xdata, param = pgp)
+```
+
+## Plots
+
+```{r aligment-plots}
+for(i in seq(nrow(cmps.mx))){
+  print(cmps$name[i])
+  chr_raw <- chromatogram(xdata, 
+                          mz = cmps.mx[i, 1:2], 
+                          rt = c(cmps.mx[i,3]-10, cmps.mx[i,4]+10),
+                          include = "none",
+                          adjustedRtime = FALSE)
+  chr_adj <- chromatogram(xdata, 
+                          mz = cmps.mx[i, 1:2], 
+                          rt = c(cmps.mx[i,3]-10, cmps.mx[i,4]+10),
+                          include = "none")
+  par(mfrow = c(2, 1), mar = c(3,2,1,0.5))
+  plot(chr_raw, col = cols)
+  plot(chr_adj, col = cols)
+}
+```
+
 
 
 # Session information
