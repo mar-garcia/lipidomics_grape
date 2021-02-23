@@ -19,7 +19,7 @@ startpoint <- Sys.time()
 
 ```{r parameters}
 polarity <- "POS" # specify "POS" or "NEG"
-int <- 4e7
+int <- 2.5e7
 ```
 
 
