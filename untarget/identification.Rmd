@@ -98,9 +98,15 @@ for(i in 2:ncol(cmps_ions)){      # compound "i"
       idx <- which(cmps$C == colnames(cmps_ions)[i])
       ions_loop$RT <- cmps$RT[idx]
       if(grepl("13C", cmps_ions$ID[j])){
-        ions_loop$mz <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
+        if(grepl("2\\(13C)", cmps_ions$ID[j])){
+          ions_loop$mz <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
+          cmps$formula[idx])$exactmass, 
+          gsub("2\\(13C)", "", cmps_ions$ID[j]))) + 1.003355*2
+        } else {
+          ions_loop$mz <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
           cmps$formula[idx])$exactmass, 
           gsub("13C", "", cmps_ions$ID[j]))) + 1.003355
+        }
       } else {
         ions_loop$mz <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
           cmps$formula[idx])$exactmass, cmps_ions$ID[j]))
