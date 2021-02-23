@@ -18,7 +18,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
 ```
 
 
@@ -62,7 +62,7 @@ injections$color[grep("QCdl", injections$type)] <- 7 # yellow
 injections$color[grep("QCrw", injections$type)] <- 7 # yellow
 injections$color[injections$type == "STDmix"] <- 8  # grey
 
-injections <- injections[grep("slv_01", injections$filename):nrow(injections),]
+#injections <- injections[grep("slv_01", injections$filename):nrow(injections),]
 
 # Read the data
 data_raw <- readMSData(
@@ -77,12 +77,21 @@ data_raw <- readMSData(
 
 ```{r manualchrompeaks}
 cmps <- read.csv("data/compounds.csv")
-cmps <- cmps[cmps$type == "equiSPLASH" & cmps$formula != "" & cmps$POS != "",]
+cmps <- cmps[cmps$type == "equiSPLASH" & cmps$formula != "" & cmps[,polarity] != "",]
 cmps <- cmps[cmps$RT > 0, ]
 cmps$mz <- NA
 for(i in 1:nrow(cmps)){
   cmps$mz[i] <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
-    cmps$formula[i])$exactmass, cmps$POS[i]))
+    cmps$formula[i])$exactmass, cmps[i, polarity]))
+}
+
+if(polarity == "NEG"){
+  cmps$RT[cmps$abr == "PE_15_0_X_18_1"]    <- 17.36*60
+  cmps$RT[cmps$abr == "PI_15_0_X_18_1_d7"] <- 16.31*60
+  cmps$RT[cmps$abr == "PS_15_0_X_18_1_d7"] <- 16.36*60
+  cmps$RT[cmps$abr == "ceramide_C15_d7"]   <- 17.24*60
+  cmps$RT[cmps$abr == "lysoPA_17_0"]       <- 10.20*60
+  cmps$RT[cmps$abr == "carnitine_24_0_d4"] <- 15.20*60
 }
 
 cmps.mx <- cbind(c(cmps$mz - 0.01), 
