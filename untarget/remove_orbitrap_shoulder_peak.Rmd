@@ -19,7 +19,7 @@ startpoint <- Sys.time()
 
 ```{r}
 #fluid <- "urine" # specify "urine" or "serum"
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
 ```
 
 ## Libraries
