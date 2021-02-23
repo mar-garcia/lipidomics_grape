@@ -8,4 +8,4 @@ for(i in 1:nrow(untarg)){
     }
   }
 }
-write.csv(untarg, "data/compounds.csv")
+write.csv(untarg, "data/compounds.csv", row.names = F)
