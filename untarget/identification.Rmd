@@ -151,7 +151,7 @@ DT::datatable(
 
 # PCA
 
-```{r pca}
+```{r pca, eval=FALSE}
 data <- featureValues(xdata, method = "sum", value = "into")
 set.seed(123)
 data <- t(imputeRowMinRand(data, method = "from_to",

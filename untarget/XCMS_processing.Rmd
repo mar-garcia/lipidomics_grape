@@ -19,7 +19,7 @@ startpoint <- Sys.time()
 
 ```{r parameters}
 polarity <- "POS" # specify "POS" or "NEG"
-int <- 8e8
+int <- 3e7
 ```
 
 
@@ -76,6 +76,10 @@ injections <- cbind(injections, tmp)
 rm(tmp)
 
 injections <- injections[grep("slv_01", injections$filename):nrow(injections),]
+```
+
+
+```{r, eval = FALSE}
 injections <- injections[!injections$type %in% "slv", ] #4e7
 injections <- injections[!injections$filename %in% 
                            c("x085_lipidgrape_Pt_07_Rep_03_POS_FS.mzData", #4e7
@@ -108,10 +112,14 @@ injections <- injections[!injections$filename %in%
                              "x100_lipidgrape_Pt_03_Rep_03_POS_FS.mzData",
                              "x102_lipidgrape_Pt_09_Rep_01_POS_FS.mzData"
                              ), ]
-injections <- injections[injections$filename %in% 
-                           c("x094_lipidgrape_Pt_02_Rep_02_POS_FS.mzData",
-                             "x114_lipidgrape_Pt_12_Rep_02_POS_FS.mzData"),]
+#injections <- injections[injections$filename %in% 
+#                           c("x094_lipidgrape_Pt_02_Rep_02_POS_FS.mzData",
+#                             "x114_lipidgrape_Pt_12_Rep_02_POS_FS.mzData"),]
+#injections <- injections[injections$filename == "x099_lipidgrape_QCrw_10uL_02_POS_FS.mzData", ]
+```
 
+
+```{r}
 # Read the data
 data_raw <- readMSData(
   paste0("data/", polarity, "_FS_fixed/" , injections$filename),
