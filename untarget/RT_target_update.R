@@ -4,7 +4,7 @@ untarg <- read.csv("data/compounds.csv")
 for(i in 1:nrow(untarg)){
   if(untarg$RT_checked[i] == 0){
     if(untarg$name[i] %in% target$ID){
-      untarg$RT[i] <- round(target$RT[which(target$ID == untarg$name[i])]*60)
+      untarg$RT[i] <- round(target$RT[which(target$ID == untarg$name[i])]*60) + 18
     }
   }
 }
