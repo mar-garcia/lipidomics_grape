@@ -3,9 +3,9 @@ title: "Retention times"
 author: "Mar Garcia-Aloy"
 output: 
   BiocStyle::html_document:
-    toc: false
+    toc: true
     number_sections: false
-    toc_float: false
+    toc_float: true
 ---
 
 ```{r startpoint, include = FALSE}
@@ -125,6 +125,13 @@ rm(i, tmp, sheets, dt, rt_range)
 knitr::kable(cmps)
 cmps <- subset(cmps, select = c("class", "Q1", "Q3", "RT", "ID", "DP (volts)", "EP (volts)", "CE (volts)", "CXP (volts)"))
 write.csv(cmps, "data/target_detected_RT_MRM.csv", row.names = FALSE)
+```
+
+# Plot
+
+```{r, warning=FALSE}
+plotly::plot_ly(x = cmps$RT, y = cmps$Q1, color = factor(cmps$class), 
+                colors = "Set1", text = cmps$ID)
 ```
 
 
