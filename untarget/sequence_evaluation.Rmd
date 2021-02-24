@@ -87,10 +87,12 @@ for(i in 1:nrow(cmps)){
 
 if(polarity == "NEG"){
   cmps$RT[cmps$abr == "PE_15_0_X_18_1"]    <- 17.36*60
+  cmps$RT[cmps$abr == "PG_15_0_X_18_1_d7"] <- 16.52*60
   cmps$RT[cmps$abr == "PI_15_0_X_18_1_d7"] <- 16.31*60
   cmps$RT[cmps$abr == "PS_15_0_X_18_1_d7"] <- 16.36*60
   cmps$RT[cmps$abr == "ceramide_C15_d7"]   <- 17.24*60
   cmps$RT[cmps$abr == "lysoPA_17_0"]       <- 10.20*60
+  cmps$RT[cmps$abr == "PA_15_0_X_18_1_d7"] <- 16.92*60
   cmps$RT[cmps$abr == "carnitine_24_0_d4"] <- 15.20*60
 }
 
