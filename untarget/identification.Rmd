@@ -98,17 +98,20 @@ for(i in 2:ncol(cmps_ions)){      # compound "i"
       idx <- which(cmps$C == colnames(cmps_ions)[i])
       ions_loop$RT <- cmps$RT[idx]
       if(grepl("13C", cmps_ions$ID[j])){
-        if(grepl("2\\(13C)", cmps_ions$ID[j])){
-          ions_loop$mz <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
-          cmps$formula[idx])$exactmass, 
-          gsub("2\\(13C)", "", cmps_ions$ID[j]))) + 1.003355*2
+        if(grepl("\\(13C)", cmps_ions$ID[j])){
+          ions_loop$mz <- unlist(CompoundDb::mass2mz(Rdisop::getMolecule(
+            cmps$formula[idx])$exactmass, 
+            substring(gsub("\\(13C)", "", cmps_ions$ID[j]), 2))) + 1.003355 * 
+            as.numeric(substring(gsub("\\(13C)", "", cmps_ions$ID[j]), 1, 1))
         } else {
-          ions_loop$mz <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
-          cmps$formula[idx])$exactmass, 
-          gsub("13C", "", cmps_ions$ID[j]))) + 1.003355
+          ions_loop$mz <- unlist(CompoundDb::mass2mz(Rdisop::getMolecule(
+            cmps$formula[idx])$exactmass, 
+            gsub("13C", "", cmps_ions$ID[j]))) + 1.003355
         }
-      } else {
-        ions_loop$mz <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
+      } else if(cmps_ions$ID[j] == "[M]"){
+        ions_loop$mz <- Rdisop::getMolecule(cmps$formula[idx])$exactmass
+      }else {
+        ions_loop$mz <- unlist(CompoundDb::mass2mz(Rdisop::getMolecule(
           cmps$formula[idx])$exactmass, cmps_ions$ID[j]))
       }
       ions_loop$annotation <- cmps_ions$ID[j] 
@@ -117,6 +120,16 @@ for(i in 2:ncol(cmps_ions)){      # compound "i"
   }
 }
 rm(i, j, ions_loop, idx, pol)
+
+cmps_ft <- read.csv("data/compounds_ft.csv")
+cmps_ft <- cmps_ft[cmps_ft$polarity == polarity, ]
+cmps_ft$RT <- NA
+for(i in seq(nrow(cmps_ft))){
+  cmps_ft$RT[i] <- cmps$RT[cmps$C == cmps_ft$C[i]]
+}
+cmps_ft <- subset(cmps_ft, select = c("C", "RT", "mz", "annotation"))
+ions_long <- rbind(ions_long, cmps_ft)
+rm(i, cmps_ft)
 ```
 
 
@@ -131,6 +144,10 @@ for(i in 1:nrow(features)){
   rtr <- c(features$rtmed[i], features$rtmed[i]) + 10 * c(-1, 1)
   cmp.i <- ions_long[unlist(
     CompoundDb::matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 20)), ]
+  if(nrow(cmp.i) > 0){
+    if(cmp.i$C %in% "C0015"){
+      rtr[1] <- rtr[1] - 30
+    }}
   cmp.i <- cmp.i[cmp.i$RT > rtr[1] & cmp.i$RT < rtr[2], ]
   features$C[i] <- paste(cmp.i$C, collapse = "; ")
   features$compound[i] <- paste(cmps$name[cmps$C %in% cmp.i$C], collapse = "; ")
@@ -152,12 +169,13 @@ features <- features[order(features$rtmed), ]
 
 ```{r identifications}
 DT::datatable(
-  features[,c("mzmed", "rtmed", "C", "compound", "annotation", "ppm")])
+  features[,c("mzmed", "rtmed", "C", "compound", "annotation", "ppm")], 
+  filter = "top")
 ```
 
 # PCA
 
-```{r pca, eval=FALSE}
+```{r pca, message=FALSE, warning=FALSE, eval=TRUE}
 data <- featureValues(xdata, method = "sum", value = "into")
 set.seed(123)
 data <- t(imputeRowMinRand(data, method = "from_to",
@@ -171,7 +189,7 @@ pca <- prcomp(dt, center = FALSE, scale. = FALSE)
 tmp <- data.frame(pca$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = gsub(".mzData", "", rownames(tmp)),
-        color = xdata$type)
+        color = xdata$type, colors = "Set1")
 
 
 tmp <- data.frame(pca$rotation)
@@ -180,6 +198,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
                      "mz:", round(as.numeric(features$mzmed), 4), 
                      "RT:", round(features$rtmed)), 
         color = features$compound != "", colors = "Set2")
+table(features$compound != "")
 ```
 
 
