@@ -16,6 +16,8 @@ startpoint <- Sys.time()
 
 ```{r}
 library(readxl)
+library(plotly)
+library(magrittr)
 
 files <- list.files("data/")
 files_area <- files[grep("AREA", files)]
@@ -123,15 +125,27 @@ dt <- dt[, colnames(dt) != "RT"]
 cmps <- merge(cmps, dt, by = "ID")
 rm(i, tmp, sheets, dt, rt_range)
 knitr::kable(cmps)
-cmps <- subset(cmps, select = c("class", "Q1", "Q3", "RT", "ID", "DP (volts)", "EP (volts)", "CE (volts)", "CXP (volts)"))
+cmps <- subset(
+  cmps, 
+  select = c("class", "Q1", "Q3", "RT", "ID", 
+             "DP (volts)", "EP (volts)", "CE (volts)", "CXP (volts)"))
 write.csv(cmps, "data/target_detected_RT_MRM.csv", row.names = FALSE)
 ```
 
 # Plot
 
-```{r, warning=FALSE}
-plotly::plot_ly(x = cmps$RT, y = cmps$Q1, color = factor(cmps$class), 
-                colors = "Set1", text = cmps$ID)
+```{r, warning=FALSE, message=FALSE}
+cmps_pos <- cmps[cmps$`DP (volts)` > 0 ,]
+cmps_neg <- cmps[cmps$`DP (volts)` < 0, ]
+plot_ly(x = cmps$RT, y = cmps$Q1, color = factor(cmps$class), 
+                colors = "Set1", text = cmps$ID) %>% 
+  layout(title="all")
+plot_ly(x = cmps_pos$RT, y = cmps_pos$Q1, color = factor(cmps_pos$class), 
+                colors = "Set1", text = cmps_pos$ID) %>% 
+  layout(title="POS")
+plot_ly(x = cmps_neg$RT, y = cmps_neg$Q1, color = factor(cmps_neg$class), 
+                colors = "Set1", text = cmps_neg$ID) %>% 
+  layout(title="NEG")
 ```
 
 
