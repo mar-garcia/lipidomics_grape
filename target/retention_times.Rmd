@@ -14,7 +14,7 @@ startpoint <- Sys.time()
 
 # Read data
 
-```{r}
+```{r, message=FALSE}
 library(readxl)
 library(plotly)
 library(magrittr)
