@@ -143,7 +143,7 @@ features$ppm <- NA
 for(i in 1:nrow(features)){
   rtr <- c(features$rtmed[i], features$rtmed[i]) + 10 * c(-1, 1)
   cmp.i <- ions_long[unlist(
-    CompoundDb::matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 20)), ]
+    CompoundDb::matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 10)), ]
   if(nrow(cmp.i) > 0){
     if(cmp.i$C %in% "C0015"){
       rtr[1] <- rtr[1] - 30
