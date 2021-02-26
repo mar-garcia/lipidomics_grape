@@ -19,7 +19,7 @@ startpoint <- Sys.time()
 
 ```{r parameters}
 k <- 1
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
 ```
 
 
@@ -78,12 +78,12 @@ data_raw <- readMSData(
 
 ```{r cmps}
 cmps <- read.csv("data/compounds.csv")
-cmps <- cmps[cmps$type == "equiSPLASH" & cmps$formula != "" & cmps$POS != "",]
+cmps <- cmps[cmps$type == "equiSPLASH" & cmps$formula != "" & cmps[,polarity] != "",]
 cmps <- cmps[cmps$RT > 0, ]
 cmps$mz <- NA
 for(i in 1:nrow(cmps)){
   cmps$mz[i] <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
-    cmps$formula[i])$exactmass, cmps$POS[i]))
+    cmps$formula[i])$exactmass, cmps[i, polarity]))
 }
 
 
