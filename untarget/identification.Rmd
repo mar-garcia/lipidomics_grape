@@ -6,6 +6,16 @@ output:
     toc: true
     number_sections: false
     toc_float: true
+knit: (
+  function(inputFile, encoding) { 
+
+    pSubTitle <- "identification_NEG"
+
+    rmarkdown::render( 
+      input       = inputFile, 
+      encoding    = encoding, 
+      params      = list(sub_title = pSubTitle),      
+      output_file = pSubTitle) })
 ---
 
 ```{r startpoint, include = FALSE}
@@ -17,7 +27,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
 ```
 
 
@@ -35,18 +45,31 @@ library(Rdisop)
 ```{r import}
 cmps <- read.csv("data/compounds.csv")
 cmps$mz <- NA
-cmps$NH4 <- NA
-cmps$Na <- NA
-for(i in 1:nrow(cmps)){
-  if(cmps$formula[i] != ""){
-    cmps$mz[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
-      cmps$formula[i])$exactmass, "[M+H]+"))
-    cmps$NH4[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
-      cmps$formula[i])$exactmass, "[M+NH4]+"))
-    cmps$Na[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
-      cmps$formula[i])$exactmass, "[M+Na]+"))
+if(polarity == "POS"){
+  cmps$NH4 <- NA
+  cmps$Na <- NA
+  for(i in 1:nrow(cmps)){
+    if(cmps$formula[i] != ""){
+      cmps$mz[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
+        cmps$formula[i])$exactmass, "[M+H]+"))
+      cmps$NH4[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
+        cmps$formula[i])$exactmass, "[M+NH4]+"))
+      cmps$Na[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
+        cmps$formula[i])$exactmass, "[M+Na]+"))
+    }
+  }} else if(polarity == "NEG"){
+    cmps$Cl <- NA
+    cmps$FA <- NA
+    for(i in 1:nrow(cmps)){
+      if(cmps$formula[i] != ""){
+        cmps$mz[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
+          cmps$formula[i])$exactmass, "[M-H]-"))
+        cmps$Cl[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
+          cmps$formula[i])$exactmass, "[M+Cl]-"))
+        cmps$FA[i] <- unlist(CompoundDb::mass2mz(getMolecule(
+          cmps$formula[i])$exactmass, "[M-H+HCOOH]-"))
+      }}
   }
-}
 DT::datatable(cmps[,-2])
 
 load(paste0("data/RData/data_XCMS_", polarity, ".RData"))
@@ -69,7 +92,7 @@ if(polarity == "POS"){
   smbl <- "+"
   pol <- 1
 } else if(polarity == "NEG"){
-  ion <- "NEG"
+  ion <- -1.007276
   smbl <- "-"
   pol  <- (-1)
 }
@@ -80,7 +103,7 @@ for(i in 1:nrow(cmps)){
   }
 }
 cmps$annotation <- paste0("[M", smbl, "H]", smbl)
-rm(i, smbl)
+rm(i)
 ```
 
 
@@ -88,6 +111,7 @@ rm(i, smbl)
 
 ```{r other-ions}
 cmps_ions <- read.csv("data/compounds_ions.csv")
+cmps_ions$ID <- gsub("\\*", smbl, cmps_ions$ID)
 ions_long <- cmps[, c("C", "RT", "mz", "annotation")]
 
 for(i in 2:ncol(cmps_ions)){      # compound "i"
@@ -120,23 +144,25 @@ for(i in 2:ncol(cmps_ions)){      # compound "i"
     }
   }
 }
-rm(i, j, ions_loop, idx, pol)
+rm(i, j, ions_loop, idx, pol, smbl)
 
-cmps_ft <- read.csv("data/compounds_ft.csv")
-cmps_ft <- cmps_ft[cmps_ft$polarity == polarity, ]
-cmps_ft$RT <- NA
-for(i in seq(nrow(cmps_ft))){
-  cmps_ft$RT[i] <- cmps$RT[cmps$C == cmps_ft$C[i]]
-}
-cmps_ft <- subset(cmps_ft, select = c("C", "RT", "mz", "annotation"))
-for(i in seq(nrow(cmps_ft))){
-  if(grepl("C", cmps_ft$mz[i])){
-    cmps_ft$mz[i] <- getMolecule(cmps_ft$mz[i])$exactmass + ion
+if(polarity == "POS"){
+  cmps_ft <- read.csv("data/compounds_ft.csv")
+  cmps_ft <- cmps_ft[cmps_ft$polarity == polarity, ]
+  cmps_ft$RT <- NA
+  for(i in seq(nrow(cmps_ft))){
+    cmps_ft$RT[i] <- cmps$RT[cmps$C == cmps_ft$C[i]]
   }
+  cmps_ft <- subset(cmps_ft, select = c("C", "RT", "mz", "annotation"))
+  for(i in seq(nrow(cmps_ft))){
+    if(grepl("C", cmps_ft$mz[i])){
+      cmps_ft$mz[i] <- getMolecule(cmps_ft$mz[i])$exactmass + ion
+    }
+  }
+  cmps_ft$mz <- as.numeric(cmps_ft$mz)
+  ions_long <- rbind(ions_long, cmps_ft)
+  rm(i, cmps_ft)
 }
-cmps_ft$mz <- as.numeric(cmps_ft$mz)
-ions_long <- rbind(ions_long, cmps_ft)
-rm(i, cmps_ft)
 ```
 
 
@@ -150,7 +176,7 @@ features$ppm <- NA
 for(i in 1:nrow(features)){
   rtr <- c(features$rtmed[i], features$rtmed[i]) + 10 * c(-1, 1)
   cmp.i <- ions_long[unlist(
-    CompoundDb::matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 10)), ]
+    CompoundDb::matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 15)), ]
   if(nrow(cmp.i) > 0){
     if(cmp.i$C %in% "C0015"){
       rtr[1] <- rtr[1] - 30
