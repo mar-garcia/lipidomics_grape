@@ -1,5 +1,6 @@
-target <- read.csv("../target/data/target_detected_RT_MRM.csv")
 untarg <- read.csv("compounds.csv")
+target <- read.csv("../target/data/target_detected_RT_MRM.csv")
+target$ID <- gsub("-CH3", "", target$ID)
 for(i in 1:nrow(untarg)){
   if(untarg$RT_checked[i] == 0){
     if(untarg$name[i] %in% target$ID){
