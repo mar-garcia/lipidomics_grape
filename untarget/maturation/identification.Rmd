@@ -6,6 +6,16 @@ output:
     toc: true
     number_sections: false
     toc_float: true
+knit: (
+  function(inputFile, encoding) { 
+
+    pSubTitle <- "identification_NEG"
+
+    rmarkdown::render( 
+      input       = inputFile, 
+      encoding    = encoding, 
+      params      = list(sub_title = pSubTitle),      
+      output_file = pSubTitle) })
 ---
 
 ```{r startpoint, include = FALSE}
@@ -17,7 +27,11 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
+cmps_isotopes <- list(
+  C39H74NO8P = c("C0027", "C1515"),
+  C45H74O10 = c("C0082", "C3932", "C4197"),
+  C51H84O15 = c("C0077", "C4821"))
 ```
 
 
@@ -27,26 +41,60 @@ polarity <- "POS" # specify "POS" or "NEG"
 library(xcms)
 library(plotly)
 library(Rdisop)
+library(OrgMassSpecR)
+library(CompoundDb)
 ```
 
 
 # Data import
 
 ```{r import}
-cmps <- read.csv("data/compounds.csv")
+cmps <- read.csv("../compounds.csv")
 cmps$mz <- NA
-cmps$NH4 <- NA
-cmps$Na <- NA
-for(i in 1:nrow(cmps)){
-  if(cmps$formula[i] != ""){
-    cmps$mz[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
-      cmps$formula[i])$exactmass, "[M+H]+"))
-    cmps$NH4[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
-      cmps$formula[i])$exactmass, "[M+NH4]+"))
-    cmps$Na[i] <- unlist(MetaboCoreUtils::mass2mz(getMolecule(
-      cmps$formula[i])$exactmass, "[M+Na]+"))
+if(polarity == "POS"){
+  cmps$NH4 <- NA
+  cmps$Na <- NA
+  for(i in 1:nrow(cmps)
+  ){
+    if(cmps$formula[i] != ""){
+      if(grepl("D", cmps$formula[i])){
+        cmps$mz[i] <- unlist(mass2mz(getMolecule(
+          cmps$formula[i])$exactmass, "[M+H]+"))
+        cmps$NH4[i] <- unlist(mass2mz(getMolecule(
+          cmps$formula[i])$exactmass, "[M+NH4]+"))
+        cmps$Na[i] <- unlist(mass2mz(getMolecule(
+          cmps$formula[i])$exactmass, "[M+Na]+"))
+      } else {
+        cmps$mz[i] <- unlist(mass2mz(MonoisotopicMass(
+          formula = ListFormula(cmps$formula[i])), "[M+H]+"))
+        cmps$NH4[i] <- unlist(mass2mz(MonoisotopicMass(
+          formula = ListFormula(cmps$formula[i])), "[M+NH4]+"))
+        cmps$Na[i] <- unlist(mass2mz(MonoisotopicMass(
+          formula = ListFormula(cmps$formula[i])), "[M+Na]+"))
+      }
+    }
+  }} else if(polarity == "NEG"){
+    cmps$Cl <- NA
+    cmps$FA <- NA
+    for(i in 1:nrow(cmps)){
+      if(cmps$formula[i] != ""){
+        if(grepl("D", cmps$formula[i])){
+          cmps$mz[i] <- unlist(mass2mz(getMolecule(
+            cmps$formula[i])$exactmass, "[M-H]-"))
+          cmps$Cl[i] <- unlist(mass2mz(getMolecule(
+            cmps$formula[i])$exactmass, "[M+Cl]-"))
+          cmps$FA[i] <- unlist(mass2mz(getMolecule(
+            cmps$formula[i])$exactmass, "[M-H+HCOOH]-"))
+        } else {
+          cmps$mz[i] <- unlist(mass2mz(MonoisotopicMass(
+            formula = ListFormula(cmps$formula[i])), "[M-H]-"))
+          cmps$Cl[i] <- unlist(mass2mz(MonoisotopicMass(
+            formula = ListFormula(cmps$formula[i])), "[M+Cl]-"))
+          cmps$FA[i] <- unlist(mass2mz(MonoisotopicMass(
+            formula = ListFormula(cmps$formula[i])), "[M-H+HCOOH]-"))
+        }
+      }}
   }
-}
 DT::datatable(cmps[,-2])
 
 load(paste0("data/RData/data_XCMS_", polarity, ".RData"))
@@ -61,7 +109,7 @@ features <- data.frame(featureDefinitions(xdata))
 ### Pseudo-molecular ions
 
 ```{r database}
-cmps <- read.csv("data/compounds.csv")
+cmps <- read.csv("../compounds.csv")
 
 # Calculate the mz values of the molecular ion
 if(polarity == "POS"){
@@ -69,25 +117,40 @@ if(polarity == "POS"){
   smbl <- "+"
   pol <- 1
 } else if(polarity == "NEG"){
-  ion <- "NEG"
+  ion <- -1.007276
   smbl <- "-"
   pol  <- (-1)
 }
 cmps$mz <- NA
 for(i in 1:nrow(cmps)){
   if(cmps$formula[i] != ""){
-    cmps$mz[i] <- getMolecule(cmps$formula[i])$exactmass + ion
+    if(grepl("D", cmps$formula[i])){
+      cmps$mz[i] <- getMolecule(cmps$formula[i])$exactmass + ion
+    }
+    else {
+      cmps$mz[i] <- MonoisotopicMass(
+        formula = ListFormula(cmps$formula[i])) + ion
+    }
   }
 }
 cmps$annotation <- paste0("[M", smbl, "H]", smbl)
-rm(i, smbl)
+rm(i)
 ```
 
 
 ### Other ions
 
 ```{r other-ions}
-cmps_ions <- read.csv("data/compounds_ions.csv")
+cmps_ions <- read.csv("../compounds_ions.csv")
+cmps_ions$ID <- gsub("\\*", smbl, cmps_ions$ID)
+
+for(i in seq(length(cmps_isotopes))){
+  for(j in 2:length(cmps_isotopes[[i]])){
+    cmps_ions <- cbind(cmps_ions, cmps_ions[,cmps_isotopes[[i]][1]])
+    colnames(cmps_ions)[ncol(cmps_ions)] <- cmps_isotopes[[i]][j]
+  }
+}
+
 ions_long <- cmps[, c("C", "RT", "mz", "annotation")]
 
 for(i in 2:ncol(cmps_ions)){      # compound "i"
@@ -100,19 +163,19 @@ for(i in 2:ncol(cmps_ions)){      # compound "i"
       ions_loop$RT <- cmps$RT[idx]
       if(grepl("13C", cmps_ions$ID[j])){
         if(grepl("\\(13C)", cmps_ions$ID[j])){
-          ions_loop$mz <- unlist(CompoundDb::mass2mz(getMolecule(
+          ions_loop$mz <- unlist(mass2mz(getMolecule(
             cmps$formula[idx])$exactmass, 
             substring(gsub("\\(13C)", "", cmps_ions$ID[j]), 2))) + 1.003355 * 
             as.numeric(substring(gsub("\\(13C)", "", cmps_ions$ID[j]), 1, 1))
         } else {
-          ions_loop$mz <- unlist(CompoundDb::mass2mz(getMolecule(
+          ions_loop$mz <- unlist(mass2mz(getMolecule(
             cmps$formula[idx])$exactmass, 
             gsub("13C", "", cmps_ions$ID[j]))) + 1.003355
         }
       } else if(cmps_ions$ID[j] == "[M]"){
         ions_loop$mz <- getMolecule(cmps$formula[idx])$exactmass
       }else {
-        ions_loop$mz <- unlist(CompoundDb::mass2mz(getMolecule(
+        ions_loop$mz <- unlist(mass2mz(getMolecule(
           cmps$formula[idx])$exactmass, cmps_ions$ID[j]))
       }
       ions_loop$annotation <- cmps_ions$ID[j] 
@@ -120,23 +183,33 @@ for(i in 2:ncol(cmps_ions)){      # compound "i"
     }
   }
 }
-rm(i, j, ions_loop, idx, pol)
+rm(i, j, ions_loop, idx, pol, smbl)
 
-cmps_ft <- read.csv("data/compounds_ft.csv")
-cmps_ft <- cmps_ft[cmps_ft$polarity == polarity, ]
-cmps_ft$RT <- NA
-for(i in seq(nrow(cmps_ft))){
-  cmps_ft$RT[i] <- cmps$RT[cmps$C == cmps_ft$C[i]]
-}
-cmps_ft <- subset(cmps_ft, select = c("C", "RT", "mz", "annotation"))
-for(i in seq(nrow(cmps_ft))){
-  if(grepl("C", cmps_ft$mz[i])){
-    cmps_ft$mz[i] <- getMolecule(cmps_ft$mz[i])$exactmass + ion
+if(polarity == "POS"){
+  cmps_ft <- read.csv("../compounds_ft.csv")
+  cmps_ft <- cmps_ft[cmps_ft$polarity == polarity, ]
+  
+  for(i in seq(length(cmps_isotopes))){
+    for(j in 2:length(cmps_isotopes[[i]])){
+      cmps_ft_tmp <- cmps_ft[cmps_ft$C == cmps_isotopes[[i]][1],]
+      cmps_ft_tmp$C <- cmps_isotopes[[i]][j]
+      cmps_ft <- rbind(cmps_ft, cmps_ft_tmp)
+    }
   }
+  cmps_ft$RT <- NA
+  for(i in seq(nrow(cmps_ft))){
+    cmps_ft$RT[i] <- cmps$RT[cmps$C == cmps_ft$C[i]]
+  }
+  cmps_ft <- subset(cmps_ft, select = c("C", "RT", "mz", "annotation"))
+  for(i in seq(nrow(cmps_ft))){
+    if(grepl("C", cmps_ft$mz[i])){
+      cmps_ft$mz[i] <- getMolecule(cmps_ft$mz[i])$exactmass + ion
+    }
+  }
+  cmps_ft$mz <- as.numeric(cmps_ft$mz)
+  ions_long <- rbind(ions_long, cmps_ft)
+  rm(i, cmps_ft)
 }
-cmps_ft$mz <- as.numeric(cmps_ft$mz)
-ions_long <- rbind(ions_long, cmps_ft)
-rm(i, cmps_ft)
 ```
 
 
@@ -150,7 +223,7 @@ features$ppm <- NA
 for(i in 1:nrow(features)){
   rtr <- c(features$rtmed[i], features$rtmed[i]) + 10 * c(-1, 1)
   cmp.i <- ions_long[unlist(
-    CompoundDb::matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 10)), ]
+    matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 15)), ]
   if(nrow(cmp.i) > 0){
     if(cmp.i$C %in% "C0015"){
       rtr[1] <- rtr[1] - 30
@@ -168,7 +241,7 @@ rm(i)
 features$mzmed <- sprintf("%.4f", round(features$mzmed, 4))
 features$rtmed <- round(features$rtmed)
 #features$ppm <- sprintf("%.1f", round(abs(features$ppm), 1))
-features <- features[order(features$rtmed), ]
+#features <- features[order(features$rtmed), ]
 ```
 
 

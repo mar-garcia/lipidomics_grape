@@ -5,6 +5,7 @@ library(Rdisop)
 
 polarity <- "POS" # specify "POS" or "NEG"
 load(paste0("data/RData/data_XCMS_", polarity, ".RData"))
+xdata@processingData@files <- gsub("untarget", "untarget\\\\maturation", fileNames(xdata))
 load(paste0("data/RData/MS2_library_", polarity, ".RData"))
 data <- featureValues(xdata, method = "sum", value = "into")
 data[is.na(data)] <- 0
@@ -12,7 +13,7 @@ features <- data.frame(featureDefinitions(xdata))
 
 ## Feature -------------------------------------------------------------------
 
-z.ft <- "FT1833"
+z.ft <- "FT1009"
 which.max(data[z.ft,])
 z.idx <- which(rownames(features) == z.ft)
 # RT range
@@ -46,9 +47,9 @@ z.features$i <- seq(nrow(z.features))
 ## MS2 ----------------------------------------------------------------------
 
 mz <- features$mzmed[z.idx]
-rt <- features$rtmed[z.idx]
+rt <- features$rtmed[z.idx] + 20
 ms2sub <- getSpectrum(ms2list, "precursor", mz, mz.tol = 0.01)
-ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 10)
+ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 20)
 if(length(ms2sub) > 1){
   intensitats <- c()
   for(i in seq(ms2sub)){
@@ -138,10 +139,10 @@ if(length(ms2sub) > 30){
 ## Feature group ------------------------------------------------------------
 z.features[,c("mzmed", "rtmed", "cor_int", "cor_ps", "i")]
 
-tmp <- unlist(mass2mz(getMolecule("C45H79O13P")$exactmass, adduct = adducts()))
+tmp <- unlist(mass2mz(getMolecule("C39H74NO8P")$exactmass, adduct = adducts()))
 #unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 10))
-unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 10))[order(
-  unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 10)))]
+unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 15))[order(
+  unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 15)))]
 
 
 
