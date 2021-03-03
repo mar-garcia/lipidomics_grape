@@ -1,16 +1,19 @@
 library(CluMSID)
 library(MsCoreUtils)
-setwd("~/GitHub/lipidomics/untarget")
-polarity <- "NEG" # specify "POS" or "NEG"
+polarity <- "POS" # specify "POS" or "NEG"
 load(paste0("data/RData/data_XCMS_", polarity, ".RData"))
 load(paste0("data/RData/MS2_library_", polarity, ".RData"))
 
 data <- featureValues(xdata, method = "sum", value = "into")
 features <- data.frame(featureDefinitions(xdata))
 
-ft <- "FT211"
+ft <- "FT1494"
 mz <- features$mzmed[rownames(features)==ft]
-rt <- features$rtmed[rownames(features)==ft] + 15
+if(polarity == "POS"){
+  rt <- features$rtmed[rownames(features)==ft] + 15
+} else if(polarity == "NEG"){
+  rt <- features$rtmed[rownames(features)==ft]
+}
 
 which.max(data[ft,])
 xdata <- readMSData(
@@ -18,7 +21,7 @@ xdata <- readMSData(
   mode = "onDisk")
 chr <- chromatogram(xdata, mz = mz + 0.01 * c(-1, 1))
 chromPeaks(findChromPeaks(chr, param = CentWaveParam(peakwidth = c(2, 20))))
-rt2 <- 1016.37   
+rt2 <- 992.242        
 plot(chr, xlim = c(rt2 - 50, rt2 + 50))
 abline(v = rt2)
 sps <- xdata[[closest(rt2, rtime(xdata)#, duplicates = "closest"
@@ -31,9 +34,9 @@ sps[unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10)):
 tmp <- sps[unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10)):
              (unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10))+5),]
 tmp  <- tmp[order(tmp$i, decreasing = T), ]
-tmp[1:3,]
-write.table(tmp[1:3,], 
-            paste0("data/sirius/", round(mz), "_", 
+tmp[1:4,]
+write.table(tmp[1:4,], 
+            paste0("data/sirius/", polarity, "/", round(mz), "_", 
                    round(rt2), "_FS.txt"), row.names = F, col.names = F)
 
 
@@ -44,8 +47,10 @@ ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 10)
 if(length(ms2sub) > 1){
   intensitats <- c()
   for(i in seq(ms2sub)){
-    #idx <- substring(gsub(".*\\.","", accessSpectrum(ms2sub[[i]])[,1]), 1, 1)>1
     idx <- which(accessSpectrum(ms2sub[[i]])[,1] > 283.5 & accessSpectrum(ms2sub[[i]])[,1] < 283.8)
+    if(length(idx) == 0){
+      idx <- substring(gsub(".*\\.","", accessSpectrum(ms2sub[[i]])[,1]), 1, 1)>1 
+    }
     int.noise <- accessSpectrum(ms2sub[[i]])[idx,2][which.max(accessSpectrum(ms2sub[[i]])[idx,2])]
     int.good <- accessSpectrum(ms2sub[[i]])[-idx,2][which.max(accessSpectrum(ms2sub[[i]])[-idx,2])]
     intensitats <- c(intensitats, int.good / int.noise)
@@ -123,7 +128,7 @@ if(length(ms2sub) > 30){
   tmp <- data.frame(ms2sub@spectrum)
   tmp <- tmp[tmp$X2 > tmp$X2[which.max(tmp$X2)]*0.01,  ]
 }
-i <- 67
+i <- 130
 write.table(ms2sub[[i]]@spectrum, 
             paste0("data/sirius/", polarity, "/", ms2sub[[j]]@id, "_MS2.txt"), 
             row.names = F, col.names = F)
