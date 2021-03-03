@@ -29,11 +29,18 @@ startpoint <- Sys.time()
 ```{r parameters}
 polarity <- "NEG" # specify "POS" or "NEG"
 cmps_isotopes <- list(
+  C37H69O8P  = c("C0034", "C0261", "C0354"),
+  C39H69O8P  = c("C0035", "C0036"),
   C39H74NO8P = c("C0027", "C1515"),
-  C45H74O10 = c("C0082", "C3932", "C4197"),
-  C51H84O15 = c("C0077", "C4821"))
+  #C40H76NO8P = c("C0770", "C0837", "C0869"),
+  C41H74NO8P = c("C0031", "C0032"),
+  C44H80NO8P = c("C0023", "C0025"),
+  C45H74O10  = c("C0082", "C3932", "C4197"),
+  C45H76O10  = c("C0081", "C3931", "C4196"),
+  C45H78O10  = c("C3930", "C3975", "C4070"),
+  C51H84O15  = c("C0077", "C4821"),
+  C51H86O15  = c("C0076", "C4732", "C4820"))
 ```
-
 
 ## Libraries
 
@@ -44,7 +51,6 @@ library(Rdisop)
 library(OrgMassSpecR)
 library(CompoundDb)
 ```
-
 
 # Data import
 
@@ -101,7 +107,6 @@ load(paste0("data/RData/data_XCMS_", polarity, ".RData"))
 features <- data.frame(featureDefinitions(xdata))
 ```
 
-
 # Study database
 
 ## Build database
@@ -136,7 +141,6 @@ for(i in 1:nrow(cmps)){
 cmps$annotation <- paste0("[M", smbl, "H]", smbl)
 rm(i)
 ```
-
 
 ### Other ions
 
@@ -185,33 +189,32 @@ for(i in 2:ncol(cmps_ions)){      # compound "i"
 }
 rm(i, j, ions_loop, idx, pol, smbl)
 
-if(polarity == "POS"){
-  cmps_ft <- read.csv("../compounds_ft.csv")
-  cmps_ft <- cmps_ft[cmps_ft$polarity == polarity, ]
-  
-  for(i in seq(length(cmps_isotopes))){
-    for(j in 2:length(cmps_isotopes[[i]])){
-      cmps_ft_tmp <- cmps_ft[cmps_ft$C == cmps_isotopes[[i]][1],]
+cmps_ft <- read.csv("../compounds_ft.csv")
+cmps_ft <- cmps_ft[cmps_ft$polarity == polarity, ]
+
+for(i in seq(length(cmps_isotopes))){
+  for(j in 2:length(cmps_isotopes[[i]])){
+    cmps_ft_tmp <- cmps_ft[cmps_ft$C == cmps_isotopes[[i]][1],]
+    if(nrow(cmps_ft_tmp) > 0){
       cmps_ft_tmp$C <- cmps_isotopes[[i]][j]
       cmps_ft <- rbind(cmps_ft, cmps_ft_tmp)
     }
   }
-  cmps_ft$RT <- NA
-  for(i in seq(nrow(cmps_ft))){
-    cmps_ft$RT[i] <- cmps$RT[cmps$C == cmps_ft$C[i]]
-  }
-  cmps_ft <- subset(cmps_ft, select = c("C", "RT", "mz", "annotation"))
-  for(i in seq(nrow(cmps_ft))){
-    if(grepl("C", cmps_ft$mz[i])){
-      cmps_ft$mz[i] <- getMolecule(cmps_ft$mz[i])$exactmass + ion
-    }
-  }
-  cmps_ft$mz <- as.numeric(cmps_ft$mz)
-  ions_long <- rbind(ions_long, cmps_ft)
-  rm(i, cmps_ft)
 }
+cmps_ft$RT <- NA
+for(i in seq(nrow(cmps_ft))){
+  cmps_ft$RT[i] <- cmps$RT[cmps$C == cmps_ft$C[i]]
+}
+cmps_ft <- subset(cmps_ft, select = c("C", "RT", "mz", "annotation"))
+for(i in seq(nrow(cmps_ft))){
+  if(grepl("C", cmps_ft$mz[i])){
+    cmps_ft$mz[i] <- getMolecule(cmps_ft$mz[i])$exactmass + ion
+  }
+}
+cmps_ft$mz <- as.numeric(cmps_ft$mz)
+ions_long <- rbind(ions_long, cmps_ft)
+rm(i, cmps_ft)
 ```
-
 
 ## Matching
 
@@ -244,7 +247,6 @@ features$rtmed <- round(features$rtmed)
 #features <- features[order(features$rtmed), ]
 ```
 
-
 # Identifications
 
 ```{r identifications}
@@ -273,8 +275,10 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
 
 features$class <- "unknowns"
 for(i in seq(nrow(features))){
-  if(length(cmps$class[cmps$name == features$compound[i]]) > 0){
-    features$class[i] <- cmps$class[cmps$name == features$compound[i]]
+  if(length(cmps$class[cmps$name == 
+                       unlist(strsplit(features$compound[i], "; "))[1]]) > 0){
+    features$class[i] <- cmps$class[
+      cmps$name == unlist(strsplit(features$compound[i], "; "))[1]]
   }
 }
 tmp <- data.frame(pca$rotation)
@@ -284,6 +288,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
                      "RT:", round(features$rtmed)), 
         color = features$compound != "", colors = "Set2")
 table(features$compound != "")
+features$class[is.na(features$class)] <- "unknowns"
 
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = paste(features$C, features$compound, features$annotation, 
@@ -292,7 +297,6 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
         color = features$class, colors = "Set1")
 table(features$class)
 ```
-
 
 # Session information
 
