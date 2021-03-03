@@ -62,7 +62,7 @@ injections$color[grep("QCdl", injections$type)] <- 7 # yellow
 injections$color[grep("QCrw", injections$type)] <- 7 # yellow
 injections$color[injections$type == "STDmix"] <- 8  # grey
 
-#injections <- injections[grep("slv_01", injections$filename):nrow(injections),]
+injections <- injections[grep("slv_01", injections$filename):nrow(injections),]
 
 # Read the data
 data_raw <- readMSData(
@@ -95,6 +95,10 @@ if(polarity == "NEG"){
   cmps$RT[cmps$abr == "PA_15_0_X_18_1_d7"] <- 16.33*60
 #  cmps$RT[cmps$abr == "carnitine_24_0_d4"] <- 15.20*60
   cmps <- cmps[!cmps$abr %in% c("lysoPA_17_0", "lysoPG_17_1"), ]
+} else if(polarity == "POS"){
+  cmps$RT <- cmps$RT - 5
+  cmps$RT[cmps$abr %in% c("lysoPC_18_1_d7", "lysoPE_18_1_d7")] <- cmps$RT[
+    cmps$abr %in% c("lysoPC_18_1_d7", "lysoPE_18_1_d7")] - 10
 }
 
 cmps.mx <- cbind(c(cmps$mz - 0.01), 
