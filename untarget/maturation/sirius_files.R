@@ -7,7 +7,7 @@ load(paste0("data/RData/MS2_library_", polarity, ".RData"))
 data <- featureValues(xdata, method = "sum", value = "into")
 features <- data.frame(featureDefinitions(xdata))
 
-ft <- "FT1494"
+ft <- "FT1711"
 mz <- features$mzmed[rownames(features)==ft]
 if(polarity == "POS"){
   rt <- features$rtmed[rownames(features)==ft] + 15
@@ -21,7 +21,7 @@ xdata <- readMSData(
   mode = "onDisk")
 chr <- chromatogram(xdata, mz = mz + 0.01 * c(-1, 1))
 chromPeaks(findChromPeaks(chr, param = CentWaveParam(peakwidth = c(2, 20))))
-rt2 <- 992.242        
+rt2 <- 1301.02         
 plot(chr, xlim = c(rt2 - 50, rt2 + 50))
 abline(v = rt2)
 sps <- xdata[[closest(rt2, rtime(xdata)#, duplicates = "closest"
@@ -83,7 +83,9 @@ if(length(ms2sub) > 30){
   for(i in 1:length(ms2sub)){
     j <- order(intensitats)[i]
     
-    raw_data <- readMSData(files = ms2sub[[j]]@annotation, mode = "onDisk")
+    raw_data <- readMSData(
+      files = paste0("data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
+      mode = "onDisk")
     chr <- chromatogram(raw_data, 
                         mz = mz + 0.01 * c(-1, 1), 
                         rt = rt + 50 * c(-1, 1)
@@ -93,8 +95,7 @@ if(length(ms2sub) > 30){
     
     specplot(ms2sub[[j]],
              main = paste("id:", ms2sub[[j]]@id, " - ", 
-                          gsub(paste0("_DDA_", polarity, ".mzML"), "", 
-                               gsub("_DDA.*", "", gsub(".mzML", "", gsub(".*\\/", "", ms2sub[[j]]@annotation))))))
+                          ms2sub[[j]]@annotation))
     print(paste0(j, ": ", gsub(".*\\/", "", ms2sub[[j]]@annotation), " - ", ms2sub[[j]]@id, 
                  " - ", ms2sub[[j]]@rt))
   }
@@ -128,7 +129,7 @@ if(length(ms2sub) > 30){
   tmp <- data.frame(ms2sub@spectrum)
   tmp <- tmp[tmp$X2 > tmp$X2[which.max(tmp$X2)]*0.01,  ]
 }
-i <- 130
+i <- 2
 write.table(ms2sub[[i]]@spectrum, 
             paste0("data/sirius/", polarity, "/", ms2sub[[j]]@id, "_MS2.txt"), 
             row.names = F, col.names = F)
