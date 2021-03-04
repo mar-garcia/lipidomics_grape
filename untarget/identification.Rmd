@@ -9,7 +9,7 @@ output:
 knit: (
   function(inputFile, encoding) { 
 
-    pSubTitle <- "identification_NEG"
+    pSubTitle <- "identification_maturation_POS"
 
     rmarkdown::render( 
       input       = inputFile, 
@@ -27,12 +27,14 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "NEG" # specify "POS" or "NEG"
+polarity <- "POS" # specify "POS" or "NEG"
+study <- "maturation" # specify "maturation" or "tissues"
 cmps_isotopes <- list(
   C37H69O8P  = c("C0034", "C0261", "C0354"),
   C39H67O8P  = c("C0217", "C0312"),
   C39H68O5   = c("C5223", "C5319", "C5544"),
   C39H69O8P  = c("C0035", "C0036"),
+  C39H72O5   = c("C0094", "C5121"),
   C39H72NO8P = c("C0028", "C1516", "C1608", "C1697"),
   C39H74NO8P = c("C0027", "C1515"),
   #C40H76NO8P = c("C0770", "C0837", "C0869"),
@@ -62,7 +64,7 @@ library(CompoundDb)
 # Data import
 
 ```{r import}
-cmps <- read.csv("../compounds.csv")
+cmps <- read.csv("compounds.csv")
 cmps$mz <- NA
 if(polarity == "POS"){
   cmps$NH4 <- NA
@@ -110,7 +112,7 @@ if(polarity == "POS"){
   }
 DT::datatable(cmps[,-2])
 
-load(paste0("data/RData/data_XCMS_", polarity, ".RData"))
+load(paste0(study, "/data/RData/data_XCMS_", polarity, ".RData"))
 features <- data.frame(featureDefinitions(xdata))
 ```
 
@@ -121,7 +123,10 @@ features <- data.frame(featureDefinitions(xdata))
 ### Pseudo-molecular ions
 
 ```{r database}
-cmps <- read.csv("../compounds.csv")
+cmps <- read.csv("compounds.csv")
+if(study == "tissues"){
+  cmps$RT <- cmps$RT + 4
+}
 
 # Calculate the mz values of the molecular ion
 if(polarity == "POS"){
@@ -152,7 +157,7 @@ rm(i)
 ### Other ions
 
 ```{r other-ions}
-cmps_ions <- read.csv("../compounds_ions.csv")
+cmps_ions <- read.csv("compounds_ions.csv")
 cmps_ions$ID <- gsub("\\*", smbl, cmps_ions$ID)
 
 for(i in seq(length(cmps_isotopes))){
@@ -196,7 +201,7 @@ for(i in 2:ncol(cmps_ions)){      # compound "i"
 }
 rm(i, j, ions_loop, idx, pol, smbl)
 
-cmps_ft <- read.csv("../compounds_ft.csv")
+cmps_ft <- read.csv("compounds_ft.csv")
 cmps_ft <- cmps_ft[cmps_ft$polarity == polarity, ]
 
 for(i in seq(length(cmps_isotopes))){
@@ -234,10 +239,10 @@ for(i in 1:nrow(features)){
   rtr <- c(features$rtmed[i], features$rtmed[i]) + 10 * c(-1, 1)
   if(polarity == "POS"){
     cmp.i <- ions_long[unlist(
-    matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 15)), ]
+      matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 15)), ]
   } else if(polarity == "NEG"){
     cmp.i <- ions_long[unlist(
-    matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 10)), ]
+      matchWithPpm(features$mzmed[i], ions_long$mz, ppm = 10)), ]
   }
   if(nrow(cmp.i) > 0){
     if(cmp.i$C %in% "C0015"){
@@ -281,9 +286,16 @@ scaling.pareto <- BioMark::scalefun(sc.p="pareto")
 dt <- data.frame(scaling.pareto(dt))
 pca <- prcomp(dt, center = FALSE, scale. = FALSE)
 tmp <- data.frame(pca$x)
-plot_ly(x = tmp$PC1, y = tmp$PC2,
-        text = gsub(".mzData", "", rownames(tmp)),
-        color = xdata$type, colors = "Set1")
+if(study == "maturation"){
+  plot_ly(x = tmp$PC1, y = tmp$PC2,
+          text = gsub(".mzData", "", rownames(tmp)),
+          color = xdata$type, colors = "Set1")
+} else if(study == "tissues"){
+  plot_ly(x = tmp$PC1, y = tmp$PC2,
+          text = gsub(".mzData", "", rownames(tmp)),
+          color = xdata$tissue, colors = "Set1")
+}
+
 
 features$class <- "unknowns"
 for(i in seq(nrow(features))){
@@ -300,19 +312,20 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
                      "RT:", round(features$rtmed)), 
         color = features$compound != "", colors = "Set2")
 table(features$compound != "")
-tmpx <- merge(tmp[, c("PC1", "PC2")], features[,c("compound", "class")], 
-              by = "row.names")
-if(polarity == "NEG"){
-  tmpx <- tmpx[(tmpx$PC1 >= min(tmp$PC1[features$compound != ""])) &
-               (tmpx$PC2 >= min(tmp$PC2[features$compound != ""])),]
-} else if(polarity == "POS"){
-  tmpx <- tmpx[(tmpx$PC1 >= min(tmp$PC1[features$compound != ""])) &
-               (tmpx$PC2 <= max(tmp$PC2[features$compound != ""])),]
+if(study == "maturation"){
+  tmpx <- merge(tmp[, c("PC1", "PC2")], features[,c("compound", "class")], 
+                by = "row.names")
+  if(polarity == "NEG"){
+    tmpx <- tmpx[(tmpx$PC1 >= min(tmp$PC1[features$compound != ""])) &
+                   (tmpx$PC2 >= min(tmp$PC2[features$compound != ""])),]
+  } else if(polarity == "POS"){
+    tmpx <- tmpx[(tmpx$PC1 >= min(tmp$PC1[features$compound != ""])) &
+                   (tmpx$PC2 <= max(tmp$PC2[features$compound != ""])),]
+  }
+  table(tmpx$compound != "")
+  paste0("identified ", round((sum(tmpx$compound != "")/nrow(tmpx))*100, 2), 
+         "% of sample-features")
 }
-
-table(tmpx$compound != "")
-paste0("identified ", round((sum(tmpx$compound != "")/nrow(tmpx))*100, 2), 
-       "% of sample-features")
 
 features$class[is.na(features$class)] <- "unknowns"
 plot_ly(x = tmp$PC1, y = tmp$PC2,
@@ -322,6 +335,46 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
         color = features$class, colors = "Set1")
 table(features$class)
 ```
+
+## Study samples
+
+```{r, warning=FALSE}
+if(study == "maturation"){
+  data <- data[xdata$type == "study",]
+}else if(study == "tissues"){
+  data <- data[xdata$pt == "pt11",]
+}
+dt <- log10(data)
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca$x)
+if(study == "maturation"){
+  plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = gsub(".mzData", "", rownames(tmp)),
+        color = xdata$time[xdata$type == "study"], colors = "BrBG")
+}else if(study == "tissues"){
+  plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = gsub(".mzData", "", rownames(tmp)),
+        color = xdata$tissue[xdata$pt == "pt11"], colors = "Set1")
+}
+
+
+tmp <- data.frame(pca$rotation)
+
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = paste(features$C, features$compound, features$annotation, 
+                     "mz:", round(as.numeric(features$mzmed), 4), 
+                     "RT:", round(features$rtmed)), 
+        color = features$compound != "", colors = "Set2")
+
+features$class[is.na(features$class)] <- "unknowns"
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = paste(features$C, features$compound, features$annotation, 
+                     "mz:", round(as.numeric(features$mzmed), 4), 
+                     "RT:", round(features$rtmed)), 
+        color = features$class, colors = "Set1")
+```
+
 
 # Session information
 
