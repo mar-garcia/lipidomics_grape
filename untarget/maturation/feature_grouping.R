@@ -13,7 +13,7 @@ features <- data.frame(featureDefinitions(xdata))
 
 ## Feature -------------------------------------------------------------------
 
-z.ft <- "FT1009"
+z.ft <- "FT1166"
 which.max(data[z.ft,])
 z.idx <- which(rownames(features) == z.ft)
 # RT range
@@ -47,14 +47,21 @@ z.features$i <- seq(nrow(z.features))
 ## MS2 ----------------------------------------------------------------------
 
 mz <- features$mzmed[z.idx]
-rt <- features$rtmed[z.idx] + 20
+if(polarity == "POS"){
+  rt <- features$rtmed[z.idx] + 20
+} else if(polarity == "NEG"){
+  rt <- features$rtmed[z.idx]
+}
 ms2sub <- getSpectrum(ms2list, "precursor", mz, mz.tol = 0.01)
 ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 20)
 if(length(ms2sub) > 1){
   intensitats <- c()
   for(i in seq(ms2sub)){
-    #idx <- substring(gsub(".*\\.","", accessSpectrum(ms2sub[[i]])[,1]), 1, 1)>1
-    idx <- which(accessSpectrum(ms2sub[[i]])[,1] > 283.5 & accessSpectrum(ms2sub[[i]])[,1] < 283.8)
+    idx <- which(accessSpectrum(ms2sub[[i]])[,1] > 283.5 & 
+                   accessSpectrum(ms2sub[[i]])[,1] < 283.8)
+    if(length(idx) == 0){
+      idx <- substring(gsub(".*\\.","", accessSpectrum(ms2sub[[i]])[,1]), 1, 1)>1 
+    }
     int.noise <- accessSpectrum(ms2sub[[i]])[idx,2][which.max(accessSpectrum(ms2sub[[i]])[idx,2])]
     int.good <- accessSpectrum(ms2sub[[i]])[-idx,2][which.max(accessSpectrum(ms2sub[[i]])[-idx,2])]
     intensitats <- c(intensitats, int.good / int.noise)
@@ -139,10 +146,15 @@ if(length(ms2sub) > 30){
 ## Feature group ------------------------------------------------------------
 z.features[,c("mzmed", "rtmed", "cor_int", "cor_ps", "i")]
 
-tmp <- unlist(mass2mz(getMolecule("C39H74NO8P")$exactmass, adduct = adducts()))
+tmp <- unlist(CompoundDb::mass2mz(getMolecule("C41H78NO8P")$exactmass, adduct = adducts()))
 #unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 10))
-unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 15))[order(
-  unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 15)))]
+if(polarity == "POS"){
+  unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 15))[order(
+    unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 15)))]
+}else if(polarity == "NEG"){
+  unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 10))[order(
+    unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 10)))]
+}
 
 
 

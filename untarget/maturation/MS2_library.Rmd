@@ -15,47 +15,45 @@ spectra using the DDA method.
 ```{r}
 startpoint <- Sys.time()
 library(CluMSID)
-modes <- c("POS"#, "NEG"
-)
-#for(j in 1:2){
-j <- 1
-polarity <- modes[j] # specify "POS" or "NEG"
-
-
-mzXMLfiles <- paste("data/",  polarity, "_DDA_mzML/", 
-                    list.files(
-                      path = paste0("data/",  polarity, 
-                                    "_DDA_mzML/")), sep = "")
-
-spectras <- lapply(mzXMLfiles, 
-                   function(x){
-                     extractMS2spectra(x,
-                                       min_peaks = 2,
-                                       recalibrate_precursor = FALSE)
-                   })
-
-ms2list <- unlist(spectras)
-
-for(i in 1:length(ms2list)){
-  slot(ms2list[[i]], "id") <- paste(
-    round(accessPrecursor(ms2list[[i]])),
-    round(accessRT(ms2list[[i]])),
-    sep="_")}
-
-muestra <- NA
-for(i in 1:length(spectras)){
-  muestra <- c(muestra,
-               rep(mzXMLfiles[[i]],
-                   length(spectras[[i]])))
+modes <- c("POS", "NEG")
+for(j in 1:2){
+  polarity <- modes[j] # specify "POS" or "NEG"
+  
+  
+  mzXMLfiles <- paste("data/",  polarity, "_DDA_mzML/", 
+                      list.files(
+                        path = paste0("data/",  polarity, 
+                                      "_DDA_mzML/")), sep = "")
+  
+  spectras <- lapply(mzXMLfiles, 
+                     function(x){
+                       extractMS2spectra(x,
+                                         min_peaks = 2,
+                                         recalibrate_precursor = FALSE)
+                     })
+  
+  ms2list <- unlist(spectras)
+  
+  for(i in 1:length(ms2list)){
+    slot(ms2list[[i]], "id") <- paste(
+      round(accessPrecursor(ms2list[[i]])),
+      round(accessRT(ms2list[[i]])),
+      sep="_")}
+  
+  muestra <- NA
+  for(i in 1:length(spectras)){
+    muestra <- c(muestra,
+                 rep(mzXMLfiles[[i]],
+                     length(spectras[[i]])))
+  }
+  muestra <- muestra[!is.na(muestra)]
+  for(i in 1:length(muestra)){
+    slot(ms2list[[i]], "annotation") <- gsub(".*\\/", "", muestra[i])
+  }
+  
+  save(ms2list, 
+       file = paste0("data/RData/MS2_library_", polarity, ".RData"))
 }
-muestra <- muestra[!is.na(muestra)]
-for(i in 1:length(muestra)){
-  slot(ms2list[[i]], "annotation") <- gsub(".*\\/", "", muestra[i])
-}
-
-save(ms2list, 
-     file = paste0("data/RData/MS2_library_", polarity, ".RData"))
-#}
 Sys.time()-startpoint
 devtools::session_info()
 ```
