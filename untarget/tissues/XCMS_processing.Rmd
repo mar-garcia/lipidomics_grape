@@ -202,7 +202,8 @@ pca <- prcomp(dt, center = FALSE, scale. = FALSE)
 tmp <- data.frame(pca$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = gsub(".mzData", "", rownames(tmp)),
-        color = xdata$type)
+        color = xdata$tissue)
+
 features <- data.frame(featureDefinitions(xdata))
 tmp <- data.frame(pca$rotation)
 rownames(tmp) <- paste(sprintf("%.4f",round(features$mzmed, 4)), 
@@ -211,7 +212,7 @@ rownames(tmp) <- paste(sprintf("%.4f",round(features$mzmed, 4)),
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp))
 
-dt <- data[xdata$type == "study",]
+dt <- data[xdata$pt == "pt11",]
 dt <- log10(dt)
 dt <- data.frame(scaling.pareto(dt))
 pca <- prcomp(dt, center = FALSE, scale. = FALSE)
