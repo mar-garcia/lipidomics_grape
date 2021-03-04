@@ -1,0 +1,265 @@
+---
+title: "Real-time sequence evaluation"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+
+# Preliminaries
+
+## Parameters
+
+```{r parameters}
+polarity <- "NEG" # specify "POS" or "NEG"
+```
+
+
+## Libraries
+
+```{r libraries, message = FALSE}
+library(xcms)
+```
+
+# Data import
+
+```{r data-import}
+#  Get filenames
+injections <- data.frame(
+  filename = list.files(paste0("data/", polarity, "_FS_fixed/"))
+)
+tmp <- strsplit(gsub(".mzData", "", injections$filename), "_")
+tmp <- data.frame(do.call(rbind, tmp))
+tmp$X2 <- paste(tmp$X2, tmp$X3, sep = "_")
+tmp <- tmp[,-3]
+colnames(tmp) <- c("order", "project", "pt", "tissue", "rep", "polarity", "mode")
+tmp$tissue[grep("QC", tmp$pt)] <-paste(tmp$pt[grep("QC", tmp$pt)], tmp$tissue[grep("QC", tmp$pt)], sep = "_")
+tmp$pt[grep("QC", tmp$pt)] <- "xx00"
+injections <- cbind(injections, tmp)
+rm(tmp)
+injections$color <- 1
+injections$color[injections$tissue == "QC"] <- 2   # red
+injections$color[injections$pt == "pt11"] <- 3 # green
+injections$color[injections$tissue == "solv"] <- 4   # blue
+injections$color[injections$tissue == "solveq"] <- 5 # cyan
+injections$color[injections$type == "QCeq"] <- 6  # pink
+injections$color[grep("QCdl", injections$tissue)] <- 7 # yellow
+injections$color[grep("QCrw", injections$tissue)] <- 7 # yellow
+injections$color[injections$tissue == "STDmix"] <- 8  # grey
+
+injections <- injections[grep("solv_rep1", injections$filename):nrow(injections),]
+
+# Read the data
+data_raw <- readMSData(
+  paste0("data/", polarity, "_FS_fixed/" , injections$filename),
+  pdata = as(AnnotatedDataFrame(injections),
+             "NAnnotatedDataFrame"), 
+  mode = "onDisk")
+```
+
+
+# Get the data of interest
+
+```{r manualchrompeaks}
+cmps <- read.csv("../compounds.csv")
+cmps <- cmps[cmps$type == "equiSPLASH" & cmps$formula != "" & cmps[,polarity] != "",]
+cmps <- cmps[cmps$RT > 0, ]
+cmps$RT <- cmps$RT + 4
+cmps$mz <- NA
+for(i in 1:nrow(cmps)){
+  cmps$mz[i] <- unlist(MetaboCoreUtils::mass2mz(Rdisop::getMolecule(
+    cmps$formula[i])$exactmass, cmps[i, polarity]))
+}
+
+cmps.mx <- cbind(c(cmps$mz - 0.01), 
+                 c(cmps$mz + 0.01), 
+                 c(cmps$RT - 10), 
+                 c(cmps$RT + 10))
+rownames(cmps.mx) <- cmps$abr
+colnames(cmps.mx) <- c("mzmin", "mzmax", "rtmin", "rtmax")
+
+if(polarity == "NEG"){
+  cmps.mx["PI_15_0_X_18_1_d7",3:4] <- cmps$RT[
+    cmps$abr == "PI_15_0_X_18_1_d7"] + 5 *c(-1,1)
+  
+  cmps.mx["lysoPA_17_0", 3:4] <- c(520, 570)
+  cmps.mx["PA_15_0_X_18_1_d7", 3:4] <- c(978, 1020)
+}
+
+peaks <- manualChromPeaks(data_raw,
+                          chromPeaks = cmps.mx,
+                          samples = seq_along(fileNames(data_raw)),
+                          BPPARAM = bpparam(),
+                          msLevel = 1L)
+data <- data.frame(chromPeaks(peaks))
+data$id <- gsub(paste0("_", polarity, "_FS.mzData"), "", substring(data_raw$filename[data$sample], 30))
+data$compound <- NA
+for(i in 1:nrow(data)){
+  data$compound[i] <- paste(cmps$name[unlist(CompoundDb::matchWithPpm(
+    data$mz[i], cmps$mz, ppm = 10))], collapse = "; ")
+}
+table(data$compound)
+
+palette <- colorRampPalette(colors=c("#F5C710", "#DF536B"))
+cols <- palette(length(data_raw$filename))
+```
+
+## Plots
+
+```{r manualchrompeaks-plot}
+for(i in seq(nrow(cmps))){
+  idx <- which(data$compound == cmps$name[i])
+  if(length(idx) > 0){
+    print(cmps$name[i])
+    
+    chr <- chromatogram(data_raw, 
+                        mz = c(cmps.mx[i,1], cmps.mx[i,2]), 
+                        rt = c(cmps.mx[i,3]-10, cmps.mx[i,4]+10))
+    plot(chr, col = cols)
+    abline(v=c(cmps.mx[i, 3:4]), col = "grey", lty = 2)
+    
+    for(j in 1:10){
+      if(data_raw$tissue[data$sample[idx]][which.max(abs(mean(data$rt[idx]) - 
+                                                       data$rt[idx]))] == "solv"){
+        idx0 <- idx
+        idx <- idx[-which.max(abs(mean(data$rt[idx]) - data$rt[idx]))]
+      }
+    }
+    plot(data$rt[idx]/60, xlab = "", ylab = "", 
+         main = paste("RT (delta =", 
+                      sprintf("%.2f", round(max(data$rt[idx]/60) - 
+                                              min(data$rt[idx]/60), 2)), "min)"), 
+         pch = 16, col = data_raw$color[data$sample[idx]],
+         ylim = c(min(min(data$rt[idx]/60), mean(data$rt[idx]/60) - 1/60),
+                  max(max(data$rt[idx]/60), mean(data$rt[idx]/60) + 1/60)))
+    abline(h = mean(data$rt[idx]/60), lty = 2)
+    abline(h = mean(data$rt[idx]/60) + 1/60 *c(-1, 1), lty = 2, col = "grey")
+    if(exists("idx0")){
+      idx <- which(data$compound == cmps$name[i])
+      rm(idx0)
+    }
+    
+    ppm <- ((data$mz[idx] - cmps$mz[i])/cmps$mz[i])*1e6
+    for(j in 1:10){
+      if(data_raw$tissue[data$sample[idx]][which.max(abs(ppm))] == "solv"){
+        idx0 <- idx
+        idx <- idx[-which.max(abs(ppm))]
+        ppm <- ((data$mz[idx] - cmps$mz[i])/cmps$mz[i])*1e6
+      }
+    }
+    plot(ppm, xlab = "", ylab = "", main = "mz deviations (ppm)", pch = 16, 
+         col = data_raw$color[data$sample[idx]],
+         ylim = c(min(min(ppm), -2), 
+                  max(max(ppm), 2)))
+    abline(h = 0, lty = 2)
+    abline(h = c(-2, 2), lty = 2, col = "grey")
+    if(exists("idx0")){
+      idx <- which(data$compound == cmps$name[i])
+      rm(idx0)
+    }
+    
+    plot(data$into[idx], xlab = "", ylab = "", 
+         main = paste("Intensity: CV(QC) =", 
+                      round(
+                        (sd(data$into[idx][grep("QC_rep", data$id[idx])]) / 
+                           mean(data$into[idx][grep("QC_rep", data$id[idx])]))*100), 
+                      "%"),
+         pch = 16, col = data_raw$color[data$sample[idx]])
+    points(grep("QC_rep", data$id[idx]), data$into[idx][grep("QC_rep", data$id[idx])], 
+           type = "b", lty = 2, col = "grey")
+    abline(h = mean(data$into[idx][grep("QC_rep", data$id[idx])]) + 
+             sd(data$into[idx][grep("QC_rep", data$id[idx])]) * c(-1, 1), 
+           lty = 3, col = "grey")
+  }
+}
+rm(i, j, idx, peaks, chr, ppm)
+```
+
+
+# Aligment
+
+```{r aligment, eval=TRUE}
+cwp <- CentWaveParam(ppm = 20,
+                     peakwidth = c(2, 20),
+                     prefilter = c(5, 1e5),
+                     snthresh = 5,
+                     noise = 1000,
+                     mzdiff = 0.001,
+                     integrate = 2)
+xdata <- findChromPeaks(data_raw, param = cwp)
+pdp <- PeakDensityParam(sampleGroups = xdata$tissue,
+                        minFraction = 0.75,
+                        binSize = 0.02,
+                        bw = 3)
+xdata <- groupChromPeaks(xdata, param = pdp)
+pgp <- PeakGroupsParam(span = 0.3,
+                       subset = which(xdata$tissue == "QC"),
+                       subsetAdjust = "average",
+                       minFraction = 1)
+xdata <- adjustRtime(xdata, param = pgp)
+```
+
+## Plots
+
+```{r aligment-plots, eval=TRUE}
+for(i in seq(nrow(cmps.mx))){
+  print(cmps$name[i])
+  chr_raw <- chromatogram(xdata, 
+                          mz = cmps.mx[i, 1:2], 
+                          rt = c(cmps.mx[i,3]-10, cmps.mx[i,4]+10),
+                          include = "none",
+                          adjustedRtime = FALSE)
+  chr_adj <- chromatogram(xdata, 
+                          mz = cmps.mx[i, 1:2], 
+                          rt = c(cmps.mx[i,3]-10, cmps.mx[i,4]+10),
+                          include = "none")
+  par(mfrow = c(2, 1), mar = c(3,2,1,0.5))
+  plot(chr_raw, col = cols)
+  plot(chr_adj, col = cols)
+}
+```
+
+# PCA
+
+```{r pca, eval=TRUE}
+pdp <- PeakDensityParam(sampleGroups = xdata$tissue,
+                        minFraction = 0.66,
+                        minSamples = 1,
+                        binSize = 0.02,
+                        bw = 1)
+xdata <- groupChromPeaks(xdata, param = pdp)
+
+fcp <- ChromPeakAreaParam()
+xdata <- fillChromPeaks(xdata, param = fcp)
+
+data <- featureValues(xdata, method = "sum", value = "into")
+set.seed(123)
+data <- t(imputeRowMinRand(data, method = "from_to",
+                           min_fraction = 1/100,
+                           min_fraction_from = 1/1000
+))
+dt <- log10(data)
+scaling.pareto <- BioMark::scalefun(sc.p="pareto")
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca$x)
+plotly::plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = gsub(".mzData", "", rownames(tmp)),
+        color = xdata$tissue)
+```
+
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
