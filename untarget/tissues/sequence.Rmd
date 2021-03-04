@@ -67,7 +67,7 @@ rm(QC_lin, samples)
 # Randomization
 
 ```{r randomization}
-set.seed(20210304)
+set.seed(20210305)
 data$random_inj <- sample(1:nrow(data), nrow(data), replace=FALSE)
 data <- data[order(data$random_inj),]
 ```
