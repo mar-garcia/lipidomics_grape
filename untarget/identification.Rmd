@@ -9,7 +9,7 @@ output:
 knit: (
   function(inputFile, encoding) { 
 
-    pSubTitle <- "identification_maturation_POS"
+    pSubTitle <- "identification_maturation_NEG"
 
     rmarkdown::render( 
       input       = inputFile, 
@@ -27,7 +27,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
 study <- "maturation" # specify "maturation" or "tissues"
 cmps_isotopes <- list(
   C37H69O8P  = c("C0034", "C0261", "C0354"),
@@ -41,13 +41,17 @@ cmps_isotopes <- list(
   #C41H64O10  = c("C4266", "C4345"),
   C41H74NO8P = c("C0031", "C0032", "C1616"),
   C42H76NO8P = c("C0892", "C0972", "C0986", "C1075"),
+  #C42H78NO8P = c("C0971", "C1074"),
+  C43H80NO8P = c("C1537", "C1629"),
   C44H80NO8P = c("C0023", "C0025", "C0845"),
   C45H74O10  = c("C0082", "C3932", "C4197"),
   C45H76O10  = c("C0081", "C3931", "C4196"),
   C45H78O10  = c("C3930", "C3975", "C4070"),
   C45H80O10  = c("C3873", "C3974"),
+  C48H92NO8P = c("C0749", "C1012"),
   C51H84O15  = c("C0077", "C4821"),
   C51H86O15  = c("C0076", "C4732", "C4820"),
+  C45H88NO8P = c("C1446", "C1542"),
   C51H88O15  = c("C4599", "C4694", "C4731"))
 ```
 
@@ -226,6 +230,32 @@ for(i in seq(nrow(cmps_ft))){
 cmps_ft$mz <- as.numeric(cmps_ft$mz)
 ions_long <- rbind(ions_long, cmps_ft)
 rm(i, cmps_ft)
+```
+
+
+## Background ions
+
+```{r, eval=FALSE}
+mzvals <- 655.1581 + (getMolecule("SiC2H6O")$exactmass)*seq(15)
+rtimes <- c(14.42, 15.37, 16.16, 16.85, 17.44, 17.96, 18.42, 18.83, 19.17, 
+            19.51, 19.79, 20.03, 20.27, 20.48, 1221)
+annots <- c()
+for(i in 2:(length(mzvals)-1)){
+  annots <- c(annots, paste0("[M-H+", i, "(O-Si(CH3)2)]-"))
+}
+annots <- c("[M-H]-", "[M-H+O-Si(CH3)2]-", annots)
+
+back <- data.frame(matrix(nrow = length(mzvals), ncol = ncol(ions_long)))
+colnames(back) <- colnames(ions_long)
+back$C <- "C9999"
+back$RT <- rtimes
+back$mz <- mzvals
+back$annotation <- annots
+ions_long <- rbind(ions_long, back)
+back$mz <- back$mz + 1.0005
+back$annotation <- paste(back$annotation, "+ 1.0005")
+
+rm(mzvals, rtimes, annots, back)
 ```
 
 ## Matching
