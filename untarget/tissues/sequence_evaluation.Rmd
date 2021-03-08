@@ -18,7 +18,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "NEG" # specify "POS" or "NEG"
+polarity <- "POS" # specify "POS" or "NEG"
 ```
 
 
@@ -91,6 +91,9 @@ if(polarity == "NEG"){
   
   cmps.mx["lysoPA_17_0", 3:4] <- c(520, 570)
   cmps.mx["PA_15_0_X_18_1_d7", 3:4] <- c(978, 1020)
+} else if(polarity == "POS"){
+  cmps.mx["lysoPC_18_1_d7", 3:4] <- c(490, 510)
+  cmps.mx["lysoPE_18_1_d7", 3:4] <- c(500, 510)
 }
 
 peaks <- manualChromPeaks(data_raw,
