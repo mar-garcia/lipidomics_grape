@@ -4,16 +4,20 @@ library(CompoundDb)
 library(Rdisop)
 
 polarity <- "POS" # specify "POS" or "NEG"
-load(paste0("data/RData/data_XCMS_", polarity, ".RData"))
-xdata@processingData@files <- gsub("untarget", "untarget\\\\maturation", fileNames(xdata))
-load(paste0("data/RData/MS2_library_", polarity, ".RData"))
+study <- "tissues" # specify "maturation" or "tissues"
+load(paste0(study, "/data/RData/data_XCMS_", polarity, ".RData"))
+if(study == "maturation"){
+  xdata@processingData@files <- gsub("untarget", "untarget\\\\maturation", 
+                                     fileNames(xdata))
+}
+load(paste0(study, "/data/RData/MS2_library_", polarity, ".RData"))
 data <- featureValues(xdata, method = "sum", value = "into")
 data[is.na(data)] <- 0
 features <- data.frame(featureDefinitions(xdata))
 
 ## Feature -------------------------------------------------------------------
 
-z.ft <- "FT1166"
+z.ft <- "FT03243"
 which.max(data[z.ft,])
 z.idx <- which(rownames(features) == z.ft)
 # RT range
@@ -47,18 +51,23 @@ z.features$i <- seq(nrow(z.features))
 ## MS2 ----------------------------------------------------------------------
 
 mz <- features$mzmed[z.idx]
-if(polarity == "POS"){
+if(study == "maturation" & polarity == "POS"){
   rt <- features$rtmed[z.idx] + 20
-} else if(polarity == "NEG"){
+} else {
   rt <- features$rtmed[z.idx]
 }
 ms2sub <- getSpectrum(ms2list, "precursor", mz, mz.tol = 0.01)
-ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 20)
+if(study == "maturation" & polarity == "POS"){
+  ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 20)
+} else {
+  ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 10)
+}
+
 if(length(ms2sub) > 1){
   intensitats <- c()
   for(i in seq(ms2sub)){
     idx <- which(accessSpectrum(ms2sub[[i]])[,1] > 283.5 & 
-                   accessSpectrum(ms2sub[[i]])[,1] < 283.8)
+                   accessSpectrum(ms2sub[[i]])[,1] < 283.9)
     if(length(idx) == 0){
       idx <- substring(gsub(".*\\.","", accessSpectrum(ms2sub[[i]])[,1]), 1, 1)>1 
     }
@@ -74,7 +83,7 @@ if(length(ms2sub) > 30){
     j <- order(intensitats)[i]
     
     raw_data <- readMSData(
-      files = paste0("data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
+      files = paste0(study, "/data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
       mode = "onDisk")
     chr <- chromatogram(raw_data, 
                         mz = mz + 0.01 * c(-1, 1), 
@@ -95,7 +104,7 @@ if(length(ms2sub) > 30){
     j <- order(intensitats)[i]
     
     raw_data <- readMSData(
-      files = paste0("data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
+      files = paste0(study, "/data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
       mode = "onDisk")
     chr <- chromatogram(raw_data, 
                         mz = mz + 0.01 * c(-1, 1), 
@@ -146,7 +155,7 @@ if(length(ms2sub) > 30){
 ## Feature group ------------------------------------------------------------
 z.features[,c("mzmed", "rtmed", "cor_int", "cor_ps", "i")]
 
-tmp <- unlist(CompoundDb::mass2mz(getMolecule("C41H78NO8P")$exactmass, adduct = adducts()))
+tmp <- unlist(CompoundDb::mass2mz(getMolecule("C39H73O8P")$exactmass, adduct = adducts()))
 #unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 10))
 if(polarity == "POS"){
   unlist(matchWithPpm(tmp, z.features$mzmed, ppm = 15))[order(
@@ -168,7 +177,7 @@ z.xdata %>%
 
 chr <- chromatogram(xdata, 
                     mz = c(features$mzmin[z.idx]-0.01, features$mzmax[z.idx]+0.01),
-                    rt = c(features$rtmin[z.idx]-10, features$rtmax[z.idx]+50))
+                    rt = c(features$rtmin[z.idx]-50, features$rtmax[z.idx]+50))
 plotChromPeakDensity(chr)
 
 

@@ -1,27 +1,28 @@
 library(CluMSID)
 library(MsCoreUtils)
 polarity <- "POS" # specify "POS" or "NEG"
-load(paste0("data/RData/data_XCMS_", polarity, ".RData"))
-load(paste0("data/RData/MS2_library_", polarity, ".RData"))
+study <- "tissues" # specify "maturation" or "tissues"
+load(paste0(study, "/data/RData/data_XCMS_", polarity, ".RData"))
+load(paste0(study, "/data/RData/MS2_library_", polarity, ".RData"))
 
 data <- featureValues(xdata, method = "sum", value = "into")
 features <- data.frame(featureDefinitions(xdata))
 
-ft <- "FT1711"
+ft <- "FT03149"
 mz <- features$mzmed[rownames(features)==ft]
-if(polarity == "POS"){
+if(study == "maturation" & polarity == "POS"){
   rt <- features$rtmed[rownames(features)==ft] + 15
-} else if(polarity == "NEG"){
+} else{
   rt <- features$rtmed[rownames(features)==ft]
 }
 
 which.max(data[ft,])
 xdata <- readMSData(
-  files = paste0("data/", polarity, "_FS_fixed/", names(which.max(data[ft,]))),
+  files = paste0(study, "/data/", polarity, "_FS_fixed/", names(which.max(data[ft,]))),
   mode = "onDisk")
 chr <- chromatogram(xdata, mz = mz + 0.01 * c(-1, 1))
 chromPeaks(findChromPeaks(chr, param = CentWaveParam(peakwidth = c(2, 20))))
-rt2 <- 1301.02         
+rt2 <- 968.635                    
 plot(chr, xlim = c(rt2 - 50, rt2 + 50))
 abline(v = rt2)
 sps <- xdata[[closest(rt2, rtime(xdata)#, duplicates = "closest"
@@ -30,13 +31,13 @@ sps <- as.data.frame(sps)
 plot(sps$mz, sps$i, type = "h", xlim = c(mz - 10, mz + 10))
 text(sps$mz, sps$i, round(sps$mz, 4), cex = 0.8)
 sps[unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10)):
-    (unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10))+5),]
+    (unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10))+4),]
 tmp <- sps[unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10)):
-             (unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10))+5),]
+             (unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10))+4),]
 tmp  <- tmp[order(tmp$i, decreasing = T), ]
 tmp[1:4,]
 write.table(tmp[1:4,], 
-            paste0("data/sirius/", polarity, "/", round(mz), "_", 
+            paste0(study, "/data/sirius/", polarity, "/", round(mz), "_", 
                    round(rt2), "_FS.txt"), row.names = F, col.names = F)
 
 
@@ -63,7 +64,7 @@ if(length(ms2sub) > 30){
     j <- order(intensitats)[i]
     
     raw_data <- readMSData(
-      files = paste0("data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
+      files = paste0(study, "/data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
       mode = "onDisk")
     chr <- chromatogram(raw_data, 
                         mz = mz + 0.01 * c(-1, 1), 
@@ -84,7 +85,7 @@ if(length(ms2sub) > 30){
     j <- order(intensitats)[i]
     
     raw_data <- readMSData(
-      files = paste0("data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
+      files = paste0(study, "/data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
       mode = "onDisk")
     chr <- chromatogram(raw_data, 
                         mz = mz + 0.01 * c(-1, 1), 
@@ -101,7 +102,7 @@ if(length(ms2sub) > 30){
   }
 } else if(length(ms2sub) == 1){
   if(substr(ms2sub@annotation, 1, 1) == "x"){
-    raw_data <- readMSData(files = paste0("data/", polarity, "_DDA_mzML/", ms2sub@annotation), 
+    raw_data <- readMSData(files = paste0(study, "/data/", polarity, "_DDA_mzML/", ms2sub@annotation), 
                            mode = "onDisk")
   }
   chr <- chromatogram(raw_data, 
@@ -129,7 +130,7 @@ if(length(ms2sub) > 30){
   tmp <- data.frame(ms2sub@spectrum)
   tmp <- tmp[tmp$X2 > tmp$X2[which.max(tmp$X2)]*0.01,  ]
 }
-i <- 2
+i <- 28
 write.table(ms2sub[[i]]@spectrum, 
-            paste0("data/sirius/", polarity, "/", ms2sub[[j]]@id, "_MS2.txt"), 
+            paste0(study, "/data/sirius/", polarity, "/", ms2sub[[j]]@id, "_MS2.txt"), 
             row.names = F, col.names = F)
