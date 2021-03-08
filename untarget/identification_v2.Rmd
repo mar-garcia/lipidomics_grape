@@ -44,7 +44,7 @@ library(MsCoreUtils)
 
 # Study database
 
-```{r}
+```{r database}
 cmps <- read.csv("compounds.csv")
 cmps <- cmps[cmps$formula != "", ]
 cmps <- cmps[cmps$RT > 0, ]
@@ -100,7 +100,7 @@ rm(i)
 
 # Main code
 
-```{r}
+```{r main}
 load(paste0(study, "/data/RData/data_XCMS_", polarity, ".RData"))
 data <- featureValues(xdata, method = "sum", value = "into")
 features <- data.frame(featureDefinitions(xdata))
