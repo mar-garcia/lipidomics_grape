@@ -9,7 +9,7 @@ output:
 knit: (
   function(inputFile, encoding) { 
 
-    pSubTitle <- "identification_v2_maturation_POS"
+    pSubTitle <- "identification_v2_maturation_NEG"
 
     rmarkdown::render( 
       input       = inputFile, 
@@ -27,13 +27,13 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
 study <- "maturation" # specify "maturation" or "tissues"
 ```
 
 ## Libraries
 
-```{r}
+```{r, message=FALSE}
 library(Rdisop)
 library(CompoundDb)
 library(OrgMassSpecR)
@@ -98,7 +98,7 @@ rm(i)
 ```
 
 
-# X
+# Main code
 
 ```{r}
 load(paste0(study, "/data/RData/data_XCMS_", polarity, ".RData"))
