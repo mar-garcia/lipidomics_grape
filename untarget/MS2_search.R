@@ -1,54 +1,66 @@
 library(CluMSID)
+library(Rdisop)
+library(CompoundDb)
+library(xcms)
 library(MsCoreUtils)
-polarity <- "POS" # specify "POS" or "NEG"
-study <- "tissues" # specify "maturation" or "tissues"
-load(paste0(study, "/data/RData/data_XCMS_", polarity, ".RData"))
-load(paste0(study, "/data/RData/MS2_library_", polarity, ".RData"))
 
-data <- featureValues(xdata, method = "sum", value = "into")
-features <- data.frame(featureDefinitions(xdata))
+polarity <- "POS"
+load(paste0("maturation/data/RData/MS2_library_", polarity, ".RData"))
+ms2list1 <- ms2list
+load(paste0("tissues/data/RData/MS2_library_", polarity, ".RData"))
+ms2list <- c(ms2list1, ms2list)
+rm(ms2list1)
 
-ft <- "FT03149"
-mz <- features$mzmed[rownames(features)==ft]
-if(study == "maturation" & polarity == "POS"){
-  rt <- features$rtmed[rownames(features)==ft] + 15
-} else{
-  rt <- features$rtmed[rownames(features)==ft]
-}
+cmps <- read.csv("compounds.csv")
+cmps <- cmps[cmps$type == "MIXnativi", ]
+cmps <- cmps[cmps$formula != "", ]
 
-which.max(data[ft,])
 xdata <- readMSData(
-  files = paste0(study, "/data/", polarity, "_FS_fixed/", names(which.max(data[ft,]))),
+  files = paste0("tissues/data/", polarity, 
+                 "_FS_fixed/x006_lipidgrape_tissues_xx00_STDmix_rep2_", 
+                 polarity, "_FS.mzData"),
   mode = "onDisk")
+
+
+
+k <- 3
+cmps$name[k]
+(rt <- cmps$RT[k])
+mz <- unlist(mass2mz(getMolecule(cmps$formula[k])$exactmass, "[M-H]-")) 
 chr <- chromatogram(xdata, mz = mz + 0.01 * c(-1, 1))
+par(mfrow=c(1,1))
+plot(chr)
+abline(v=rt, col = "red")
 chromPeaks(findChromPeaks(chr, param = CentWaveParam(peakwidth = c(2, 20))))
-rt2 <- 968.635                    
-plot(chr, xlim = c(rt2 - 50, rt2 + 50))
-abline(v = rt2)
-sps <- xdata[[closest(rt2, rtime(xdata)#, duplicates = "closest"
-)]]
-sps <- as.data.frame(sps)
-plot(sps$mz, sps$i, type = "h", xlim = c(mz - 10, mz + 10))
-text(sps$mz, sps$i, round(sps$mz, 4), cex = 0.8)
-sps[unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10)):
-    (unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10))+4),]
-tmp <- sps[unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10)):
-             (unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10))+4),]
-tmp  <- tmp[order(tmp$i, decreasing = T), ]
-tmp[1:4,]
-write.table(tmp[1:4,], 
-            paste0(study, "/data/sirius/", polarity, "/", round(mz), "_", 
-                   round(rt2), "_FS.txt"), row.names = F, col.names = F)
-
-
-##################################################################
-
+rt <- 1035.720                       
+par(mfrow=c(1,2), mar = c(4,2,2,1))
+plot(chr, xlim = c(rt - 50, rt + 50))
+abline(v = rt, lty = 2, col = "grey")
+sps <- as.data.frame(xdata[[closest(rt, rtime(xdata))]])
+plot(sps$mz, sps$i, type = "h", #xlim = c(mz - 10, mz + 30), 
+     xlab = "m/z", ylab = "intensity", 
+     main = paste0("FS at ", sprintf("%.2f", round(rt/60, 2)), "' (", round(rt), "'')"))
+idx <- which((sps$i/max(sps$i))*100 > 30)
+mzadd <- matchWithPpm(unlist(mass2mz(getMolecule(cmps$formula[k])$exactmass, c("[M+H]+", "[M+NH4]+", "[M+Na]+"))), sps$mz, ppm = 10)
+for(i in seq(length(mzadd))){
+  if(length(mzadd[[i]]) == 0){
+    mzadd[[i]] <- NA
+  }
+  points(sps$mz[mzadd[[i]]], sps$i[mzadd[[i]]], type = "h", col = i+1)
+  text(sps$mz[mzadd[[i]]], sps$i[mzadd[[i]]], round(sps$mz[mzadd[[i]]], 4), col = i+1, cex = 0.8)
+}
+idx <- idx[!idx %in% unlist(mzadd)]
+text(sps$mz[idx], sps$i[idx], round(sps$mz[idx], 4), cex = 0.8)
+if(polarity == "POS"){
+  unlist(mass2mz(getMolecule(cmps$formula[k])$exactmass, c("[M+H]+", "[M+NH4]+", "[M+Na]+")))
+}
+mz <- 782.5694 
 ms2sub <- getSpectrum(ms2list, "precursor", mz, mz.tol = 0.01)
-ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 10)
+ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 5)
 if(length(ms2sub) > 1){
   intensitats <- c()
   for(i in seq(ms2sub)){
-    idx <- which(accessSpectrum(ms2sub[[i]])[,1] > 283.5 & accessSpectrum(ms2sub[[i]])[,1] < 283.8)
+    idx <- which(accessSpectrum(ms2sub[[i]])[,1] > 283.2 & accessSpectrum(ms2sub[[i]])[,1] < 283.9)
     if(length(idx) == 0){
       idx <- substring(gsub(".*\\.","", accessSpectrum(ms2sub[[i]])[,1]), 1, 1)>1 
     }
@@ -63,6 +75,12 @@ if(length(ms2sub) > 30){
   for(i in (length(ms2sub)-30):length(ms2sub)){
     j <- order(intensitats)[i]
     
+    if(grepl("lipidgrape_tissues", ms2sub[[j]]@annotation)){
+      study <- "tissues"
+    } else{
+      study <- "maturation"
+    }
+    
     raw_data <- readMSData(
       files = paste0(study, "/data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
       mode = "onDisk")
@@ -70,19 +88,23 @@ if(length(ms2sub) > 30){
                         mz = mz + 0.01 * c(-1, 1), 
                         rt = rt + 20 * c(-1, 1)
     )
-    plot(chr, xlim = rt + 20 * c(-1, 1)
-    )
+    plot(chr, xlim = rt + 20 * c(-1, 1))
     abline(v=ms2sub[[j]]@rt)
     
-    specplot(ms2sub[[j]],
-             main = paste("id:", ms2sub[[j]]@id, " - ", 
-                          ms2sub[[j]]@annotation))
+    specplot(ms2sub[[j]],main = ms2sub[[j]]@id)
     print(paste0(j, ": ", gsub(".*\\/", "", ms2sub[[j]]@annotation), " - ", ms2sub[[j]]@id, 
                  " - ", ms2sub[[j]]@rt))
   }
 } else if(length(ms2sub) > 1 & length(ms2sub) <= 30){
   for(i in 1:length(ms2sub)){
     j <- order(intensitats)[i]
+    
+    if(grepl("lipidgrape_tissues", ms2sub[[j]]@annotation)){
+      study <- "tissues"
+    } else{
+      study <- "maturation"
+    }
+    
     
     raw_data <- readMSData(
       files = paste0(study, "/data/", polarity, "_DDA_mzmL/", ms2sub[[j]]@annotation), 
@@ -112,10 +134,7 @@ if(length(ms2sub) > 30){
   plot(chr, xlim = rt + 20 * c(-1, 1))
   abline(v=ms2sub@rt)
   
-  specplot(ms2sub,
-           main = paste("id:", ms2sub@id, " - ", 
-                        gsub("_DDA.*", "", gsub(".mzML", "", gsub(".*\\/", "", ms2sub@annotation)))),
-           sub = "")
+  specplot(ms2sub,main = paste(ms2sub@id))
   print(paste0(gsub(".*\\/", "", ms2sub@annotation), " - ", ms2sub@id, " - ", ms2sub@rt))
 }else {
   raw_data <- readMSData(files = ms2sub@annotation, mode = "onDisk")
@@ -130,7 +149,4 @@ if(length(ms2sub) > 30){
   tmp <- data.frame(ms2sub@spectrum)
   tmp <- tmp[tmp$X2 > tmp$X2[which.max(tmp$X2)]*0.01,  ]
 }
-i <- 28
-write.table(ms2sub[[i]]@spectrum, 
-            paste0(study, "/data/sirius/", polarity, "/", ms2sub[[j]]@id, "_MS2.txt"), 
-            row.names = F, col.names = F)
+

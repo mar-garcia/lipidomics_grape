@@ -1,0 +1,112 @@
+---
+title: "Retention times shifts"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+knit: (
+  function(inputFile, encoding) { 
+
+    pSubTitle <- "RT_shift_maturation_POS_r1"
+
+    rmarkdown::render( 
+      input       = inputFile, 
+      encoding    = encoding, 
+      params      = list(sub_title = pSubTitle),      
+      output_file = pSubTitle) })
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+# Parameters
+
+```{r parameters}
+z.study <- "maturation" # specify "maturation" or "tissues"
+z.polarity <- "POS" # specify "POS" or "NEG"
+z.mode <- "FS" # specify "FS" or "DDA"
+z.round <- 1
+```
+
+
+# Libraries
+
+```{r libraries, message=FALSE}
+library(xcms)
+library(Rdisop)
+library(CompoundDb)
+```
+
+# Data import
+
+```{r data-import}
+if(z.study == "maturation" & z.polarity == "POS" & z.mode == "FS" & z.round == 1){
+  z.path <- paste0(z.study, "/data/", z.polarity, "_", z.mode, 
+                   "_fixed_round", z.round, "/")
+}
+injections <- list.files(z.path)
+injections <- data.frame(filename = injections[grep("xQC", injections)])
+tmp <- strsplit(gsub(".mzData", "", injections$filename), "_")
+tmp <- data.frame(do.call(rbind, tmp))
+colnames(tmp) <- c("order", "project", "pt", "time", "type", "rep", "polarity", "mode")
+injections <- cbind(injections, tmp)
+rm(tmp)
+
+
+data_raw <- readMSData(
+  paste0(z.path, injections$filename),
+  pdata = as(AnnotatedDataFrame(injections),
+             "NAnnotatedDataFrame"), 
+  mode = "onDisk")
+
+cmps <- merge(read.csv("compounds_RT_formula.csv"), read.csv("compounds_ion_higher.csv"), by = "name")
+cmps <- subset(cmps, cmps$class == "IS")
+cmps$RT_untarg <- NA
+```
+
+
+# Main code
+
+```{r main, warning=FALSE}
+par(mfrow = c(1, 2))
+for(i in seq(nrow(cmps))){
+  i.mz <- unlist((mass2mz(getMolecule(cmps$formula[i])$exactmass, 
+                          cmps[i, z.polarity])))
+  chr <- chromatogram(data_raw, mz = i.mz + 0.01 * c(-1, 1))
+  chr_pk <- chromPeaks(
+    findChromPeaks(chr, param = CentWaveParam(peakwidth = c(2, 20))))
+  i.rt <- chr_pk[which.max(chr_pk[,"into"]), "rt"]
+  plot(chr, main = paste0(cmps$name[i], ": ", cmps[i, z.polarity]))
+  abline(v = c(cmps$RT[i]*60, i.rt), lty = 2, col = c(2, 3))
+  plot(chr, xlim = c(min(i.rt, cmps$RT[i]*60) - 50, 
+                     max(i.rt, cmps$RT[i]*60) + 50))
+  abline(v = c(cmps$RT[i]*60, i.rt), 
+         lty = 2, col = c(2, 3))
+  cmps$RT_untarg[i] <- i.rt
+}
+
+cmps$RT_target <- cmps$RT*60
+cmps$RT_delta <- cmps$RT_untarg - cmps$RT_target
+cmps$RT_target <- round(cmps$RT_target)
+cmps$RT_untarg <- round(cmps$RT_untarg)
+cmps$RT_delta <- round(cmps$RT_delta)
+```
+
+
+# Table
+
+```{r table}
+knitr::kable(cmps[,c("name", "RT_untarg", "RT_target", "RT_delta")])
+summary(cmps$RT_delta)
+```
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
+
