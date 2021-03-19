@@ -3,23 +3,17 @@ library(readxl)
 z.file <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
 target <- rbind(read_xlsx(z.file, sheet = "POS"),
                 read_xlsx(z.file, sheet = "NEG")) 
-colnames(target) <- c("RT", "name")
+colnames(target) <- c("RT", "ID")
 
-untarg <- read.csv("compounds.csv")
-untarg <- subset(untarg, select = c("name", "formula", "type", "class"))
-untarg$name <- gsub("Salt)", "", untarg$name)
-untarg$name <- gsub("\\s+$", "", untarg$name)
-untarg$name <- gsub(" \\(Na", "", untarg$name)
-untarg$name <- gsub(" \\(NH4", "", untarg$name)
-untarg$name <- gsub("-H2O", "", untarg$name)
-untarg$name <- gsub("enated", "", untarg$name)
+form <- rbind(read_xlsx(z.file, sheet = "FORMULE"),
+              read_xlsx(z.file, sheet = "IS"))
 
-data <- merge(target, untarg, by = "name")
+data <- merge(target, form, by = "ID")
 write.csv(data, "compounds_RT_formula.csv", row.names = FALSE)
 
 
 data <- subset(data, class == "IS")
-untarg <- subset(untarg, class == "IS")
-untarg$name[!untarg$name %in% data$name]
+form <- subset(form, class == "IS")
+form$ID[!form$ID %in% data$ID]
 
 
