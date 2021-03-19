@@ -1,0 +1,109 @@
+---
+title: "Sequence (maturation study)"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+In this document I'm going to generate the injection list of samples.
+
+# Parameters
+
+```{r parameters}
+mode <- "NEG" # specify "POS" or "NEG"
+library(readxl)
+```
+
+
+# Data import
+
+```{r import}
+data <- read_xlsx("data/sample_list_unt_lipidomics_CORRECT.xlsx", skip = 1)
+data$type <- "sample"
+data$position <- seq(63)+5
+```
+
+
+# Randomization
+
+```{r randomization}
+if(mode == "POS"){
+  s <- 20210317
+} else if(mode == "NEG"){
+  s <- 17032021
+}
+set.seed(s)
+data$random_inj <- sample(1:nrow(data), nrow(data), replace=FALSE)
+data <- data[order(data$random_inj),]
+```
+
+
+# Injection list
+
+```{r injection-list}
+solv_QC <- data.frame(matrix(nrow = (4 + 2 + 2 + (ceiling(nrow(data)/10)+1)*2), 
+                             ncol = ncol(data)))
+colnames(solv_QC) <- colnames(data)
+solv_QC$type <- c(rep("solveq", 4), rep("blank", 2), rep("STDmix", 2), 
+                  rep(c("IS", "QC"), ceiling(nrow(data)/10)+1))
+solv_QC$position[solv_QC$type == "solv"]    <- 1
+solv_QC$position[solv_QC$type == "solveq"]  <- 1
+solv_QC$position[solv_QC$type == "STDmix"]  <- 2
+solv_QC$position[solv_QC$type == "IS"]      <- 3
+solv_QC$position[solv_QC$type == "blank"]   <- 4
+solv_QC$position[solv_QC$type == "QC"]      <- 5
+solv_QC <- solv_QC[order(solv_QC$type), ]
+for(i in 1:length(unique(solv_QC$type))){
+  solv_QC$repl[solv_QC$type == unique(solv_QC$type)[i]] = 
+    seq(sum(solv_QC$type == unique(solv_QC$type)[i]))
+}
+solv_QC <- solv_QC[order(as.numeric(rownames(solv_QC))),]
+block <- rep(0, 4+2+2)
+for(i in 1:(ceiling(nrow(data)/10)+1)){
+  block <- c(block, rep(i, 2))
+}
+solv_QC$block <- block
+data$repl <- 0
+block <- c()
+for(i in 1:ceiling(nrow(data)/10)){
+  block <- c(block, rep(i, 10))
+}
+block <- block[1:nrow(data)]
+data$block <- block
+data <- rbind(solv_QC, data)
+data <- data[order(data$block), ]
+```
+
+
+# Sample name
+
+```{r}
+data$ID <- data$Code
+data$ID[is.na(data$ID)] <- paste0(data$type[is.na(data$ID)], "_",data$repl[is.na(data$ID)])
+
+data$id <- paste(sprintf("x%03d", 1:nrow(data)), data$ID, mode, sep = "_")
+```
+
+
+# Sequence
+
+```{r}
+knitr::kable(data[,c("id", "position")])
+write.csv(data, paste0("data/sequence_maturation_", mode, ".csv"), 
+          row.names = FALSE)
+```
+
+
+# Session information
+
+```{r sessinfo}
+Sys.time()-startpoint
+devtools::session_info()
+```
