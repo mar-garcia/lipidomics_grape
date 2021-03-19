@@ -4,35 +4,52 @@ library(CompoundDb)
 library(xcms)
 library(MsCoreUtils)
 
-polarity <- "POS"
+polarity <- "NEG"
 load(paste0("maturation/data/RData/MS2_library_", polarity, ".RData"))
 ms2list1 <- ms2list
 load(paste0("tissues/data/RData/MS2_library_", polarity, ".RData"))
 ms2list <- c(ms2list1, ms2list)
 rm(ms2list1)
 
-cmps <- read.csv("compounds.csv")
-cmps <- cmps[cmps$type == "MIXnativi", ]
-cmps <- cmps[cmps$formula != "", ]
+cmps <- read.csv("compounds_RT_formula.csv")
+cmps <- cmps[cmps$class == "IS", ]
 
-xdata <- readMSData(
-  files = paste0("tissues/data/", polarity, 
-                 "_FS_fixed/x006_lipidgrape_tissues_xx00_STDmix_rep2_", 
-                 polarity, "_FS.mzData"),
-  mode = "onDisk")
+if(polarity == "POS"){
+  xdata <- readMSData(
+    files = paste0("maturation/data/", polarity, 
+                   "_FS_fixed_round1/x004_lipidgrape_xxx_blank_02_", 
+                   polarity, "_FS.mzData"),
+    mode = "onDisk")
+} else if(polarity == "NEG"){
+  xdata <- readMSData(
+    files = paste0("tissues/data/", polarity, 
+                   "_FS_fixed/x004_lipidgrape_tissues_xx00_blank_rep2_", 
+                   polarity, "_FS.mzData"),
+    mode = "onDisk")
+}
+#xdata <- readMSData(
+#  files = paste0("tissues/data/", polarity, 
+#                 "_FS_fixed/x006_lipidgrape_tissues_xx00_STDmix_rep2_", 
+#                 polarity, "_FS.mzData"),
+#  mode = "onDisk")
 
 
 
-k <- 3
-cmps$name[k]
-(rt <- cmps$RT[k])
-mz <- unlist(mass2mz(getMolecule(cmps$formula[k])$exactmass, "[M-H]-")) 
+k <- 19
+cmps$ID[k]
+(rt <- cmps$RT[k]*60)
+if(polarity == "POS"){
+  k.add <- "[M+H]+"
+} else if(polarity == "NEG"){
+  k.add <- "[M-H]-"
+}
+mz <- unlist(mass2mz(getMolecule(cmps$formula[k])$exactmass, k.add)) 
 chr <- chromatogram(xdata, mz = mz + 0.01 * c(-1, 1))
 par(mfrow=c(1,1))
 plot(chr)
 abline(v=rt, col = "red")
 chromPeaks(findChromPeaks(chr, param = CentWaveParam(peakwidth = c(2, 20))))
-rt <- 1035.720                       
+rt <- 1102.72                                  
 par(mfrow=c(1,2), mar = c(4,2,2,1))
 plot(chr, xlim = c(rt - 50, rt + 50))
 abline(v = rt, lty = 2, col = "grey")
@@ -41,7 +58,13 @@ plot(sps$mz, sps$i, type = "h", #xlim = c(mz - 10, mz + 30),
      xlab = "m/z", ylab = "intensity", 
      main = paste0("FS at ", sprintf("%.2f", round(rt/60, 2)), "' (", round(rt), "'')"))
 idx <- which((sps$i/max(sps$i))*100 > 30)
-mzadd <- matchWithPpm(unlist(mass2mz(getMolecule(cmps$formula[k])$exactmass, c("[M+H]+", "[M+NH4]+", "[M+Na]+"))), sps$mz, ppm = 10)
+if(polarity == "POS"){
+  mzadd <- matchWithPpm(unlist(mass2mz(getMolecule(cmps$formula[k])$exactmass, 
+                                       c("[M+H]+", "[M+NH4]+", "[M+Na]+"))), sps$mz, ppm = 10)
+} else if(polarity == "NEG"){
+  mzadd <- matchWithPpm(unlist(mass2mz(getMolecule(cmps$formula[k])$exactmass, 
+                                       c("[M-H]-", "[M-H+HCOOH]-"))), sps$mz, ppm = 10)
+}
 for(i in seq(length(mzadd))){
   if(length(mzadd[[i]]) == 0){
     mzadd[[i]] <- NA
@@ -53,8 +76,10 @@ idx <- idx[!idx %in% unlist(mzadd)]
 text(sps$mz[idx], sps$i[idx], round(sps$mz[idx], 4), cex = 0.8)
 if(polarity == "POS"){
   unlist(mass2mz(getMolecule(cmps$formula[k])$exactmass, c("[M+H]+", "[M+NH4]+", "[M+Na]+")))
+} else if(polarity == "NEG"){
+  unlist(mass2mz(getMolecule(cmps$formula[k])$exactmass, c("[M-H]-", "[M-H+HCOOH]-")))
 }
-mz <- 782.5694 
+mz <- 993.6731     
 ms2sub <- getSpectrum(ms2list, "precursor", mz, mz.tol = 0.01)
 ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 5)
 if(length(ms2sub) > 1){

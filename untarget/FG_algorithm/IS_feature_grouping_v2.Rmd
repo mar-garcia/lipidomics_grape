@@ -1,0 +1,1232 @@
+---
+title: "Feature grouping (version 2)"
+output: html_document
+---
+
+**Modified**: `r file.info("IS_feature_grouping_v2.Rmd")$mtime`<br />
+**Compiled**: `r date()`
+
+# Preliminaries
+
+In this document I'm going to show how works the feature grouping algorithm on a simple dataset. This dataset consists of 6 samples, two replicates of each of the following sample types:  
+
+- solvent (composed only by solvent)  
+- blank (empty samples submitted to the same preparation procedure as study samples, i.e., they just include the IS)  
+- STDmix (composed by a mix of 77 known compounds, but not submitted to the standard preparation procedure, i.e. they do not include the IS)  
+
+XCMS processing of this dataset is already done in both polarities. The only difference in the processing is that for NEG polarity I've retained those features that contain at least 5 peaks with intensity \>= 1e5 counts, whereas for POS polarity the intensity threshold has been 2.5e5 counts.
+
+Below, I load the data and plot the distribution of samples and features through a PCA:
+
+```{r pca, echo=FALSE, message=FALSE, warning=FALSE}
+library(xcms)
+load("data/RData/IS_data_XCMS_POS.RData")
+xdata_pos <- xdata
+load("data/RData/IS_data_XCMS_NEG.RData")
+xdata_neg <- xdata
+rm(xdata)
+
+ids_neg <- read.csv("data/IS_identifications_NEG.csv", row.names = 1)
+ids_pos <- read.csv("data/IS_identifications_POS.csv", row.names = 1)
+ids <- rbind(ids_neg, ids_pos)
+
+pca_xdata <- function(x){
+  data <- featureValues(x, method = "sum", value = "into")
+  set.seed(123)
+  data <- t(imputeRowMinRand(data, method = "from_to",
+                             min_fraction = 1/100,
+                             min_fraction_from = 1/1000
+  ))
+  dt <- log10(data)
+  scaling.pareto <- BioMark::scalefun(sc.p="pareto")
+  dt <- data.frame(scaling.pareto(dt))
+  pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+  pca
+}
+
+par(mfrow = c(2, 2), mar = c(1, 1, 2, 1))
+
+pca_pos <- data.frame(pca_xdata(xdata_pos)$x)
+tmp_x <- max(abs(min(pca_pos$PC1)), max(pca_pos$PC1))
+tmp_y <- max(abs(min(pca_pos$PC2)), max(pca_pos$PC2))
+plot(pca_pos$PC1, pca_pos$PC2, 
+     col = as.numeric(factor(xdata_pos$tissue)) + 1, pch = 16,
+     main = "POS", axes = FALSE, 
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+legend("topleft", col = 2:4, legend = levels(factor(xdata_pos$tissue)), 
+       pch = 16, bty = "n")
+
+pca_neg <- data.frame(pca_xdata(xdata_neg)$x)
+tmp_x <- max(abs(min(pca_neg$PC1)), max(pca_neg$PC1))
+tmp_y <- max(abs(min(pca_neg$PC2)), max(pca_neg$PC2))
+plot(pca_neg$PC1, pca_neg$PC2, 
+     col = as.numeric(factor(xdata_neg$tissue)) + 1, pch = 16,
+     main = "NEG", axes = FALSE, 
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+
+pca_pos <- data.frame(pca_xdata(xdata_pos)$rotation)
+dt <- featureValues(xdata_pos, method = "sum", value = "into")
+dt[is.na(dt)] <- 0
+tmp <- data.frame(featureDefinitions(xdata_pos))
+tmp$mean_blank <- rowMeans(dt[,xdata_pos$tissue == "blank"])
+tmp$mean_blank_no <- rowMeans(dt[,xdata_pos$tissue != "blank"])
+tmp$blank_prop <- tmp$mean_blank / tmp$mean_blank_no
+tmp$blank_prop[tmp$blank_prop == "Inf"] <- tmp$mean_blank[tmp$blank_prop == "Inf"]
+tmp$mean_std <- rowMeans(dt[,xdata_pos$tissue == "STDmix"])
+tmp$mean_std_no <- rowMeans(dt[,xdata_pos$tissue != "STDmix"])
+tmp$std_prop <- tmp$mean_std / tmp$mean_std_no
+tmp$std_prop[tmp$std_prop == "Inf"] <- tmp$mean_std[tmp$std_prop == "Inf"]
+tmp$mean_solv <- rowMeans(dt[,xdata_pos$tissue == "solv"])
+tmp$mean_solv_no <- rowMeans(dt[,xdata_pos$tissue != "solv"])
+tmp$solv_prop <- tmp$mean_solv / tmp$mean_solv_no
+tmp$solv_prop[tmp$solv_prop == "Inf"] <- tmp$mean_solv[tmp$solv_prop == "Inf"]
+tmp$color <- 1
+tmp$color[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 2 & tmp$STDmix == 0] <- 2
+tmp$color[tmp$npeaks == 2 & tmp$solv == 2 & tmp$blank == 0 & tmp$STDmix == 0] <- 3
+tmp$color[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 0 & tmp$STDmix == 2] <- 4
+tmp$col2 <- "grey"
+tmp$col2[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 2 & tmp$STDmix == 0 & 
+           !grepl("Unknown", ids_pos$compound) &
+           !grepl("Background", ids_pos$compound)] <- "black"
+tmp$color[tmp$color == 2 & tmp$blank_prop < 300] <- "#E41A1C50"
+tmp$color[tmp$color == 4 & tmp$std_prop < 300] <- "#377EB850"
+#tmp$color[tmp$color == 3 & tmp$solv_prop < 300] <- "#4DAF4A50"
+tmp_x <- max(abs(min(pca_pos$PC1)), max(pca_pos$PC1))
+tmp_y <- max(abs(min(pca_pos$PC2)), max(pca_pos$PC2))
+plot(pca_pos$PC1, pca_pos$PC2, 
+     bg = tmp$color, col = tmp$col2, pch = 21, lwd = 0.1, axes = FALSE, 
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+
+pca_neg <- data.frame(pca_xdata(xdata_neg)$rotation)
+dt <- featureValues(xdata_neg, method = "sum", value = "into")
+dt[is.na(dt)] <- 0
+tmp <- data.frame(featureDefinitions(xdata_neg))
+tmp$mean_blank <- rowMeans(dt[,xdata_neg$tissue == "blank"])
+tmp$mean_blank_no <- rowMeans(dt[,xdata_neg$tissue != "blank"])
+tmp$blank_prop <- tmp$mean_blank / tmp$mean_blank_no
+tmp$blank_prop[tmp$blank_prop == "Inf"] <- tmp$mean_blank[tmp$blank_prop == "Inf"]
+tmp$mean_std <- rowMeans(dt[,xdata_neg$tissue == "STDmix"])
+tmp$mean_std_no <- rowMeans(dt[,xdata_neg$tissue != "STDmix"])
+tmp$std_prop <- tmp$mean_std / tmp$mean_std_no
+tmp$std_prop[tmp$std_prop == "Inf"] <- tmp$mean_std[tmp$std_prop == "Inf"]
+tmp$mean_solv <- rowMeans(dt[,xdata_neg$tissue == "solv"])
+tmp$mean_solv_no <- rowMeans(dt[,xdata_neg$tissue != "solv"])
+tmp$solv_prop <- tmp$mean_solv / tmp$mean_solv_no
+tmp$solv_prop[tmp$solv_prop == "Inf"] <- tmp$mean_solv[tmp$solv_prop == "Inf"]
+tmp$color <- 1
+tmp$color[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 2 & tmp$STDmix == 0] <- 2
+tmp$color[tmp$npeaks == 2 & tmp$solv == 2 & tmp$blank == 0 & tmp$STDmix == 0] <- 3
+tmp$color[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 0 & tmp$STDmix == 2] <- 4
+tmp$col2 <- "grey"
+tmp$col2[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 2 & tmp$STDmix == 0 & 
+           !grepl("Unknown", ids_neg$compound) &
+           !grepl("Background", ids_neg$compound)] <- "black"
+tmp$color[tmp$color == 2 & tmp$blank_prop < 300] <- "#E41A1C50"
+tmp$color[tmp$color == 4 & tmp$std_prop < 300] <- "#377EB850"
+#tmp$color[tmp$color == 3 & tmp$solv_prop < 300] <- "#4DAF4A50"
+tmp_x <- max(abs(min(pca_neg$PC1)), max(pca_neg$PC1))
+tmp_y <- max(abs(min(pca_neg$PC2)), max(pca_neg$PC2))
+plot(pca_neg$PC1, pca_neg$PC2, 
+     bg = tmp$color, col = tmp$col2, pch = 21, lwd = 0.1, axes = FALSE, 
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+rm(list=ls())
+```
+
+As already mentioned in the report from 16-March-2021, the figure shows the score (upper side) and loading (bottom side) plots of PCA from positive (left side) and negative (right side) data. Samples in the score plots are colored according to their class, and features in the loading plots are colored according to their specificity for a certain sample class (i.e. they are colored when they have only been detected in one type of sample).   
+Therefore, the initial hypothesis is that red features should correspond to signals derived from internal standards and blue features to signals derived from standards included in the STDmix samples.  
+The intensity of feature colors in the loadings plot (with the exception of features characteristic of solvent samples) indicates if the mean intensity for a specific class is at least 300 times higher in comparison of the mean intensity within the other samples not corresponding to that class.  
+Additionally, for red-colored features (i.e., the ones characteristic of blank samples) the black border line indicates that are identified features corresponding to an IS (done in a manual way, check report from 16-March-2021), whereas the gray border line is used for features assigned to unknown and background ions.  
+
+
+# Feature grouping
+
+At this point, I want to automatically group those features representing ions (isotopes, adducts, dimers, fragments, ...) of the same compound (remember that ESI usually generates different ions from the same original compound/metabolite, which are then reported with different m/z values).  
+Features from the same originating compound inherit its characteristics, including its retention time, abundance and peak shape. Therefore, those co-eluting features with high abundance/intensity and peak shape correlations should be grouped together since probably are coming from the same compound.   
+
+In this example I perform first a initial grouping of features based on similar retention time. Next I further refine these feature groups by requiring similarity of feature values across samples (i.e., abundance/intensity correlation), and finally I additionally refine the feature groups by also requiring similarity of peak shapes.  
+Let's do the feature grouping of the first ion as a case example. The idea is to take 1 feature and check which other features from the dataset should be grouped together with the first one, according to the above-mentioned criteria. This first feature grouping step has to be done separately for each ionization mode, since the peak shape correlation will not be exactly the same for the same compound in each ionization mode:
+
+```{r}
+# load the data in positive ionization mode:
+load("data/RData/IS_data_XCMS_POS.RData")
+```
+
+I'll start the feature grouping with the most intensity ion. Therefore, I need to know which is the ion with the highest intensity:
+
+```{r}
+# get the matrix of feature values (using the peak area = "into"):
+data <- featureValues(xdata, method = "sum", value = "into")
+data[is.na(data)] <- 0 # replace missing values by 0
+
+# get the matrix with the feature definitions (i.e. the mz and rt ranges, among other information):
+features <- data.frame(featureDefinitions(xdata))
+
+# calculate the mean(intensity) of each feature according the type of sample:
+features$mean_solv <- rowMeans(data[,xdata$tissue == "solv"])
+features$mean_blank <- rowMeans(data[,xdata$tissue == "blank"])
+features$mean_STDmix <- rowMeans(data[,xdata$tissue == "STDmix"])
+
+# get the maximum value of mean(intensity) among the 3 sample classes:
+features$mean_max <- apply(features[,c("mean_solv", "mean_blank", "mean_STDmix")], 1, max)
+
+# order the features according the "mean_max" value in from the highest one:
+features <- features[order(features$mean_max, decreasing = T), ]
+
+# get the features particular of blank samples:
+features <- features[features$npeaks == 2 & features$blank == 2 & 
+                       features$solv == 0 & features$STDmix == 0, ]
+```
+
+Let's start with the first feature (i.e., the feature with the highest intensity among blank samples):
+
+```{r}
+y <- 1
+features[y,]
+```
+
+This feature will be called `feature "y"`.  
+First of all, I'll take those features that are co-eluting with `feature "y"`:
+
+```{r}
+y.features <- features[(features$rtmed > (features$rtmed[y] - 10)) & 
+                         ( features$rtmed < (features$rtmed[y] + 10)), ]
+y.features[,c("mzmed", "rtmed", "mean_max")]
+```
+
+There are 7 features co-eluting with `feature "y"`.
+
+Then, I'll calculate the intensity correlation between `feature "y"` and these co-eluting features:
+
+```{r}
+y.data <- data[rownames(data) %in% rownames(y.features), ]
+y.cor <- cor(t(y.data), y.data[rownames(features)[y],])
+y.features <- merge(y.features,y.cor, by = "row.names")
+colnames(y.features)[ncol(y.features)] <- "corr_int"
+rownames(y.features) <- y.features$Row.names
+y.features <- y.features[,-1]
+```
+
+```{r, echo=FALSE}
+y.features2 <- y.features
+y.features2$mzmed <- sprintf("%.4f", round(y.features2$mzmed, 4))
+y.features2$rtmed <- sprintf("%.2f", round(y.features2$rtmed/60, 2))
+y.features2$mean_max <- round(y.features$mean_max)
+y.features2$corr_int <- sprintf("%.2f", round(y.features$corr_int, 2))
+library(DT)
+datatable(y.features2[,c("mzmed", "rtmed", "mean_max", "corr_int")], options = list(dom = 't', pageLength = nrow(y.features2))) %>% formatStyle(columns = "corr_int", backgroundColor = styleInterval(0.7,c("#FB717E","#89EC6A")))
+```
+
+All co-eluting features present a high intensity correlation with `feature "y"`.  
+
+The next step is to calculate the peak shape correlation between `feature "y"` and the co-eluting features with high intensity correlation:
+
+```{r}
+y.features <- y.features[y.features$corr_int > 0.7, ]
+
+# get the sample with the highest intensity for feature "y":
+y.xdata <- filterFile(xdata, which.max(data[rownames(features)[y],]))
+
+# extract the chromatogram of feature "y":
+y.chr <- chromatogram(y.xdata,
+                      mz = features$mzmed[y] + 0.01 * c(-1, 1),
+                      rt = features$rtmed[y] + 10 * c(-1,1),
+                      aggregationFun = "max")
+
+# for each of the other selected features, extract the corresponding chromatogram and correlate it with the EIC of feature "y":
+y.cor <- c()
+for(i in seq(nrow(y.features))){
+  y.chr2 <- chromatogram(y.xdata,
+                         mz = y.features$mzmed[i] + 0.01 * c(-1, 1),
+                         rt = y.features$rtmed[i] + 10 * c(-1,1),
+                         aggregationFun = "max")
+  y.cor <- c(y.cor, correlate(y.chr[[1]], y.chr2[[1]]))
+  names(y.cor)[length(y.cor)] <- rownames(y.features)[i]
+}
+y.cor[is.na(y.cor)] <- 0
+y.features <- merge(y.features,y.cor, by = "row.names")
+colnames(y.features)[ncol(y.features)] <- "corr_ps"
+rownames(y.features) <- y.features$Row.names
+y.features <- y.features[,-1]
+```
+
+```{r, echo=FALSE}
+y.features2 <- y.features
+y.features2$mzmed <- sprintf("%.4f", round(y.features2$mzmed, 4))
+y.features2$rtmed <- sprintf("%.2f", round(y.features2$rtmed/60, 2))
+y.features2$mean_max <- round(y.features$mean_max)
+y.features2$corr_int <- sprintf("%.2f", round(y.features$corr_int, 2))
+y.features2$corr_ps <- sprintf("%.2f", round(y.features$corr_ps, 2))
+datatable(y.features2[,c("mzmed", "rtmed", "mean_max", "corr_int", "corr_ps")], options = list(dom = 't', pageLength = nrow(y.features2))) %>% formatStyle(columns = "corr_ps", backgroundColor = styleInterval(0.7,c("#FB717E","#89EC6A")))
+```
+
+Here we can see that not all features present a high peak shape correlation wih `feature "y"`.   
+Let's visualize it:
+
+```{r, fig.width=14, fig.height=5, echo = FALSE}
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+
+plot(rtime(y.chr[[1]]), intensity(y.chr[[1]]), type = "l", 
+     xlab = "RT", ylab = "Intensity")
+for(i in seq(nrow(y.features))){
+  y.chr2 <- chromatogram(y.xdata,
+                         mz = y.features$mzmed[i] + 0.01 * c(-1, 1),
+                         rt = y.features$rtmed[i] + 10 * c(-1,1),
+                         aggregationFun = "max")
+  points(rtime(y.chr2[[1]]), intensity(y.chr2[[1]]), type = "l", col = i)
+}
+
+plot(rtime(y.chr[[1]]), intensity(y.chr[[1]])/max(intensity(y.chr[[1]]), na.rm = T), type = "l", xlab = "RT", ylab = "Relative intensity")
+for(i in seq(nrow(y.features))){
+  y.chr2 <- chromatogram(y.xdata,
+                         mz = y.features$mzmed[i] + 0.01 * c(-1, 1),
+                         rt = y.features$rtmed[i] + 10 * c(-1,1),
+                         aggregationFun = "max")
+  points(rtime(y.chr2[[1]]), intensity(y.chr2[[1]])/max(intensity(y.chr2[[1]]), na.rm = T), type = "l", col = i)
+}
+legend("topright", legend = y.features2$mzmed, pch = 16, col = seq(nrow(y.features)))
+```
+
+Therefore, the first 4 features will be grouped together as `P001`, whereas the other 4 features by now will be not assigned to any feature group, until they will be assigned to an specific feature group based on the criteria already mentioned.  
+
+As mentioned above, by now the thresholds for both intensity and peak shape correlations are `0.7`. However, in some cases this do not work 100% but it seems that one relatively low-correlated feature should be grouped to an specific group since it seems to be a fragment of the pseudo-molecular ion of that feature group. Let's see an example:
+
+```{r}
+# load the data in negative ionization mode:
+load("data/RData/IS_data_XCMS_NEG.RData")
+
+# get the matrix of feature values:
+data <- featureValues(xdata, method = "sum", value = "into")
+data[is.na(data)] <- 0 # replace missing values by 0
+
+# get the matrix with the feature definitions (i.e. the mz and rt ranges, among other information):
+features <- data.frame(featureDefinitions(xdata))
+
+# calculate the mean(intensity) of each feature according the type of sample:
+features$mean_solv <- rowMeans(data[,xdata$tissue == "solv"])
+features$mean_blank <- rowMeans(data[,xdata$tissue == "blank"])
+features$mean_STDmix <- rowMeans(data[,xdata$tissue == "STDmix"])
+
+# get the maximum value of mean(intensity) among the 3 sample classes:
+features$mean_max <- apply(features[,c("mean_solv", "mean_blank", "mean_STDmix")], 1, max)
+
+# order the features according the "mean_max" value in from the highest one:
+features <- features[order(features$mean_max, decreasing = T), ]
+
+# get the features particular of blank samples:
+features <- features[features$npeaks == 2 & features$blank == 2 & 
+                       features$solv == 0 & features$STDmix == 0, ]
+
+y <- 13
+features[y,]
+
+# Take those features that are co-eluting with feature "y":
+y.features <- features[(features$rtmed > (features$rtmed[y] - 10)) & 
+                         ( features$rtmed < (features$rtmed[y] + 10)), ]
+y.features[,c("mzmed", "rtmed", "mean_max")] # there are 2 features co-eluting with feature "y"
+
+# Calculate the intensity correlation between feature "y" and these co-eluting features:
+y.data <- data[rownames(data) %in% rownames(y.features), ]
+y.cor <- cor(t(y.data), y.data[rownames(features)[y],])
+y.features <- merge(y.features,y.cor, by = "row.names")
+colnames(y.features)[ncol(y.features)] <- "corr_int"
+rownames(y.features) <- y.features$Row.names
+y.features <- y.features[,-1]
+```
+
+```{r, echo = FALSE}
+y.features2 <- y.features
+y.features2$mzmed <- sprintf("%.4f", round(y.features2$mzmed, 4))
+y.features2$rtmed <- sprintf("%.2f", round(y.features2$rtmed/60, 2))
+y.features2$mean_max <- round(y.features$mean_max)
+y.features2$corr_int <- sprintf("%.2f", round(y.features$corr_int, 2))
+library(DT)
+datatable(y.features2[,c("mzmed", "rtmed", "mean_max", "corr_int")], options = list(dom = 't', pageLength = nrow(y.features2))) %>% formatStyle(columns = "corr_int", backgroundColor = styleInterval(0.7,c("#FB717E","#89EC6A")))
+```
+
+```{r}
+# Calculate the peak shape correlation between feature "y" and the other selected features:
+y.features <- y.features[y.features$corr_int > 0.7, ]
+y.xdata <- filterFile(xdata, which.max(data[rownames(features)[y],]))
+y.chr <- chromatogram(y.xdata,
+                      mz = features$mzmed[y] + 0.01 * c(-1, 1),
+                      rt = features$rtmed[y] + 10 * c(-1,1),
+                      aggregationFun = "max")
+y.cor <- c()
+for(i in seq(nrow(y.features))){
+  y.chr2 <- chromatogram(y.xdata,
+                         mz = y.features$mzmed[i] + 0.01 * c(-1, 1),
+                         rt = y.features$rtmed[i] + 10 * c(-1,1),
+                         aggregationFun = "max")
+  y.cor <- c(y.cor, correlate(y.chr[[1]], y.chr2[[1]]))
+  names(y.cor)[length(y.cor)] <- rownames(y.features)[i]
+}
+y.cor[is.na(y.cor)] <- 0
+y.features <- merge(y.features,y.cor, by = "row.names")
+colnames(y.features)[ncol(y.features)] <- "corr_ps"
+rownames(y.features) <- y.features$Row.names
+y.features <- y.features[,-1]
+```
+
+```{r, fig.width=14, fig.height=5, echo = FALSE}
+y.features2 <- y.features
+y.features2$mzmed <- sprintf("%.4f", round(y.features2$mzmed, 4))
+y.features2$rtmed <- sprintf("%.2f", round(y.features2$rtmed/60, 2))
+y.features2$mean_max <- round(y.features$mean_max)
+y.features2$corr_int <- sprintf("%.2f", round(y.features$corr_int, 2))
+y.features2$corr_ps <- sprintf("%.2f", round(y.features$corr_ps, 2))
+datatable(y.features2[,c("mzmed", "rtmed", "mean_max", "corr_int", "corr_ps")], options = list(dom = 't', pageLength = nrow(y.features2))) %>% formatStyle(columns = "corr_ps", backgroundColor = styleInterval(0.7,c("#FB717E","#89EC6A")))
+
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+
+plot(rtime(y.chr[[1]]), intensity(y.chr[[1]]), type = "l", xlab = "RT", 
+     ylab = "Intensity")
+for(i in seq(nrow(y.features))){
+  y.chr2 <- chromatogram(y.xdata,
+                         mz = y.features$mzmed[i] + 0.01 * c(-1, 1),
+                         rt = y.features$rtmed[i] + 10 * c(-1,1),
+                         aggregationFun = "max")
+  points(rtime(y.chr2[[1]]), intensity(y.chr2[[1]]), type = "l", col = i)
+}
+
+plot(rtime(y.chr[[1]]), intensity(y.chr[[1]])/max(intensity(y.chr[[1]]), na.rm = T), type = "l", xlab = "RT", ylab = "Relative intensity")
+for(i in seq(nrow(y.features))){
+  y.chr2 <- chromatogram(y.xdata,
+                         mz = y.features$mzmed[i] + 0.01 * c(-1, 1),
+                         rt = y.features$rtmed[i] + 10 * c(-1,1),
+                         aggregationFun = "max")
+  points(rtime(y.chr2[[1]]), intensity(y.chr2[[1]])/max(intensity(y.chr2[[1]]), na.rm = T), type = "l", col = i)
+}
+legend("topright", legend = y.features2$mzmed, pch = 16, col = seq(nrow(y.features)))
+```
+
+Here we can see that the feature with the mz value 371.3825 do not have a peakshape correlation > 0.7 with the reference `feature "y"` (the one with the mz value 560.4823). However, if we check the MS2 spectra of the `feature "y"` we can see that the ion at mz 371.3825 is the main fragment of the precursor at mz 560.4823:
+
+```{r, message=FALSE}
+library(CluMSID)
+load("data/RData/MS2_library_NEG.RData")
+y.ms2 <- getSpectrum(ms2list, "precursor", 560.4823, mz.tol = 0.001)
+y.ms2 <- getSpectrum(y.ms2, "rt", 14.58*60, rt.tol = 5)
+specplot(y.ms2[[13]], main = paste(round(y.ms2[[13]]@precursor, 4), "-", round(y.ms2[[13]]@rt/60, 2)))
+```
+
+Therefore, when doing the filter of features based on peak shape correlation, I'll use the threshold of 0.7 OR a threshold of 0.5 + MS2 relationship.  
+At this point, I also annotate this MS2 relationship in the `features` table:
+
+```{r, message=FALSE, warning=FALSE}
+library(Rdisop)
+library(CompoundDb)
+neutral_losses <- data.frame(
+  formula = c("H2O", "C5H12NO5P", "C8H15NO4"),
+  massdiff = NA
+)
+for(i in seq(nrow(neutral_losses))){
+  neutral_losses$massdiff[i] <- getMolecule(neutral_losses$formula[i])$exactmass
+}
+
+y.features$MS2 <- NA
+i <- 1
+y.prec <- c()
+for(j in seq(length(y.ms2))){
+  y.prec <- c(y.prec, y.ms2[[j]]@precursor)
+}
+y.prec <- matchWithPpm(y.features$mzmed, y.prec, ppm = 10)
+y.prec <- lapply(y.prec, length)
+y.prec <- y.features$mzmed[which.max(unlist(y.prec))] 
+y.nl <- y.prec - y.features$mzmed[i]
+y.nl <- neutral_losses$formula[unlist(matchWithPpm(
+  y.nl, neutral_losses$massdiff, ppm = 10))]
+y.features$MS2[i] <- paste0("[", round(y.prec), "-", y.nl, "]")
+y.features[, c("mzmed", "rtmed", "mean_max", "corr_int", "corr_ps", "MS2")]
+```
+
+
+## FG algorithm
+
+Now I'll apply the feature grouping code for all the dataset (by now, checking only features particular of blank samples in order to be faster, since the peak shape correlation is computationally intense) in both polarities:
+
+```{r FG-algorithm, message=FALSE, eval=FALSE}
+mznoise <- c(158.975, 219.174, 221.154, 251.164, 283.699, 415.284)
+z.polarities <- c("POS", "NEG")
+for(z in seq(length(z.polarities))){
+  if(z.polarities[z] == "POS"){smbl <- "+"
+  } else if(z.polarities[z] == "NEG"){smbl <- "-"}
+  load(paste0("data/RData/IS_data_XCMS_", z.polarities[z], ".RData"))
+  load(paste0("data/RData/MS2_library_", z.polarities[z], ".RData"))
+  data <- featureValues(xdata, method = "sum", value = "into")
+  data[is.na(data)] <- 0
+  features <- data.frame(featureDefinitions(xdata))
+  features$polarity <- z.polarities[z]
+  features$mean_solv <- rowMeans(data[,xdata$tissue == "solv"])
+  features$mean_blank <- rowMeans(data[,xdata$tissue == "blank"])
+  features$mean_STDmix <- rowMeans(data[,xdata$tissue == "STDmix"])
+  features$mean_max <- apply(
+    features[,c("mean_solv", "mean_blank", "mean_STDmix")], 1, max)
+  
+  # Leave noisy peaks for last
+  tmp <- min(features$mean_max)
+  for(i in seq(length(mznoise))){
+   idx <- which((features$mzmed > mznoise[i] - 0.01) & 
+                  (features$mzmed < mznoise[i] + 0.01))
+   if(length(idx) > 0){
+     features$mean_max[idx] <- features$mean_max[idx] / tmp
+   }
+  }
+  
+  features <- features[order(features$mean_max, decreasing = T), ]
+  features <- features[features$npeaks == 2 & features$blank == 2 & 
+                         features$solv == 0 & features$STDmix == 0, ]
+  features$FG <- NA
+  features$MS2 <- NA
+  y.n <- 0
+  for(y in seq(nrow(features))){
+    if(is.na(features$FG[y])){ # continue only if feature "y" still has not 
+      # assigned to any "FG"
+      y.n <- y.n + 1 
+      y.features <- features[is.na(features$FG), ] # subset the feature  matrix taking only
+      # those still have not assigned to any "FG"
+      y.ft <- which(rownames(y.features) == rownames(features)[y])
+      
+      # RT range: get the co-eluting features
+      y.features <- y.features[(y.features$rtmed > (y.features$rtmed[y.ft] - 10)) & 
+                                 ( y.features$rtmed < (y.features$rtmed[y.ft] + 10)), ]
+      if(nrow(y.features) > 1){
+        
+        # intensity correlation
+        y.data <- data[rownames(data) %in% rownames(y.features), ]
+        y.cor <- cor(t(y.data), y.data[rownames(features)[y],])
+        y.features <- merge(y.features,y.cor, by = "row.names")
+        colnames(y.features)[ncol(y.features)] <- "corr_int"
+        rownames(y.features) <- y.features$Row.names
+        y.features <- y.features[,-1]
+        y.features <- y.features[y.features$corr_int > 0.7, ]
+        
+        # peak-shape correlation
+        y.xdata <- filterFile(xdata, which.max(data[rownames(features)[y],]))
+        y.chr <- chromatogram(y.xdata,
+                              mz = features$mzmed[y] + 0.01 * c(-1, 1),
+                              rt = features$rtmed[y] + 10 * c(-1,1),
+                              aggregationFun = "max")
+        y.cor <- c()
+        for(i in seq(nrow(y.features))){
+          y.chr2 <- chromatogram(y.xdata,
+                                 mz = y.features$mzmed[i] + 0.01 * c(-1, 1),
+                                 rt = y.features$rtmed[i] + 10 * c(-1,1),
+                                 aggregationFun = "max")
+          y.cor <- c(y.cor, correlate(y.chr[[1]], y.chr2[[1]]))
+          names(y.cor)[length(y.cor)] <- rownames(y.features)[i]
+        }
+        y.cor[is.na(y.cor)] <- 0
+        y.features <- merge(y.features,y.cor, by = "row.names")
+        colnames(y.features)[ncol(y.features)] <- "corr_ps"
+        rownames(y.features) <- y.features$Row.names
+        y.features <- y.features[,-1]
+        
+        # MS2 associations
+        y.features$MS2x <- NA
+        for(i in seq(nrow(y.features))){
+          y.ms2 <- findFragment(ms2list, y.features$mzmed[i])
+          y.ms2 <- getSpectrum(y.ms2, "rt", y.features$rtmed[i], rt.tol = 10)
+          for(j in seq(nrow(y.features))){
+            if(length(y.ms2) == 1){
+              tmp <- abs(y.ms2@precursor - y.features$mzmed[j]) < 0.01
+            } else if(length(y.ms2) > 1){
+              tmp <- length(getSpectrum(y.ms2, "precursor", 
+                                        y.features$mzmed[j], mz.tol = 0.01)) > 0
+            } else if(length(y.ms2) == 0){
+              tmp <- FALSE
+            }
+            if(is.na(y.features$MS2x[i])){
+              y.features$MS2x[i] <- tmp
+            } else {
+              y.features$MS2x[i] <- paste0(y.features$MS2x[i], "; ", tmp)
+            }
+            
+          }
+        }
+        y.features$MS2x <- grepl("TRUE", y.features$MS2x)
+        
+        for(i in which(y.features$MS2x)){
+          y.ms2 <- findFragment(ms2list, y.features$mzmed[i])
+          y.ms2 <- getSpectrum(y.ms2, "rt", y.features$rtmed[i], rt.tol = 10)
+          if(length(y.ms2) == 1){
+            y.prec <- y.ms2@precursor
+          } else if(length(y.ms2) > 1){
+            y.prec <- c()
+            for(j in seq(length(y.ms2))){
+              y.prec <- c(y.prec, y.ms2[[j]]@precursor)
+            }
+            y.prec <- matchWithPpm(y.features$mzmed, y.prec, ppm = 10)
+            y.prec <- lapply(y.prec, length)
+            y.prec <- y.features$mzmed[which.max(unlist(y.prec))] 
+          }
+          y.nl <- y.prec - y.features$mzmed[i]
+          y.nl <- neutral_losses$formula[unlist(
+            matchWithPpm(y.nl, neutral_losses$massdiff, ppm = 10))]
+          if(length(y.nl) > 0){
+            if(is.na(y.features$MS2[i])){
+              y.features$MS2[i] <- paste0("[", round(y.prec), "-", y.nl, "]", smbl)
+            } else {
+              y.features$MS2[i] <- paste(
+                y.features$MS2[i], paste0("[", round(y.prec), "-", y.nl, "]", 
+                                          smbl), collapse = "; ")
+            }
+          }
+        }
+        
+        y.features <- y.features[
+          y.features$corr_ps > 0.7 |
+            (y.features$corr_ps > 0.5 & y.features$MS2x), ]  
+      }
+      features$FG[rownames(features) %in% rownames(y.features)] <- y.n
+      features[rownames(y.features), "MS2"] <- y.features[, "MS2"]
+    }
+  }
+  
+  
+  
+  features$FG <- paste0(substr(z.polarities[z], 1, 1), 
+                        formatC(features$FG, width = nchar(nrow(features)), 
+                                flag = "0"))
+  rownames(data) <- gsub("FT", substr(z.polarities[z], 1, 1), rownames(data))
+  colnames(data) <- gsub(paste0("_", z.polarities[z], "_FS.mzData"), "", colnames(data))
+  rownames(features) <- gsub("FT", substr(z.polarities[z], 1, 1), rownames(features))
+  if(z == 1){
+    featuresz <- features
+    dataz <- data
+  } else if(z == 2){
+    features <- rbind(featuresz, features)
+    data <- rbind(dataz, data)
+  }
+}
+```
+
+# Isotopologues
+
+Before moving to connect FG from both polarities when a compound is ionizated in both modes, I want to annotate the isotopes within each FG. I want to do this first because the idea is to use the main isotope of each *isotope group* for checking the potential m/z relationships that could help to deduce if each feature (within a feature group) refers to pseudo-molecular ion or an adduct, dimer or fragment.     
+This step will be based on carbon isotopes, which are the most frequently abundant for molecules composed by C-H-O-N:
+
+```{r, echo=FALSE, warning=FALSE}
+istp <- data.frame(
+  "Name" = c("Carbon", "", "Hydrogen", "", "Oxygen", rep("", 2), 
+             "Nitrogen", "", "Sulfur", rep("", 3), "Phosphorus"),
+  "Symbol" = c("C(12)", "C(13)", "H(1)", "H(2)", "O(16)", "O(17)", "O(18)",
+               "N(14)", "N(15)", "S(32)", "S(33)", "S(34)", "S(36)", "P(31)"),
+  "Mass" = c(12.000000, 13.003355, 1.007825, 2.014102, 15.994915, 16.999131, 17.999159, 
+             14.003074, 15.000109, 31.972072, 32.971459, 33.967868, 35.967079, 30.973763),
+  "Abundance" = c(98.90, 1.10, 99.99, 0.015, 99.76, 0.038, 0.20,
+                  99.63, 0.37, 95.02, 0.75, 4.21, 0.020, 100.00)
+)
+library(kableExtra)
+kbl(istp,
+    caption = "Exact Masses of the Elements and Isotopic Abundances") %>%
+  kable_classic(full_width = F) %>%
+  row_spec(c(3, 4, 8, 9, 14), color = "F5F5F5") %>%
+  footnote("https://www.sisweb.com/referenc/source/exactmas.htm", footnote_as_chunk = T)
+```
+
+Therefore, when annotating the isotopes it is important to keep in mind that (1) the monoisotopic feature must be more intense than the isotopic feature, and that (2) the difference in mz values between the features must be 1.003355.  
+Let's see an example before apply the code to all dataset:  
+
+```{r, echo=FALSE, eval=TRUE}
+load("tmp.RData")
+```
+
+```{r}
+features <- features[order(features$mean_max, decreasing = T), ]
+features$isotopes <- NA
+
+# get the data in positive ionization mode:
+z <- 1
+z.features <- features[features$polarity == z.polarities[z], ]
+
+# get the features of FG "P001": 
+y <- 1
+y.features <- z.features[z.features$FG == levels(factor(z.features$FG))[y], ]
+
+# check if mz differences match with 1.003355
+i <- 1
+for(j in seq(4)){
+  y.features$isotopes[
+    unlist(matchWithPpm((y.features$mzmed[i] + 1.003355*j), y.features$mzmed, ppm = 10))
+  ] <- paste0("(", j, ")13C[", round(y.features$mzmed[i]), "]", smbl)
+}
+y.features$isotopes[
+  unlist(matchWithPpm((y.features$mzmed[i] - 1.007276), y.features$mzmed, ppm = 10))
+] <- paste0("M[", round(y.features$mzmed[i]), "]", smbl)
+if(length(grep(round(y.features$mzmed[i]), y.features$isotopes)) > 0){
+  y.features$isotopes[i] <- paste0("[", round(y.features$mzmed)[i], "]", smbl)
+}
+```
+
+```{r, echo=FALSE, message=FALSE, fig.width=14, fig.height=5}
+load("data/RData/IS_data_XCMS_POS.RData")
+y.xdata <- filterFile(xdata, which.max(data[rownames(y.features)[1],]))
+library(MsCoreUtils)
+sps <- as.data.frame(xdata[[closest(y.features$rtmed[1], rtime(y.xdata))]])
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+idx <- (sps$i/max(sps$i)) > 0.1
+plot(sps$mz, sps$i, type = "h", xlab = "m/z", ylab = "intensity", main = paste("RT:", round(rtime(y.xdata)[(closest(y.features$rtmed[1], rtime(y.xdata)))]/60, 2)))
+text(sps$mz[idx], sps$i[idx], round(sps$mz[idx], 4), cex = 0.8)
+par(mar = c(4, 2, 2, 1))
+plot(sps$mz, sps$i, type = "h", xlab = "m/z", ylab = "intensity", xlim = c(514, 520))
+idx <- unlist(matchWithPpm(y.features$mzmed, sps$mz, ppm =10))
+text(sps$mz[idx], sps$i[idx], round(sps$mz[idx], 4), cex = 0.8)
+y.features[, c("mzmed", "rtmed", "mean_max", "FG", "isotopes")]
+```
+
+## Algorithm
+
+```{r isotopes-algorithm}
+for(z in seq(length(z.polarities))){
+  z.features <- features[features$polarity == z.polarities[z], ]
+  z.FG <- levels(factor(z.features$FG))
+  z.FG <- z.FG[!grepl("NA", z.FG)]
+  for(y in seq(length(z.FG))){
+    y.features <- z.features[z.features$FG == z.FG[y], ]
+    for(i in seq(nrow(y.features))){
+      if(is.na(y.features$isotopes[i])){
+        for(j in seq(4)){
+          y.features$isotopes[
+            unlist(matchWithPpm((y.features$mzmed[i] + 1.003355*j), 
+                                y.features$mzmed, ppm = 10))
+          ] <- paste0("(", j, ")13C[", round(y.features$mzmed[i]), "]", smbl)
+        }
+        y.features$isotopes[
+          unlist(matchWithPpm((y.features$mzmed[i] - 1.007276), 
+                              y.features$mzmed, ppm = 10))
+        ] <- paste0("M[", round(y.features$mzmed[i]), "]", smbl)
+        if(length(grep(round(y.features$mzmed[i]), y.features$isotopes)) > 0){
+          y.features$isotopes[i] <- paste0("[", round(y.features$mzmed)[i], "]", smbl)
+        } 
+      }
+    }
+    features[rownames(y.features), "isotopes"] <- y.features[, "isotopes"]
+  }
+}
+```
+
+
+# Group FGs between polarities
+
+To group features between both polarities when a compound is ionizated in both modes it is important to keep in mind that both FG should present a similar RT and a high intensity correlation (peak shape correlation cannot be used in this case, since it can be different in each ionization mode). Additionally, the neutral mass of molecular ion of both feature groups should be the same, but getting this value can be quiet complex since not all compounds produce the pseudo-molecular ion in both ionization modes (i.e., sometimes we just see the ions of an specific adduct).     
+Now, we have all features grouped in the same data frame `features`. In this table there is a column called "polarity" that indicates if the feature comes from the positive or negative ionization mode dataset.  
+
+```{r}
+y <- 1
+features[y,]
+```
+
+This feature belongs to positive ionization mode dataset and feature group `P001`.   
+Now, I'll select all features assigned to `P001` together with all features from negative ionization mode co-eluting with feature group `P001`.
+
+```{r}
+y.features <- features[(features$FG == features$FG[y]) | 
+                         (features$polarity != features$polarity[y]),]
+y.features <- y.features[(y.features$rtmed > (y.features$rtmed[y] - 10)) & 
+                           ( y.features$rtmed < (y.features$rtmed[y] + 10)), ]
+y.features[,c("mzmed", "rtmed", "mean_max", "polarity", "FG", "isotopes", "MS2")]
+```
+
+Here we can see that all features from negative ionization mode co-eluting with `P001` are grouped in a single feature group called `N11`.  
+Now, let's see if they present a relatively high intensity correlation. For that I'll use the ion with the highest intensity in each ionization mode:
+
+```{r}
+cor(data[rownames(y.features)[which(y.features$polarity == "POS")[1]],],
+    data[rownames(y.features)[which(y.features$polarity == "NEG")[1]],])
+```
+
+We can see that all grouped features from positive dataset correspond to the same isotopologue, being the ion at mz 516.4916 the main one, whereas in negative dataset it seems that there are 2 isotopologues, the one from the ion at mz 560.4823 and another one at mz 371.3825.  
+
+```{r}
+y.features[!grepl("13C|M", y.features$isotopes), 
+           c("mzmed", "rtmed", "mean_max", "polarity", "FG", "isotopes", "MS2")]
+```
+
+### Annotation
+
+Calculating the differences in the mz values of these "main ions" would help to deduce which would be the neutral mass of the compound that is producing these signals:
+
+```{r}
+tmp <- y.features[!grepl("13C|M", y.features$isotopes),]
+y.dif <- outer(tmp$mzmed[tmp$polarity == "POS"],  tmp$mzmed[tmp$polarity == "NEG"], "-")
+rownames(y.dif) <- round(tmp$mzmed[tmp$polarity == "POS"], 4)
+colnames(y.dif) <- round(tmp$mzmed[tmp$polarity == "NEG"], 4)
+y.dif
+```
+
+In parallel, it is necessary a theoretical matrix providing the mass differences for adducts generated in both ionization modes:
+
+```{r}
+massneg <- c(-1.007276, getMolecule("Cl")$exactmass, c(-1.007276 + getMolecule("HCOOH")$exactmass))
+names(massneg) <- c("[M-H]-", "[M+Cl]-", "[M-H+HCOOH]-")
+masspos <- c(1.007276, getMolecule("NH4")$exactmass, getMolecule("Na")$exactmass,
+             getMolecule("K")$exactmass, getMolecule("C2H8N")$exactmass)
+names(masspos) <- c("[M+H]+", "[M+NH4]+", "[M+Na]+", "[M+K]+", "[M+C2H8N]+")
+massdif <- outer(masspos, massneg, "-")
+colnames(massdif) <- names(massneg)
+rownames(massdif) <- names(masspos) 
+massdif
+```
+
+Now, we need to check if any difference among the main ions in positive and negative modes (reported in the object `y.dif`) match within any theoretical mass difference reported in the matrix `massdif`.
+
+```{r}
+for(i in seq(nrow(y.dif))){
+  for(j in seq(ncol(y.dif))){
+    for(a in seq(nrow(massdif))){
+      for(b in seq(ncol(massdif))){
+        if(dplyr::between(y.dif[i,j], massdif[a,b] - 0.01, massdif[a,b] + 0.01)){
+          tmp$annotation[rownames(y.dif)[i] == 
+                           round(tmp$mzmed, 4)] <- rownames(massdif)[a]
+          tmp$annotation[colnames(y.dif)[j] == 
+                           round(tmp$mzmed, 4)] <- colnames(massdif)[b]
+        }
+      }
+    }
+  }
+}
+y.features[rownames(tmp), "annotation"] <- tmp[, "annotation"]
+y.features[order(y.features$polarity, y.features$mzmed),
+           c("mzmed", "rtmed", "mean_max", "polarity", "FG", "isotopes", "annotation")]
+```
+
+Here we can see that probably the main ion of the positive isotopologue would correspond to the `[M+H]+`, whereas the main ion of the highest negative isotopologue to the `[M-H+HCOOH]-`.   
+
+
+## Co-eluting compounds
+
+However, this is a simply example since in any ionization mode seems to be at least 2 co-eluting compounds (i.e., aggruped in different FG with similar RT in the same ionization mode). Let's see a more complex case:  
+
+```{r}
+y <- 2
+features[y, ]
+```
+
+This feature belongs to positive ionization mode dataset and feature group `P002`.  
+Let's go to select all features assigned to `P002` together with all features from negative ionization mode co-eluting with FG `P002`:
+
+```{r}
+y.features <- features[(features$FG == features$FG[y]) | 
+                         (features$polarity != features$polarity[y]),]
+y.features <- y.features[(y.features$rtmed > (y.features$rtmed[y] - 10)) & 
+                           ( y.features$rtmed < (y.features$rtmed[y] + 10)), ]
+y.features[order(y.features$FG),
+           c("mzmed", "rtmed", "mean_max", "polarity", "FG", "isotopes", "MS2")]
+```
+
+In this case we can see that there are 4 FG in negative mode co-eluting with `P002`: `N02`, `N04` and `N18`. Let's see if both features groups present a high intensity correlation with `P002`. For that, I'll take the ion of each FG with the highest intensity:
+
+```{r}
+FT <- c()
+for(i in seq(length(levels(factor(y.features$FG))))){
+  FT <- c(FT, rownames(y.features)[y.features$FG == levels(factor(y.features$FG))[i]][which.max(y.features$mean_max[y.features$FG == levels(factor(y.features$FG))[i]])])
+}
+cor(t(data[FT,]))
+```
+
+In this case we can see that all FG from the negative ionization mode have a high intensity correlation with `P002`. Therefore, based on this criteria any of FG-NEG could correspond to the same compound generating the ions grouped in the `P002`.  
+
+At this point, let's see if calculating the differences in the main m/z values of each FG could help in deciphering which FG-NEG correspond to the same compound as `P002`.
+
+```{r}
+tmp <- y.features[!grepl("13C|M", y.features$isotopes),]
+y.dif <- outer(tmp$mzmed[tmp$polarity == "POS"],  tmp$mzmed[tmp$polarity == "NEG"], "-")
+rownames(y.dif) <- round(tmp$mzmed[tmp$polarity == "POS"], 4)
+colnames(y.dif) <- round(tmp$mzmed[tmp$polarity == "NEG"], 4)
+y.dif
+
+for(i in seq(nrow(y.dif))){
+  for(j in seq(ncol(y.dif))){
+    for(a in seq(nrow(massdif))){
+      for(b in seq(ncol(massdif))){
+        if(dplyr::between(y.dif[i,j], massdif[a,b] - 0.01, massdif[a,b] + 0.01)){
+          tmp$annotation[rownames(y.dif)[i] == 
+                           round(tmp$mzmed, 4)] <- rownames(massdif)[a]
+          tmp$annotation[colnames(y.dif)[j] == 
+                           round(tmp$mzmed, 4)] <- colnames(massdif)[b]
+        }
+      }
+    }
+  }
+}
+tmp[order(tmp$FG),
+    c("mzmed", "rtmed", "mean_max", "polarity", "FG", "isotopes", "annotation", "MS2")]
+```
+
+At this point, we can deduce that probably FG `P002` and `N04` are the ones coming from the same compound. This compound could be ionizing as `[M+H]+` and `[M+Na]+` for the positive mode and `[M-H+HCOOH]-` for the negative mode.  
+
+
+## Algorithm
+
+```{r FG2-algorithm}
+#features <- features[!grepl("NA", features$FG), ]
+features$FGx <- NA
+y.n <- 0
+for(y in seq(nrow(features))){
+  if(is.na(features$FGx[y])){
+    y.features <- features[is.na(features$FGx), ]
+    y.features <- y.features[(y.features$FG == features$FG[y]) |
+                               y.features$polarity != features$polarity[y],]
+    y.features <- y.features[(y.features$rtmed > (features$rtmed[y] - 10)) & 
+                               ( y.features$rtmed < (features$rtmed[y] + 10)), ]
+    
+    if(length(levels(factor(y.features$FG))) == 1){
+      if(nrow(y.features) == 1){
+        if(y.features$polarity == "NEG"){
+          y.features$annotation <- "[M-H]-"
+        } else if(y.features$polarity == "POS"){
+          y.features$annotation <- "[M+H]+"
+        }
+        tmp <- y.features
+      } else {
+        massx <- get(paste0("mass", tolower(y.features$polarity[1])))
+      massx <- outer(massx, massx, "-")
+      rownames(massx) <- names(get(paste0("mass", tolower(y.features$polarity[1]))))
+      colnames(massx) <- names(get(paste0("mass", tolower(y.features$polarity[1]))))
+      
+      tmp <- y.features[!grepl("13C|M", y.features$isotopes),]
+      y.dif <- outer(tmp$mzmed, tmp$mzmed, "-")
+      rownames(y.dif) <- round(tmp$mzmed, 4)
+      colnames(y.dif) <- round(tmp$mzmed, 4)
+      
+      y.dif[y.dif <= 0] <- NA
+      massx[massx <= 0] <- NA
+      
+      for(i in seq(nrow(y.dif))){
+        for(j in seq(ncol(y.dif))){
+          for(a in seq(nrow(massx))){
+            for(b in seq(ncol(massx))){
+              if(!is.na(y.dif[i,j]) & !is.na(massx[a,b])){
+                if(dplyr::between(y.dif[i,j], massx[a,b] - 0.01, massx[a,b] + 0.01)){
+                  tmp$annotation[rownames(y.dif)[i] == 
+                                   round(tmp$mzmed, 4)] <- rownames(massx)[a]
+                  tmp$annotation[colnames(y.dif)[j] == 
+                                   round(tmp$mzmed, 4)] <- colnames(massx)[b]
+                }
+              }
+            }
+          }
+        }
+      }
+      }
+      features[rownames(tmp), "annotation"] <- tmp[, "annotation"]
+      features$FGx[
+        rownames(features) %in% 
+          rownames(features)[features$FG %in% 
+                               unique(y.features$FG)]] <- y.features$FG[1]
+      
+      
+    } else if(length(levels(factor(y.features$FG))) == 2){
+      y.n <- y.n + 1 
+      if(cor(data[rownames(y.features)[which(y.features$polarity == "POS")[1]],],
+             data[rownames(y.features)[which(y.features$polarity == "NEG")[1]],]
+      ) > 0.7){
+        tmp <- y.features[!grepl("13C|M", y.features$isotopes),]
+        y.dif <- outer(tmp$mzmed[tmp$polarity == "POS"],  
+                       tmp$mzmed[tmp$polarity == "NEG"], "-")
+        rownames(y.dif) <- round(tmp$mzmed[tmp$polarity == "POS"], 4)
+        colnames(y.dif) <- round(tmp$mzmed[tmp$polarity == "NEG"], 4)
+        for(i in seq(nrow(y.dif))){
+          for(j in seq(ncol(y.dif))){
+            for(a in seq(nrow(massdif))){
+              for(b in seq(ncol(massdif))){
+                if(dplyr::between(y.dif[i,j], massdif[a,b] - 0.01, 
+                                  massdif[a,b] + 0.01)){
+                  tmp$annotation[rownames(y.dif)[i] == 
+                                   round(tmp$mzmed, 4)] <- rownames(massdif)[a]
+                  tmp$annotation[colnames(y.dif)[j] == 
+                                   round(tmp$mzmed, 4)] <- colnames(massdif)[b]
+                }
+              }
+            }
+          }
+        }
+        if(sum(!is.na(tmp$annotation)) > 0){
+          features[rownames(tmp), "annotation"] <- tmp[, "annotation"]
+        features$FGx[
+          rownames(features) %in% 
+            rownames(features)[features$FG %in% unique(y.features$FG)]] <- paste0(
+              "X", formatC(y.n, width = nchar(nrow(features)), flag = "0"))
+        } else {
+          y.features <- y.features[y.features$FG == y.features$FG[1], ]
+          features$FGx[rownames(features) %in% rownames(y.features)] <- y.features$FG[1]
+        }
+      } else {
+        y.features <- y.features[y.features$FG == y.features$FG[1], ]
+        massx <- get(paste0("mass", tolower(y.features$polarity[1])))
+        massx <- outer(massx, massx, "-")
+        rownames(massx) <- names(get(paste0("mass", tolower(y.features$polarity[1]))))
+        colnames(massx) <- names(get(paste0("mass", tolower(y.features$polarity[1]))))
+        
+        tmp <- y.features[!grepl("13C|M", y.features$isotopes),]
+        y.dif <- outer(tmp$mzmed, tmp$mzmed, "-")
+        rownames(y.dif) <- round(tmp$mzmed, 4)
+        colnames(y.dif) <- round(tmp$mzmed, 4)
+        
+        y.dif[y.dif <= 0] <- NA
+        massx[massx <= 0] <- NA
+        
+        for(i in seq(nrow(y.dif))){
+          for(j in seq(ncol(y.dif))){
+            for(a in seq(nrow(massx))){
+              for(b in seq(ncol(massx))){
+                if(!is.na(y.dif[i,j]) & !is.na(massx[a,b])){
+                  if(dplyr::between(y.dif[i,j], massx[a,b] - 0.01, massx[a,b] + 0.01)){
+                    tmp$annotation[rownames(y.dif)[i] == 
+                                     round(tmp$mzmed, 4)] <- rownames(massx)[a]
+                    tmp$annotation[colnames(y.dif)[j] == 
+                                     round(tmp$mzmed, 4)] <- colnames(massx)[b]
+                  }
+                }
+              }
+            }
+          }
+        }
+        features[rownames(tmp), "annotation"] <- tmp[, "annotation"]
+        features$FGx[
+          rownames(features) %in% 
+            rownames(features)[features$FG %in% unique(
+              y.features$FG)]] <- y.features$FG[1]
+      }
+      
+      
+    } else if(length(levels(factor(y.features$FG))) > 2){
+      y.n <- y.n + 1 
+      FT <- c()
+      for(i in seq(length(levels(factor(y.features$FG))))){
+        FT <- c(FT, rownames(y.features)[y.features$FG == levels(factor(
+          y.features$FG))[i]][which.max(y.features$mean_max[
+            y.features$FG == levels(factor(y.features$FG))[i]])])
+      }
+      y.features <- y.features[y.features$FG %in% y.features$FG[
+        rownames(y.features) %in% names(cor(t(data[FT,]))[
+          ,rownames(y.features)[1]] > 0.7)], ]
+      tmp <- y.features[!grepl("13C|M", y.features$isotopes),]
+      y.dif <- outer(tmp$mzmed[tmp$polarity == "POS"],  
+                     tmp$mzmed[tmp$polarity == "NEG"], "-")
+      rownames(y.dif) <- round(tmp$mzmed[tmp$polarity == "POS"], 4)
+      colnames(y.dif) <- round(tmp$mzmed[tmp$polarity == "NEG"], 4)
+      for(i in seq(nrow(y.dif))){
+        for(j in seq(ncol(y.dif))){
+          for(a in seq(nrow(massdif))){
+            for(b in seq(ncol(massdif))){
+              if(dplyr::between(y.dif[i,j], massdif[a,b] - 0.01, massdif[a,b] + 0.01)){
+                tmp$annotation[rownames(y.dif)[i] == 
+                                 round(tmp$mzmed, 4)] <- rownames(massdif)[a]
+                tmp$annotation[colnames(y.dif)[j] == 
+                                 round(tmp$mzmed, 4)] <- colnames(massdif)[b]
+              }
+            }
+          }
+        }
+      }
+      y.features[rownames(tmp), "annotation"] <- tmp[, "annotation"]
+      tmp <- tmp[tmp$polarity != y.features$polarity[1],]
+      if(length(unique(tmp$FG[!is.na(tmp$annotation)])) > 1){
+        y.features <- y.features[
+          (y.features$FG == y.features$FG[1]) |
+            (y.features$FG == unique(tmp$FG[!is.na(tmp$annotation)][
+              duplicated(tmp$FG[!is.na(tmp$annotation)])])),
+        ]
+      } else if(length(unique(tmp$FG[!is.na(tmp$annotation)])) == 0){
+        y.features <- y.features[(y.features$FG == y.features$FG[1]), ]
+        massx <- get(paste0("mass", tolower(y.features$polarity[1])))
+      massx <- outer(massx, massx, "-")
+      rownames(massx) <- names(get(paste0("mass", tolower(y.features$polarity[1]))))
+      colnames(massx) <- names(get(paste0("mass", tolower(y.features$polarity[1]))))
+      
+      tmp <- y.features[!grepl("13C|M", y.features$isotopes),]
+      y.dif <- outer(tmp$mzmed, tmp$mzmed, "-")
+      rownames(y.dif) <- round(tmp$mzmed, 4)
+      colnames(y.dif) <- round(tmp$mzmed, 4)
+      
+      y.dif[y.dif <= 0] <- NA
+      massx[massx <= 0] <- NA
+      
+      for(i in seq(nrow(y.dif))){
+        for(j in seq(ncol(y.dif))){
+          for(a in seq(nrow(massx))){
+            for(b in seq(ncol(massx))){
+              if(!is.na(y.dif[i,j]) & !is.na(massx[a,b])){
+                if(dplyr::between(y.dif[i,j], massx[a,b] - 0.01, massx[a,b] + 0.01)){
+                  tmp$annotation[rownames(y.dif)[i] == 
+                                   round(tmp$mzmed, 4)] <- rownames(massx)[a]
+                  tmp$annotation[colnames(y.dif)[j] == 
+                                   round(tmp$mzmed, 4)] <- colnames(massx)[b]
+                }
+              }
+            }
+          }
+        }
+      }
+      y.features[rownames(tmp), "annotation"] <- tmp[, "annotation"]
+      } else {
+        y.features <- y.features[
+          (y.features$FG == y.features$FG[1]) |
+            (y.features$FG == tmp$FG[!is.na(tmp$annotation)]),
+        ]
+      }
+      
+      features[rownames(y.features), "annotation"] <- y.features[, "annotation"]
+      features$FGx[
+        rownames(features) %in% 
+          rownames(features)[features$FG %in% unique(y.features$FG)]] <- paste0(
+            "X", formatC(y.n, width = nchar(nrow(features)), flag = "0"))
+      
+    } else{print(y)}
+  }
+}
+```
+
+
+# Identification
+
+The next step would be to go through each FG, calculate the neural mass of its molecular ion and cross this value with the internal database with the data of the IS.  
+
+```{r identification}
+ann <- c(
+  "[M+H]+", "13C[M+H]+", "(2)13C[M+H]+", "[M]+",
+  "[M+NH4]+", "13C[M+NH4]+", "(2)13C[M+NH4]+", "[M+Na]+", "13C[M+Na]+", "[M+K]+", 
+  "[M+C2H8N]+", "13C[M+C2H8N]+",
+  
+  "[M-H]-", "13C[M-H]-", "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", "[485-C5H12NO5P]-",
+  "[1841]-", "13C[1841]-", "(2)13C[1841]-", "(3)13C[1841]-", "(4)13C[1841]-", " M[1841]-"
+)
+dt_fg <- data.frame(
+  FG = unique(features$FGx),
+  mass = NA,
+  RT = NA,
+  POS = NA,
+  NEG = NA
+)
+for(y in seq(nrow(dt_fg))){
+  y.features <- features[features$FGx == dt_fg$FG[y], ]
+  
+  dt_fg$RT[y] <- mean(y.features$rtmed)
+  
+  massneut <- c()
+  for(i in seq(length(which(!is.na(y.features$annotation))))){
+    massneut <- c(massneut, 
+                  unlist(mz2mass(
+                    y.features$mzmed[!is.na(y.features$annotation)][i],
+                    y.features$annotation[!is.na(y.features$annotation)][i])))
+  }
+  massneut <- massneut[!is.na(massneut)]
+  if(length(massneut) == 0){
+    if(y.features$polarity[which.max(y.features$mean_max)] == "POS"){
+      massneut <- y.features$mzmed[which.max(y.features$mean_max)] - 1.007276
+    } else if(y.features$polarity[which.max(y.features$mean_max)] == "NEG"){
+      massneut <- y.features$mzmed[which.max(y.features$mean_max)] + 1.007276
+    }
+  } else {
+    if((max(massneut) - min(massneut)) > 1){
+    tmp <- as.numeric(names(which.max(table(round(massneut)))))
+    massneut <- massneut[(massneut > (tmp - 1)) & (massneut < (tmp + 1))]
+  }
+  }
+  dt_fg$mass[y] <- mean(massneut, na.rm = TRUE)
+  
+  
+  
+  y.features$assignation <- NA
+  for(i in seq(nrow(y.features))){
+    if(is.na(y.features$annotation)[i]){
+      tmp <- names(
+        unlist(matchWithPpm(
+          y.features$mzmed[i], unlist(mass2mz(mean(massneut, na.rm = TRUE), adducts(
+            polarity = y.features$polarity[i]))), ppm = 10)))
+      if(length(tmp) > 0){
+        y.features$annotation[i] <- tmp[1]
+      }
+    }
+    
+    if(!is.na(y.features$annotation[i])){
+      if(!is.na(y.features$isotopes[i])){
+        idx <- grep(gsub("].*", "", gsub(".*\\[", "", y.features$isotopes[i])), y.features$isotopes)
+        if(!is.na(y.features$isotopes[idx][1]) & !is.na(y.features$annotation[idx][1])){
+          y.features$assignation[idx] <- gsub(paste0("\\", y.features$isotopes[idx][1]), 
+                                              y.features$annotation[i], y.features$isotopes[idx])
+        } else {
+          y.features$assignation[i] <- y.features$annotation[i]
+        }
+      } else {
+        y.features$assignation[i] <- y.features$annotation[i]
+      }
+    }
+  }
+  y.features$assignation <- gsub("\\(1)13C", "13C", y.features$assignation)
+  y.features$assignation <- gsub("M\\[M\\+H\\]\\+", "\\[M\\]\\+", y.features$assignation)
+  y.features$assignation <- gsub("M\\[M\\+NH4\\]\\+", "\\[M\\]\\+ +NH3", y.features$assignation)
+  
+  idx <- is.na(y.features$assignation) & !is.na(y.features$MS2)
+  y.features$assignation[idx] <- y.features$MS2[is.na(y.features$assignation) & !is.na(y.features$MS2)]
+  
+  #idx <-is.na(y.features$assignation) & !is.na(y.features$isotopes)
+  #y.features$assignation[idx] <- y.features$isotopes[idx]
+  
+  annx <- c(ann, levels(factor(y.features$assignation))[!levels(factor(y.features$assignation)) %in% ann])
+  y.features$assignation <- factor(y.features$assignation, levels = annx)
+  y.features <- y.features[order(y.features$assignation, y.features$mzmed), ]
+  idx <- y.features$polarity == "POS"
+  dt_fg$POS[y] <- paste(paste(round(y.features$mzmed[idx], 4), y.features$assignation[idx]), collapse = "; ")
+  idx <- y.features$polarity == "NEG"
+  dt_fg$NEG[y] <- paste(paste(round(y.features$mzmed[idx], 4), y.features$assignation[idx]), collapse = "; ")
+}
+dt_fg$POS <- gsub(" NA", "", dt_fg$POS)
+dt_fg$NEG <- gsub(" NA", "", dt_fg$NEG)
+
+
+cmps <- read.csv("../compounds_RT_formula.csv")
+cmps <- cmps[cmps$class == "IS", ]
+cmps$RT <- cmps$RT*60 + 20
+cmps$mass <- NA
+for(i in seq(nrow(cmps))){
+  cmps$mass[i] <- getMolecule(cmps$formula[i])$exactmass
+}
+
+dt_fg$compound <- NA
+for(i in seq(nrow(dt_fg))){
+  i.cmps <- cmps[unlist(matchWithPpm(dt_fg$mass[i], cmps$mass, ppm = 10)), ]
+  if(nrow(i.cmps) > 0){
+    i.cmps <- i.cmps[(i.cmps$RT > (dt_fg$RT[i] - 20)) & 
+                       (i.cmps$RT < (dt_fg$RT[i] + 20)), ]
+    if(nrow(i.cmps) > 0){
+      dt_fg$compound[i] <- paste(i.cmps$ID, collapse = "; ")
+    } else {
+      dt_fg$compound[i] <- paste("Unknown", sprintf("%.4f", dt_fg$mass[i]))
+    }
+  } else {
+    dt_fg$compound[i] <- paste("Unknown", sprintf("%.4f", dt_fg$mass[i]))
+  }
+  
+}
+
+dt_fg <- dt_fg[order(dt_fg$RT), c("FG", "compound", "RT", "NEG", "POS")]
+dt_fg$RT <- sprintf("%.2f", round(dt_fg$RT/60, 2))
+
+
+dt_fg$unknown <- grepl("Unknown", dt_fg$compound) | (dt_fg$compound == "")
+dt_fg$duplicated <- dt_fg$compound %in% dt_fg$compound[duplicated(dt_fg$compound)]
+dt_fg$background <- dt_fg$FG %in% unique(features$FGx[features$mean_max < min(apply(features[,c("mean_solv", "mean_blank", "mean_STDmix")], 1, max))])
+dt_fg$color <- 0
+dt_fg$color[!dt_fg$unknown] <- 1
+dt_fg$color[dt_fg$duplicated] <- 2
+dt_fg$color[dt_fg$background] <- 3
+dt_fg$color[!dt_fg$unknown & !dt_fg$duplicated] <- 1
+dt_fg$compound[dt_fg$background & dt_fg$unknown] <- gsub("Unknown", "Background", dt_fg$compound[dt_fg$background & dt_fg$unknown])
+datatable(dt_fg[, c(1:5,9)]
+          , rownames = FALSE,  
+          options = list(dom = 't', pageLength = nrow(dt_fg))) %>% 
+  formatStyle("color", target = "row", 
+              backgroundColor = styleEqual(c(0, 1, 2, 3), 
+                                           c('', 'lightblue', '#C0819E60', 'lightgreen')))
+```
+

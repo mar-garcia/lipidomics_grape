@@ -1,0 +1,259 @@
+---
+title: "Internal standards"
+output: html_document
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+```
+
+In this document I'm going to check the features related with internal standards (IS).\
+I'll use samples from the "tissue distribution" experiment, injected in full-scan mode (NEG: 3-4 March 2021; POS: 5-6 March 2021).\
+For that I'll use the following types of samples:
+
+-   solvent (composed only by solvent),\
+-   blank (samples submitted to the same preparation procedure as study samples, i.e. they just include the IS), and\
+-   STDmix (composed by a mix of 77 known compounds, but not submitted to the standard preparation procedure, i.e. they do not include the IS)
+
+Two replicates of each type of samples (n = 6 samples in total) have been processed using XCMS in both polarities. The only difference in the processing is that for NEG polarity I've retained those features that contain at least 5 peaks with intensity \>= 1e5 counts, whereas for POS polarity the intensity threshold has been 2.5e5 counts.
+
+First of all I'll check the distribution of samples and features through a PCA:
+
+```{r}
+library(xcms)
+load("data/RData/IS_data_XCMS_POS.RData")
+xdata_pos <- xdata
+load("data/RData/IS_data_XCMS_NEG.RData")
+xdata_neg <- xdata
+rm(xdata)
+
+ids_neg <- read.csv("data/IS_identifications_NEG.csv", row.names = 1)
+ids_pos <- read.csv("data/IS_identifications_POS.csv", row.names = 1)
+ids <- rbind(ids_neg, ids_pos)
+
+pca_xdata <- function(x){
+  data <- featureValues(x, method = "sum", value = "into")
+  set.seed(123)
+  data <- t(imputeRowMinRand(data, method = "from_to",
+                             min_fraction = 1/100,
+                             min_fraction_from = 1/1000
+  ))
+  dt <- log10(data)
+  scaling.pareto <- BioMark::scalefun(sc.p="pareto")
+  dt <- data.frame(scaling.pareto(dt))
+  pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+  pca
+}
+
+par(mfrow = c(2, 2), mar = c(1, 1, 2, 1))
+
+pca_pos <- data.frame(pca_xdata(xdata_pos)$x)
+tmp_x <- max(abs(min(pca_pos$PC1)), max(pca_pos$PC1))
+tmp_y <- max(abs(min(pca_pos$PC2)), max(pca_pos$PC2))
+plot(pca_pos$PC1, pca_pos$PC2, 
+     col = as.numeric(factor(xdata_pos$tissue)) + 1, pch = 16,
+     main = "POS", axes = FALSE, 
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+legend("topleft", col = 2:4, legend = levels(factor(xdata_pos$tissue)), 
+       pch = 16, bty = "n")
+
+pca_neg <- data.frame(pca_xdata(xdata_neg)$x)
+tmp_x <- max(abs(min(pca_neg$PC1)), max(pca_neg$PC1))
+tmp_y <- max(abs(min(pca_neg$PC2)), max(pca_neg$PC2))
+plot(pca_neg$PC1, pca_neg$PC2, 
+     col = as.numeric(factor(xdata_neg$tissue)) + 1, pch = 16,
+     main = "NEG", axes = FALSE, 
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+
+pca_pos <- data.frame(pca_xdata(xdata_pos)$rotation)
+dt <- featureValues(xdata_pos, method = "sum", value = "into")
+dt[is.na(dt)] <- 0
+tmp <- data.frame(featureDefinitions(xdata_pos))
+tmp$mean_blank <- rowMeans(dt[,xdata_pos$tissue == "blank"])
+tmp$mean_blank_no <- rowMeans(dt[,xdata_pos$tissue != "blank"])
+tmp$blank_prop <- tmp$mean_blank / tmp$mean_blank_no
+tmp$blank_prop[tmp$blank_prop == "Inf"] <- tmp$mean_blank[tmp$blank_prop == "Inf"]
+tmp$mean_std <- rowMeans(dt[,xdata_pos$tissue == "STDmix"])
+tmp$mean_std_no <- rowMeans(dt[,xdata_pos$tissue != "STDmix"])
+tmp$std_prop <- tmp$mean_std / tmp$mean_std_no
+tmp$std_prop[tmp$std_prop == "Inf"] <- tmp$mean_std[tmp$std_prop == "Inf"]
+tmp$mean_solv <- rowMeans(dt[,xdata_pos$tissue == "solv"])
+tmp$mean_solv_no <- rowMeans(dt[,xdata_pos$tissue != "solv"])
+tmp$solv_prop <- tmp$mean_solv / tmp$mean_solv_no
+tmp$solv_prop[tmp$solv_prop == "Inf"] <- tmp$mean_solv[tmp$solv_prop == "Inf"]
+tmp$color <- 1
+tmp$color[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 2 & tmp$STDmix == 0] <- 2
+tmp$color[tmp$npeaks == 2 & tmp$solv == 2 & tmp$blank == 0 & tmp$STDmix == 0] <- 3
+tmp$color[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 0 & tmp$STDmix == 2] <- 4
+tmp$col2 <- "grey"
+tmp$col2[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 2 & tmp$STDmix == 0 & 
+           !grepl("Unknown", ids_pos$compound) &
+           !grepl("Background", ids_pos$compound)] <- "black"
+tmp$color[tmp$color == 2 & tmp$blank_prop < 300] <- "#E41A1C50"
+tmp$color[tmp$color == 4 & tmp$std_prop < 300] <- "#377EB850"
+#tmp$color[tmp$color == 3 & tmp$solv_prop < 300] <- "#4DAF4A50"
+tmp_x <- max(abs(min(pca_pos$PC1)), max(pca_pos$PC1))
+tmp_y <- max(abs(min(pca_pos$PC2)), max(pca_pos$PC2))
+plot(pca_pos$PC1, pca_pos$PC2, 
+     bg = tmp$color, col = tmp$col2, pch = 21, lwd = 0.1, axes = FALSE, 
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+
+pca_neg <- data.frame(pca_xdata(xdata_neg)$rotation)
+dt <- featureValues(xdata_neg, method = "sum", value = "into")
+dt[is.na(dt)] <- 0
+tmp <- data.frame(featureDefinitions(xdata_neg))
+tmp$mean_blank <- rowMeans(dt[,xdata_neg$tissue == "blank"])
+tmp$mean_blank_no <- rowMeans(dt[,xdata_neg$tissue != "blank"])
+tmp$blank_prop <- tmp$mean_blank / tmp$mean_blank_no
+tmp$blank_prop[tmp$blank_prop == "Inf"] <- tmp$mean_blank[tmp$blank_prop == "Inf"]
+tmp$mean_std <- rowMeans(dt[,xdata_neg$tissue == "STDmix"])
+tmp$mean_std_no <- rowMeans(dt[,xdata_neg$tissue != "STDmix"])
+tmp$std_prop <- tmp$mean_std / tmp$mean_std_no
+tmp$std_prop[tmp$std_prop == "Inf"] <- tmp$mean_std[tmp$std_prop == "Inf"]
+tmp$mean_solv <- rowMeans(dt[,xdata_neg$tissue == "solv"])
+tmp$mean_solv_no <- rowMeans(dt[,xdata_neg$tissue != "solv"])
+tmp$solv_prop <- tmp$mean_solv / tmp$mean_solv_no
+tmp$solv_prop[tmp$solv_prop == "Inf"] <- tmp$mean_solv[tmp$solv_prop == "Inf"]
+tmp$color <- 1
+tmp$color[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 2 & tmp$STDmix == 0] <- 2
+tmp$color[tmp$npeaks == 2 & tmp$solv == 2 & tmp$blank == 0 & tmp$STDmix == 0] <- 3
+tmp$color[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 0 & tmp$STDmix == 2] <- 4
+tmp$col2 <- "grey"
+tmp$col2[tmp$npeaks == 2 & tmp$solv == 0 & tmp$blank == 2 & tmp$STDmix == 0 & 
+           !grepl("Unknown", ids_neg$compound) &
+           !grepl("Background", ids_neg$compound)] <- "black"
+tmp$color[tmp$color == 2 & tmp$blank_prop < 300] <- "#E41A1C50"
+tmp$color[tmp$color == 4 & tmp$std_prop < 300] <- "#377EB850"
+#tmp$color[tmp$color == 3 & tmp$solv_prop < 300] <- "#4DAF4A50"
+tmp_x <- max(abs(min(pca_neg$PC1)), max(pca_neg$PC1))
+tmp_y <- max(abs(min(pca_neg$PC2)), max(pca_neg$PC2))
+plot(pca_neg$PC1, pca_neg$PC2, 
+     bg = tmp$color, col = tmp$col2, pch = 21, lwd = 0.1, axes = FALSE, 
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+```
+
+The figure shows the score (upper side) and loading (bottom side) plots of PCA from positive (left side) and negative (right side) data. Samples in the score plots are colored according to their class, and features in the loading plots are colored according to their specificity for a certain sample class (i.e. they are colored when they have only been detected in one type of sample).   
+Therefore, the initial hypothesis is that red features should correspond to signals derived from internal standards and blue features to signals derived from standards included in the STDmix samples.  
+The intensity of feature colors in the loadings plot (with the exception of features characteristic of solvent samples) indicates if the mean intensity for a specific class is at least 300 times higher in comparison of the mean intensity within the other samples not correspoding to that class.  
+Additionally, for red-colored features (i.e., the ones characteristic of blank samples) the black border line indicates that are identified features corresponding to an IS (see the table below), whereas the gray border line is used for features assigned to unknown and background ions.
+
+The table below shows the identifications of features detected only in blank samples (rows highlited in blue are the ones corresponding to an IS):  
+
+```{r}
+ids$annotation <- gsub("13C13C", "13C", ids$annotation)
+load("../../../R/ann_order.RData")
+#levels(factor(ids$annotation[!ids$annotation %in% ann]))
+ids$compound[ids$compound == "18:1(d7) Lyso PE" & 
+                   round(ids$rtmed) == 519] <- "18:1(d7) Lyso PE (Unknown)"
+ids$compound[ids$compound == "18:1(d7) Lyso PC" & 
+                   round(ids$rtmed) == 480] <- "18:1(d7) Lyso PC (Unknown)"
+ids$annotation <- factor(ids$annotation, levels = ann)
+ids <- ids[order(ids$annotation), ]
+ids <- ids[ids$npeaks == 2 & ids$solv == 0 & 
+                     ids$blank == 2 & ids$STDmix == 0 #& !is.na(ids$compound)
+           , ]
+cmps <- data.frame(compound = unique(ids$compound))
+cmps$RT <- NA
+cmps$ions <- NA
+for(i in seq(nrow(cmps))){
+  idx <- ids$compound == cmps$compound[i]
+  cmps$RT[i] <- round(mean(ids$rtmed[idx]))
+  cmps$ions[i] <- paste(paste(sprintf("%.4f", round(ids$mzmed[idx], 4)), 
+                              ids$annotation[idx]), collapse = "; ")
+}
+cmps <- cmps[order(cmps$RT), ]
+cmps$RT <- sprintf("%.2f", round(as.numeric(cmps$RT)/60, 2))
+cmps$unknown <- grepl("Unknown|Background", cmps$compound)
+library(DT)
+datatable(cmps, rownames = FALSE, 
+          options = list(dom = 't', pageLength = nrow(cmps))) %>% 
+  formatStyle("unknown", target = "row", 
+              backgroundColor = styleEqual(c(0, 1), c('lightblue', '')))
+```
+
+As it can be seen, there is an important number of specific-blank features not corresponding to any IS.  
+The following plots show the proportion of features characteristic of each type of sample and, within the features particular of blank samples, the proportion of identified ions.
+
+```{r}
+library(RColorBrewer)
+par(mfrow = c(2, 2), mar = c(1, 1, 2, 1))
+
+ids_neg$mode <- "NEG"
+ids_pos$mode <- "POS"
+ids <- rbind(ids_neg, ids_pos)
+slices <- c(sum(ids$npeaks == 2 & ids$solv == 0 & ids$blank == 2 & ids$STDmix == 0),
+            sum(ids$npeaks == 2 & ids$solv == 0 & ids$blank == 0 & ids$STDmix == 2),
+            sum(ids$npeaks == 2 & ids$solv == 2 & ids$blank == 0 & ids$STDmix == 0))
+slices <- c(slices, nrow(ids) - sum(slices))
+lbls <- c("blank", "STDmix", "solvent", "others")
+pie(slices, labels = lbls, col = brewer.pal(4, "Set1"))
+
+ids <- ids[ids$npeaks == 2 & ids$solv == 0 & 
+                     ids$blank == 2 & ids$STDmix == 0 #& !is.na(ids$compound)
+           , ]
+slices <- table(grepl("Unknown|Background", ids$compound))
+lbls <- c("identified", "unknown")
+pie(slices, labels = lbls, col = brewer.pal(4, "Set2"))
+```
+
+On the other side, looking at the table there are some comments to do:  
+  
+  - Some IS are not detected in any polarity: `17:1 Lyso PI`, `17:1 Lyso PS`, 
+  `17:1 Lyso PG`, `17:0 Lyso PA`, and `18:1(d7) MAG` (n = 5).  
+  - One IS is only detected in negative mode: `15:0-18:1-D7-PA` (well, in this case the [M+NH4]+ ion would be detected if during the peak detection we use the intensity threshold of 1.4e5 counts, but it seems a pretty low value).  
+  - Two IS are only detected in positive mode: `15:0-18:1(d7) DAG`, and `15:0-18:1(d7)-15:0 TAG`.  
+  - The elution order of `d18:1-18:1(d9) SM` is different when comparing with target data: in untargeted experiments it elutes before `15:0-18:1(d7) PC`, `C15 Ceramide-d7` and `15:0-18:1(d7) PE`, whereas in targeted data it elutes after these compounds.  
+  
+    
+Below, I'm going to plot the ppm and RT deviations (RT deviations referred to those from target method, in seconds) for each feature assigned to an ion of an IS:
+  
+```{r}
+ids$compound[ids$compound == "18:1(d7) Lyso PE" & 
+                   round(ids$rtmed) == 519] <- "18:1(d7) Lyso PE (Unknown)"
+ids$compound[ids$compound == "18:1(d7) Lyso PC" & 
+                   round(ids$rtmed) == 480] <- "18:1(d7) Lyso PC (Unknown)"
+ids <- ids[!grepl("Unknown|Background", ids$compound), ]
+plotly::plot_ly(x = ids$RT_d, y = ids$ppm, 
+                text = paste(ids$compound, ids$annotation), 
+                color = ids$compound, colors = "Set2")
+tapply(ids$ppm, ids$mode, summary)
+tapply(ids$RT_d, ids$mode, summary)
+tapply(ids$RT_d[ids$RT_d > (-10)], ids$mode[ids$RT_d > (-10)], summary)
+```
+
+It can be seen that ppm deviations in negative mode range between -2.7 and -1.6, whereas in positive mode range between -2.2 and 3.7, whereas RT deviations (with the exception of `d18:1-18:1(d9) SM`) move between -1 and 29 seconds.  
+  
+Some other aspects to highlight is that in both polarities there is a duplication in the pseudo-molecular feature of an IS (`18:1(d7) Lyso PE` in negative and `18:1(d7) Lyso PC` in positive):
+
+```{r}
+chr <- chromatogram(xdata_pos, mz = 529.39855 + 0.01 * c(-1,1), rt = c(450, 550))
+plotChromPeakDensity(chr, sub = "POS")
+
+chr <- chromatogram(xdata_neg, mz = 485.3367 + 0.01 * c(-1,1), rt = c(450, 550))
+plotChromPeakDensity(chr, sub = "NEG")
+```
+
+In both cases, the feature corresponding to the IS is the highest one.  
+  
+On the othter side, it is also important to mention that there are some features characteritic of STDmix samples that match with an IS:
+
+```{r}
+ids <- rbind(ids_neg, ids_pos)
+ids$annotation <- factor(ids$annotation, levels = ann)
+ids <- ids[order(round(ids$rtmed), ids$annotation),]
+idx <- ids$npeaks == 2 & ids$STDmix == 2 & !grepl("Unknown|Background", ids$compound) & !is.na(ids$compound)
+ids$mzmed <- sprintf("%.4f", round(ids$mzmed, 4))
+ids$rtmed <- sprintf("%.2f", round(ids$rtmed/60, 2))
+datatable(ids[idx, c("mzmed", "rtmed", "C", "compound", "annotation", "ppm", 
+                     "RT_d")], rownames = FALSE, 
+          options = list(dom = 't', pageLength = nrow(ids)))
+```
+

@@ -1,4 +1,5 @@
 *.csv
+*.docx
 *.html
 *.mzData
 *.mzML
@@ -9,3 +10,4 @@
 *.txt
 *.xlsx
 *z_old*
+!IS_feature_grouping_v2.html
