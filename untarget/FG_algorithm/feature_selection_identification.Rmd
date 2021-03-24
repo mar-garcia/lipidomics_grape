@@ -1,0 +1,302 @@
+---
+title: "Feature selection & identification"
+output: html_document
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+thr_int <- 1e7
+startpoint <- Sys.time()
+```
+
+In this document I'm going to do a prototype of data analysis and compound identification on a simple dataset. This dataset consists of 6 samples, two replicates of each of the following sample types:
+
+-   solvent (composed only by solvent)\
+-   blank (empty samples submitted to the same preparation procedure as study samples, i.e., they just include the IS)\
+-   STDmix (composed by a mix of 77 known compounds, but not submitted to the standard preparation procedure, i.e. they do not include the IS)
+
+XCMS processing of this dataset is already done in both polarities. The only difference in the processing is that for NEG polarity I've retained those features that contain at least 5 peaks with intensity \>= `r 1e5` counts, whereas for POS polarity the intensity threshold has been `r 2.5e5` counts.
+
+I'll be focused on features characteristic of 1 sample type. For that I'll select those features that are present in only 1 sample type and which mean(intensity) for that sample type is more than `r thr_int` times higher than the mean(intensity) of the other samples.
+
+First of all, I load the data and select the features of interest:
+
+```{r pca, echo=FALSE, message=FALSE, warning=FALSE}
+library(xcms)
+z.polarities <- c("POS", "NEG")
+for(z in seq(length(z.polarities))){
+  load(paste0("data/RData/IS_data_XCMS_", z.polarities[z], ".RData"))
+  data <- featureValues(xdata, method = "sum", value = "into")
+  data[is.na(data)] <- 0
+  features <- data.frame(featureDefinitions(xdata))
+  features$polarity <- z.polarities[z]
+  features$mean_solv <- rowMeans(data[,xdata$tissue == "solv"])
+  features$mean_blank <- rowMeans(data[,xdata$tissue == "blank"])
+  features$mean_STDmix <- rowMeans(data[,xdata$tissue == "STDmix"])
+  features$mean_max <- apply(
+    features[,c("mean_solv", "mean_blank", "mean_STDmix")], 1, max)
+  features$mean_solv_NO <- rowMeans(data[,xdata$tissue != "solv"])
+  features$mean_blank_NO <- rowMeans(data[,xdata$tissue != "blank"])
+  features$mean_STDmix_NO <- rowMeans(data[,xdata$tissue != "STDmix"])
+  features$solv_prop <- features$mean_solv / features$mean_solv_NO
+  features$solv_prop[features$solv_prop == "Inf"] <- features$mean_solv[features$solv_prop == "Inf"]
+  features$blank_prop <- features$mean_blank / features$mean_blank_NO
+  features$blank_prop[features$blank_prop == "Inf"] <- features$mean_blank[features$blank_prop == "Inf"]
+  features$STDmix_prop <- features$mean_STDmix / features$mean_STDmix_NO
+  features$STDmix_prop[features$STDmix_prop == "Inf"] <- features$mean_STDmix[features$STDmix_prop == "Inf"]
+  
+  rownames(data) <- gsub("FT", substr(z.polarities[z], 1, 1), rownames(data))
+  colnames(data) <- gsub(paste0("_", z.polarities[z], "_FS.mzData"), "", colnames(data))
+  rownames(features) <- gsub("FT", substr(z.polarities[z], 1, 1), rownames(features))
+  if(z == 1){
+    featuresz <- features
+    dataz <- data
+  } else if(z == 2){
+    features <- rbind(featuresz, features)
+    data <- rbind(dataz, data)
+  }
+}
+rm(z, dataz, featuresz, xdata)
+
+features$interest <- FALSE
+features$interest[features$npeaks == 2 & features$solv == 2 & 
+                    features$blank == 0 & features$STDmix == 0 &
+                    features$solv_prop > thr_int] <- TRUE
+features$interest[features$npeaks == 2 & features$solv == 0 & 
+                    features$blank == 2 & features$STDmix == 0 &
+                    features$blank_prop > thr_int] <- TRUE
+features$interest[features$npeaks == 2 & features$solv == 0 & 
+                    features$blank == 0 & features$STDmix == 2 &
+                    features$STDmix_prop > thr_int] <- TRUE
+```
+
+-   There have been detected a total of `r nrow(features)` features, `r sum(features$polarity == "POS")` in positive and `r sum(features$polarity == "NEG")` in negative ionization modes.  
+-   A total of `r sum(features$interest)` features fullfill the selection criteria (`r sum(features$interest & features$polarity == "POS")` from the positive ionization dataset and `r sum(features$interest & features$polarity == "NEG")` from the negative ionization dataset).
+
+Below, I plot the distribution of samples and features through a PCA highliting the selected features:
+
+```{r}
+data[data == 0] <- NA
+set.seed(123)
+data <- t(imputeRowMinRand(data, method = "from_to",
+                           min_fraction = 1/100,
+                           min_fraction_from = 1/1000
+))
+features$color <- "grey"
+features$color[features$npeaks == 2 & features$solv == 0 & 
+                 features$blank == 2 & features$STDmix == 0] <- 2
+features$color[features$color == 2 & features$blank_prop < 1e8] <- "#E41A1C50"
+features$color[features$npeaks == 2 & 
+                 features$solv == 2 & features$blank == 0 & features$STDmix == 0] <- 3
+features$color[features$color == 3 & features$solv_prop < 1e8] <- "#4DAF4A50"
+features$color[features$npeaks == 2 & 
+                 features$solv == 0 & features$blank == 0 & features$STDmix == 2] <- 4
+features$color[features$color == 4 & features$STDmix_prop < 1e8] <- "#377EB850"
+
+par(mfrow = c(2, 2), mar = c(1, 1, 2, 1))
+
+dt <- data[, grep("P", colnames(data))]
+dt <- log10(dt)
+scaling.pareto <- BioMark::scalefun(sc.p="pareto")
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+
+tmp <- data.frame(pca$x)
+tmp_x <- max(abs(min(tmp$PC1)), max(tmp$PC1))
+tmp_y <- max(abs(min(tmp$PC2)), max(tmp$PC2))
+plot(tmp$PC1, tmp$PC2, 
+     col = as.numeric(factor(gsub("_.*", "", substring(rownames(data), 30)))) + 1, pch = 16,
+     main = "POS", axes = FALSE, 
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+legend("topleft", col = 2:4, pch = 16, bty = "n",
+       legend = levels(factor(gsub("_.*", "", substring(rownames(data), 30)))))
+
+tmp <- data.frame(pca$rotation)
+tmp_x <- max(abs(min(tmp$PC1)), max(tmp$PC1))
+tmp_y <- max(abs(min(tmp$PC2)), max(tmp$PC2))
+plot(tmp$PC1, tmp$PC2, pch = 21, lwd = 0.1, axes = FALSE, 
+     bg = features$color[features$polarity == "POS"],
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+
+
+dt <- data[, grep("N", colnames(data))]
+dt <- log10(dt)
+scaling.pareto <- BioMark::scalefun(sc.p="pareto")
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+
+tmp <- data.frame(pca$x)
+tmp_x <- max(abs(min(tmp$PC1)), max(tmp$PC1))
+tmp_y <- max(abs(min(tmp$PC2)), max(tmp$PC2))
+plot(tmp$PC1, tmp$PC2, 
+     col = as.numeric(factor(gsub("_.*", "", substring(rownames(data), 30)))) + 1, pch = 16,
+     main = "POS", axes = FALSE, 
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+
+tmp <- data.frame(pca$rotation)
+tmp_x <- max(abs(min(tmp$PC1)), max(tmp$PC1))
+tmp_y <- max(abs(min(tmp$PC2)), max(tmp$PC2))
+plot(tmp$PC1, tmp$PC2, pch = 21, lwd = 0.1, axes = FALSE, 
+     bg = features$color[features$polarity == "NEG"],
+     xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
+grid()
+abline(v = 0, h = 0)
+rm(data, dt, features, pca, tmp, tmp_x, tmp_y, z.polarities, scaling.pareto)
+```
+
+The figure shows the score (left side) and loading (right side) plots of PCA from positive (upper side) and negative (bottom side) data.   
+Samples in the score plots are colored according to their class, and features in the loading plots are colored according to their specificity for a certain sample class (i.e. they are colored when they have only been detected in one type of sample).   
+The intensity of feature colors in the loadings plot indicates if the mean intensity for a specific class is at least `r thr_int` times higher in comparison of the mean intensity within the other samples not corresponding to that class.
+
+Now, I'm going to apply the functions generated for doing the feature grouping and compound identification to this dataset, and then I'll print the generated table of identifications:
+
+```{r}
+library(DT)
+
+ann <- c(
+  "[M+H]+", "13C[M+H]+", "(2)13C[M+H]+", "[M]+",
+  "[M+NH4]+", "13C[M+NH4]+", "(2)13C[M+NH4]+", "[M]+ +NH3",
+  "[M+Na]+", "13C[M+Na]+", "[M+K]+", 
+  "[M+C2H8N]+", "13C[M+C2H8N]+",
+  "[2M+H]+", "13C[2M+H]+", "(2)13C[2M+H]+", "[3M+H]+", "13C[3M+H]+",
+  "[2M+Na]+", "13C[2M+Na]+",
+  
+  "[M-H]-", "13C[M-H]-", "(2)13C[M-H]-", "(3)13C[M-H]-",
+  "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", 
+  "[2M-H]-", "13C[2M-H]-", "(2)13C[2M-H]-", "(3)13C[2M-H]-",
+  "[2M-2H+Na]-",
+  "[3M-H]-"
+)
+
+
+source("ft_grouping_functions.R")
+
+x.polarity <- c("POS", "NEG")
+for(x in seq(length(x.polarity))){
+  datax_tmp <- dt_preparation(polarity = x.polarity[x], class = "tissue", 
+                              mznoise = c(158.975, 184.0731, 219.174, 221.154, 
+                                          251.164, 267.196, 269.2115, 283.699, 
+                                          415.284))
+  features <- datax_tmp[["features"]]
+  features <- features[features$npeaks == 2 & features$blank == 0 &                       
+                         features$solv == 0 & features$STDmix == 2, ]
+  features <- features[features$prop_solv > thr_int |
+                         features$prop_blank > thr_int |
+                         features$prop_STDmix > thr_int, ]
+  datax_tmp[["features"]] <- features
+  
+  startpointx <- Sys.time()
+  datax_tmp <- ft_grouping(datax = datax_tmp)
+  #print(Sys.time()-startpointx)
+  
+  assign(paste("datax", tolower(x.polarity[x]), sep = "_"), datax_tmp)
+}
+rm(x, datax_tmp, features, startpointx, x.polarity)
+
+
+
+features <- isotopologues(rbind(datax_pos[["features"]], 
+                                datax_neg[["features"]]))
+
+data <- datax_pos[["data"]]
+colnames(data) <- substring(colnames(data), 25, 39)
+data_pos <- data[, order(colnames(data))]
+data <- datax_neg[["data"]]
+colnames(data) <- substring(colnames(data), 25, 39)
+data_neg <- data[, order(colnames(data))]
+data <- rbind(data_pos, data_neg)
+rm(datax_neg, datax_pos, data_neg, data_pos)
+
+features <- fg_grouping(data = data,
+                        features = features)
+
+cmps <- read.csv("../compounds_RT_formula.csv")
+IS <- cmps[cmps$class == "IS", ]
+old <- read.csv("../z_old/compounds.csv")
+old <- old[old$type == "MIXnativi",]
+mix <- cmps[cmps$ID %in% old$name, ]
+mix2 <- old[!old$name %in% cmps$ID, ]
+mix2 <- subset(mix2, select = c("name", "RT", "class", "formula", "C"))
+colnames(mix2)[1] <- "ID"
+mix2$POS <- NA
+mix2$NEG <- NA
+mix2$RT <- mix2$RT/60
+cmps <- rbind(IS, mix, mix2)
+cmps$RT <- cmps$RT*60
+cmps$mass <- NA
+for(i in seq(nrow(cmps))){
+  cmps$mass[i] <- getMolecule(cmps$formula[i])$exactmass
+}
+rm(data, IS, old, mix, mix2, i)
+
+startpointx <- Sys.time()
+dt_ids <- identification(features, cmps)
+#Sys.time()-startpointx
+
+dt_fg <- dt_ids[["dt_fg"]]
+datatable(dt_fg[, c(1:5,9)], rownames = FALSE,  
+          options = list(dom = 't', pageLength = nrow(dt_fg))) %>% 
+  formatStyle("color", target = "row", 
+              backgroundColor = styleEqual(
+                c(0, 1, 2, 3), c('', 'lightblue', '#C0819E60', 'lightgreen')))
+```
+
+
+```{r}
+ppm_dev <- function(e, t){((e-t)/t)*1e6}
+
+features <- dt_ids[["features"]]
+features$d_RT <- NA
+features$ppm <- NA
+for(i in seq(nrow(dt_fg))){
+  idx <- which(cmps$ID == dt_fg$compound[i])
+  if(length(idx) > 0){
+    i.features <- features[features$FGx == dt_fg$FG[i], ]
+    for(j in seq(nrow(i.features))){
+      if(grepl("13C", i.features$assignation[j])){
+        mz.thr <- unlist(mass2mz(
+          getMolecule(cmps$formula[idx])$exactmass + 1.003355, 
+          gsub("13C", "", i.features$assignation[j])))
+      } else {
+        mz.thr <- unlist(mass2mz(getMolecule(cmps$formula[idx])$exactmass, 
+                                 i.features$assignation[j]))
+      } # close "if(grepl("13C", i.features$assignation[j]))"
+      
+      i.features$ppm[j] <- ppm_dev(i.features$mzmed[j], mz.thr)
+      
+    } # close i.features "j"
+    
+    i.features$d_RT <- i.features$rtmed - cmps$RT[idx]
+    
+    features[rownames(i.features), "ppm"] <- i.features[, "ppm"]
+    features[rownames(i.features), "d_RT"] <- i.features[, "d_RT"]
+    
+  } # close "if(length(idx) > 0)"
+} # close dt_fg "i"
+rm(i, idx, i.features, j, mz.thr)
+```
+
+In summary, it can be observed that the `r nrow(features)` features that fulfilled the initial criteria have been grouped in `r nrow(dt_fg)` compounds, `r sum(dt_fg$color == 1)` (`r round((sum(dt_fg$color == 1) / nrow(dt_fg))*100)`%) corresponding to a known compound. Additionally, among the `r nrow(features)` filtered features, `r sum(!is.na(features$d_RT))` (`r round((sum(!is.na(features$d_RT))/nrow(features))*100)`%) corresponded to the identified compounds.
+
+At this point, I'm interested in checking which are the RT and ppm deviations between the theoretical database and the experimental data:
+
+```{r}
+features <- features[!is.na(features$ppm), ]
+plotly::plot_ly(x = features$d_RT, y = features$ppm, 
+                text = paste(features$FGx, features$assignation), 
+                color = features$FGx, colors = "Set2")
+tapply(features$ppm, features$polarity, summary)
+tapply(features$d_RT, features$polarity, summary)
+```
+
+It can be seen that ppm deviations range between `r sprintf("%.1f", min(features$ppm))` and `r sprintf("%.1f", max(features$ppm))`, whereas RT deviations move between `r round(min(features$d_RT))` and `r round(max(features$d_RT))` seconds.
+
+```{r}
+Sys.time()-startpoint
+```
