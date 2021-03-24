@@ -46,8 +46,10 @@ for(z in seq(length(z.polarities))){
   features$STDmix_prop[features$STDmix_prop == "Inf"] <- features$mean_STDmix[features$STDmix_prop == "Inf"]
   
   rownames(data) <- gsub("FT", substr(z.polarities[z], 1, 1), rownames(data))
-  colnames(data) <- gsub(paste0("_", z.polarities[z], "_FS.mzData"), "", colnames(data))
-  rownames(features) <- gsub("FT", substr(z.polarities[z], 1, 1), rownames(features))
+  colnames(data) <- gsub(paste0("_", z.polarities[z], "_FS.mzData"), "", 
+                         colnames(data))
+  rownames(features) <- gsub("FT", substr(z.polarities[z], 1, 1), 
+                             rownames(features))
   if(z == 1){
     featuresz <- features
     dataz <- data
@@ -105,7 +107,8 @@ tmp <- data.frame(pca$x)
 tmp_x <- max(abs(min(tmp$PC1)), max(tmp$PC1))
 tmp_y <- max(abs(min(tmp$PC2)), max(tmp$PC2))
 plot(tmp$PC1, tmp$PC2, 
-     col = as.numeric(factor(gsub("_.*", "", substring(rownames(data), 30)))) + 1, pch = 16,
+     col = as.numeric(factor(gsub("_.*", "", 
+                                  substring(rownames(data), 30)))) + 1, pch = 16,
      main = "POS", axes = FALSE, 
      xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
 grid()
@@ -175,7 +178,7 @@ ann <- c(
 )
 
 
-source("ft_grouping_functions.R")
+source("../../../R/ft_group.R")
 
 x.polarity <- c("POS", "NEG")
 for(x in seq(length(x.polarity))){
@@ -249,8 +252,6 @@ datatable(dt_fg[, c(1:5,9)], rownames = FALSE,
 
 
 ```{r}
-ppm_dev <- function(e, t){((e-t)/t)*1e6}
-
 features <- dt_ids[["features"]]
 features$d_RT <- NA
 features$ppm <- NA
@@ -293,6 +294,16 @@ plot_ly(x = features$d_RT, y = features$ppm,
                 text = paste(features$FGx, features$assignation), 
                 color = features$FGx, colors = "Set2") %>%
   layout(xaxis = list(title = "d(RT)"), yaxis = list(title = "ppm"))
+plot_ly(x = features$rtmed, y = features$d_RT,
+        text = paste(features$FGx, features$assignation), 
+                color = features$FGx, colors = "Set2") %>%
+  layout(xaxis = list(title = "RT - experimental"), 
+         yaxis = list(title = "d(RT)"))
+plot_ly(x = (features$rtmed - features$d_RT), y = features$d_RT,
+        text = paste(features$FGx, features$assignation), 
+                color = features$FGx, colors = "Set2") %>%
+  layout(xaxis = list(title = "RT - theoretical"), 
+         yaxis = list(title = "d(RT)"))
 tapply(features$ppm, features$polarity, summary)
 tapply(features$d_RT, features$polarity, summary)
 ```
