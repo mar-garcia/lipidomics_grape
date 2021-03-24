@@ -32,20 +32,17 @@ dt_preparation <- function(polarity = c("POS", "NEG"),
     features[,paste0("mean_", class.levels)], 1, max)
   
   # Leave noisy peaks for last
+  features$mean_max2 <- features$mean_max
   tmp <- min(features$mean_max)
   for(i in seq(length(mznoise))){
     idx <- which((features$mzmed > mznoise[i] - 0.01) & 
                    (features$mzmed < mznoise[i] + 0.01))
     if(length(idx) > 0){
-      features$mean_max[idx] <- features$mean_max[idx] / tmp
+      features$mean_max2[idx] <- features$mean_max2[idx] / tmp
     }
   }
   
-  features <- features[order(features$mean_max, decreasing = T), ]
-  #features <- features[features$npeaks == 2 & features$blank == 0 & 
-  #                       features$solv == 0 & features$STDmix == 2, ]
-  #features <- features[features$STDmix_prop > 1e8, ]
-  
+  features <- features[order(features$mean_max2, decreasing = T), ]
   rownames(features) <- gsub("FT", substring(polarity, 1, 1), rownames(features))
   rownames(data) <- gsub("FT", substring(polarity, 1, 1), rownames(data))
   colnames(data) <- gsub(paste0("_", polarity, "_FS.mzData"), "", colnames(data))
@@ -221,7 +218,7 @@ ft_grouping <- function(datax){
 
 isotopologues <- function(features){
   
-  features <- features[order(features$mean_max, decreasing = T), ]
+  features <- features[order(features$mean_max2, decreasing = T), ]
   features$isotopes <- NA
   
   z.polarities <- c("POS", "NEG")
