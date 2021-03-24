@@ -5,7 +5,7 @@ output: html_document
 
 ```{r include = FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
-thr_int <- 1e8
+thr_int <- 1e7
 startpoint <- Sys.time()
 ```
 
@@ -15,7 +15,7 @@ In this document I'm going to do a prototype of data analysis and compound ident
 -   blank (empty samples submitted to the same preparation procedure as study samples, i.e., they just include the IS)\
 -   STDmix (composed by a mix of 77 known compounds, but not submitted to the standard preparation procedure, i.e. they do not include the IS)
 
-XCMS processing of this dataset is already done in both polarities. The only difference in the processing is that for NEG polarity I've retained those features that contain at least 5 peaks with intensity \>= `r 1e5` counts, whereas for POS polarity the intensity threshold has been `r 2.5e5` counts.
+XCMS processing of this dataset is already done in both polarities. The only difference in the processing is that for NEG polarity I've retained those features that contain at least 5 peaks with intensity \>= `r 1.0e5` counts, whereas for POS polarity the intensity threshold has been `r 2.5e5` counts.
 
 I'll be focused on features characteristic of 1 sample type. For that I'll select those features that are present in only 1 sample type and which mean(intensity) for that sample type is more than `r thr_int` times higher than the mean(intensity) of the other samples.
 
@@ -133,8 +133,8 @@ tmp <- data.frame(pca$x)
 tmp_x <- max(abs(min(tmp$PC1)), max(tmp$PC1))
 tmp_y <- max(abs(min(tmp$PC2)), max(tmp$PC2))
 plot(tmp$PC1, tmp$PC2, 
-     col = as.numeric(factor(gsub("_.*", "", substring(rownames(data), 30)))) + 1, pch = 16,
-     main = "POS", axes = FALSE, 
+     col = as.numeric(factor(gsub("_.*", "", substring(rownames(data), 30)))) + 1, 
+     pch = 16, main = "NEG", axes = FALSE, 
      xlim = c(-tmp_x, tmp_x), ylim = c(-tmp_y, tmp_y))
 grid()
 abline(v = 0, h = 0)
@@ -193,7 +193,7 @@ for(x in seq(length(x.polarity))){
   
   startpointx <- Sys.time()
   datax_tmp <- ft_grouping(datax = datax_tmp)
-  #print(Sys.time()-startpointx)
+  print(Sys.time()-startpointx)
   
   assign(paste("datax", tolower(x.polarity[x]), sep = "_"), datax_tmp)
 }
@@ -237,7 +237,7 @@ rm(data, IS, old, mix, mix2, i)
 
 startpointx <- Sys.time()
 dt_ids <- identification(features, cmps)
-#Sys.time()-startpointx
+Sys.time()-startpointx
 
 dt_fg <- dt_ids[["dt_fg"]]
 datatable(dt_fg[, c(1:5,9)], rownames = FALSE,  
@@ -261,8 +261,8 @@ for(i in seq(nrow(dt_fg))){
     for(j in seq(nrow(i.features))){
       if(grepl("13C", i.features$assignation[j])){
         mz.thr <- unlist(mass2mz(
-          getMolecule(cmps$formula[idx])$exactmass + 1.003355, 
-          gsub("13C", "", i.features$assignation[j])))
+          getMolecule(cmps$formula[idx])$exactmass, 
+          gsub("13C", "", i.features$assignation[j]))) + 1.003355
       } else {
         mz.thr <- unlist(mass2mz(getMolecule(cmps$formula[idx])$exactmass, 
                                  i.features$assignation[j]))
@@ -287,10 +287,12 @@ In summary, it can be observed that the `r nrow(features)` features that fulfill
 At this point, I'm interested in checking which are the RT and ppm deviations between the theoretical database and the experimental data:
 
 ```{r}
+library(plotly)
 features <- features[!is.na(features$ppm), ]
-plotly::plot_ly(x = features$d_RT, y = features$ppm, 
+plot_ly(x = features$d_RT, y = features$ppm, 
                 text = paste(features$FGx, features$assignation), 
-                color = features$FGx, colors = "Set2")
+                color = features$FGx, colors = "Set2") %>%
+  layout(xaxis = list(title = "d(RT)"), yaxis = list(title = "ppm"))
 tapply(features$ppm, features$polarity, summary)
 tapply(features$d_RT, features$polarity, summary)
 ```

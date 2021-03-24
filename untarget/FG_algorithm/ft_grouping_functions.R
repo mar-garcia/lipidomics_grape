@@ -546,6 +546,18 @@ fg_grouping <- function(data, features){
 
 identification <- function(features, cmps, rt_d = 60, ppm_d = 10){
   
+  require(Rdisop)
+  require(CluMSID)
+  
+  neutral_losses <- data.frame(
+    formula = c("H2O", "C5H12NO5P", "C8H15NO4", "C9H17O10P", "C16H32O2", 
+                "C19H38O4"),
+    massdiff = NA
+  )
+  for(i in seq(nrow(neutral_losses))){
+    neutral_losses$massdiff[i] <- getMolecule(neutral_losses$formula[i])$exactmass
+  }
+  
   load("../tissues/data/RData/MS2_library_POS.RData")
   ms2list_pos <- ms2list
   load("../tissues/data/RData/MS2_library_NEG.RData")
@@ -764,7 +776,7 @@ identification <- function(features, cmps, rt_d = 60, ppm_d = 10){
   dt_fg$unknown <- grepl("Unknown", dt_fg$compound) | (dt_fg$compound == "")
   dt_fg$duplicated <- dt_fg$compound %in% dt_fg$compound[duplicated(dt_fg$compound)]
   dt_fg$background <- dt_fg$FG %in% unique(
-    features$FGx[features$mean_max < min(apply(
+    features$FGx[features$mean_max2 < min(apply(
       features[,c("mean_solv", "mean_blank", "mean_STDmix")], 1, max))])
   dt_fg$color <- 0
   dt_fg$color[!dt_fg$unknown] <- 1
