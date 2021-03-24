@@ -5,7 +5,7 @@ output: html_document
 
 ```{r include = FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
-thr_int <- 1e7
+thr_int <- 1e8
 startpoint <- Sys.time()
 ```
 
@@ -255,8 +255,8 @@ features <- dt_ids[["features"]]
 features$d_RT <- NA
 features$ppm <- NA
 for(i in seq(nrow(dt_fg))){
-  idx <- which(cmps$ID == dt_fg$compound[i])
-  if(length(idx) > 0){
+  idx <- which(cmps$ID %in% unlist(strsplit(dt_fg$compound[i], "; ")))
+  if(length(idx) == 1){
     i.features <- features[features$FGx == dt_fg$FG[i], ]
     for(j in seq(nrow(i.features))){
       if(grepl("13C", i.features$assignation[j])){
