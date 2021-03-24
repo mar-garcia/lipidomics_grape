@@ -1,23 +1,35 @@
 # dt_preparation
 
-dt_preparation <- function(polarity = c("POS", "NEG")){
+dt_preparation <- function(polarity = c("POS", "NEG"),
+                           class, mznoise){
+  require(xcms)
   
   load(paste0("data/RData/IS_data_XCMS_", polarity, ".RData"))
   
   data <- featureValues(xdata, method = "sum", value = "into")
   data[is.na(data)] <- 0
+  
   features <- data.frame(featureDefinitions(xdata))
   features$polarity <- polarity
-  features$mean_solv <- rowMeans(data[,xdata$tissue == "solv"])
-  features$mean_blank <- rowMeans(data[,xdata$tissue == "blank"])
-  features$mean_STDmix <- rowMeans(data[,xdata$tissue == "STDmix"])
-  features$mean_max <- apply(
-    features[,c("mean_solv", "mean_blank", "mean_STDmix")], 1, max)
   
-  features$mean_STDmix_NO <- rowMeans(data[,xdata$tissue != "STDmix"])
-  features$STDmix_prop <- features$mean_STDmix / features$mean_STDmix_NO
-  features$STDmix_prop[features$STDmix_prop == "Inf"] <- features$mean_STDmix[
-    features$STDmix_prop == "Inf"]
+  class.levels <- levels(factor(pData(xdata)[, class]))
+  for(i in seq(length(class.levels))){
+    tmp1 <- rowMeans(data[, pData(xdata)[, class] == class.levels[i]])
+    features <- cbind(features, tmp1)
+    colnames(features)[ncol(features)] <- paste0("mean_", class.levels[i])
+    
+    tmp2 <- rowMeans(data[, pData(xdata)[, class] != class.levels[i]])
+    features <- cbind(features, tmp2)
+    colnames(features)[ncol(features)] <- paste0("mean_", class.levels[i], "_NO")
+    
+    tmp3 <- tmp1 / tmp2
+    tmp3[tmp3 == "Inf"] <- tmp1[tmp3 == "Inf"]
+    features <- cbind(features, tmp3)
+    colnames(features)[ncol(features)] <- paste0("prop_", class.levels[i])
+  }
+  
+  features$mean_max <- apply(
+    features[,paste0("mean_", class.levels)], 1, max)
   
   # Leave noisy peaks for last
   tmp <- min(features$mean_max)
@@ -30,9 +42,9 @@ dt_preparation <- function(polarity = c("POS", "NEG")){
   }
   
   features <- features[order(features$mean_max, decreasing = T), ]
-  features <- features[features$npeaks == 2 & features$blank == 0 & 
-                         features$solv == 0 & features$STDmix == 2, ]
-  features <- features[features$STDmix_prop > 1e8, ]
+  #features <- features[features$npeaks == 2 & features$blank == 0 & 
+  #                       features$solv == 0 & features$STDmix == 2, ]
+  #features <- features[features$STDmix_prop > 1e8, ]
   
   rownames(features) <- gsub("FT", substring(polarity, 1, 1), rownames(features))
   rownames(data) <- gsub("FT", substring(polarity, 1, 1), rownames(data))
@@ -52,6 +64,19 @@ dt_preparation <- function(polarity = c("POS", "NEG")){
 # ft_grouping
 
 ft_grouping <- function(datax){
+  
+  require(CluMSID)
+  require(CompoundDb)
+  require(Rdisop)
+  
+  neutral_losses <- data.frame(
+    formula = c("H2O", "C5H12NO5P", "C8H15NO4", "C9H17O10P", "C16H32O2", 
+                "C19H38O4"),
+    massdiff = NA
+  )
+  for(i in seq(nrow(neutral_losses))){
+    neutral_losses$massdiff[i] <- getMolecule(neutral_losses$formula[i])$exactmass
+  }
   
   xdata <- datax[["xdata"]]
   data <- datax[["data"]]
@@ -111,6 +136,12 @@ ft_grouping <- function(datax){
         y.features <- y.features[y.features$corr_ps > 0.5, ]
         y.features$MS2x <- NA
         for(i in seq(nrow(y.features))){
+          if(y.features$polarity[i] == "POS"){
+            smbl <- "+"
+          } else if(y.features$polarity[i] == "NEG"){
+            smbl <- "-"
+          }
+          
           y.ms2 <- findFragment(ms2list, y.features$mzmed[i])
           y.ms2 <- getSpectrum(y.ms2, "rt", y.features$rtmed[i], rt.tol = 10)
           for(j in seq(nrow(y.features))){
@@ -232,6 +263,20 @@ isotopologues <- function(features){
 # fg_grouping
 
 fg_grouping <- function(data, features){
+  
+  require(Rdisop)
+  
+  massneg <- c(-1.007276, getMolecule("Cl")$exactmass, 
+               c(-1.007276 + getMolecule("HCOOH")$exactmass))
+  names(massneg) <- c("[M-H]-", "[M+Cl]-", "[M-H+HCOOH]-")
+  masspos <- c(1.007276, getMolecule("NH4")$exactmass, getMolecule("Na")$exactmass,
+               getMolecule("K")$exactmass, getMolecule("C2H8N")$exactmass)
+  names(masspos) <- c("[M+H]+", "[M+NH4]+", "[M+Na]+", "[M+K]+", "[M+C2H8N]+")
+  massdif <- outer(masspos, massneg, "-")
+  colnames(massdif) <- names(massneg)
+  rownames(massdif) <- names(masspos) 
+
+  
   features$FGx <- NA
   features$annotation <- NA
   y.n <- 0
@@ -502,7 +547,7 @@ fg_grouping <- function(data, features){
 
 # identification
 
-identification <- function(features){
+identification <- function(features, cmps, rt_d = 60, ppm_d = 10){
   
   load("../tissues/data/RData/MS2_library_POS.RData")
   ms2list_pos <- ms2list
@@ -516,6 +561,8 @@ identification <- function(features){
     POS = NA,
     NEG = NA
   )
+  
+  features$assignation <- NA
   
   for(y in seq(nrow(dt_fg))){
     y.features <- features[features$FGx == dt_fg$FG[y], ]
@@ -572,7 +619,6 @@ identification <- function(features){
       }
     } # close if(length(idx) > 0)
     
-    y.features$assignation <- NA
     for(i in seq(nrow(y.features))){
       if(is.na(y.features$annotation)[i]){
         if(y.features$polarity[i] == "NEG"){
@@ -580,12 +626,6 @@ identification <- function(features){
         } else if(y.features$polarity[i] == "POS"){
           y.pol <- 1
         }
-        #tmp <- names(
-        #unlist(matchWithPpm(
-        #y.features$mzmed[i], unlist(mass2mz(
-        #mean(massneut, na.rm = TRUE), adducts(polarity = y.pol))), 
-        #ppm = 10)))
-        #if(length(tmp) > 0){
         if(y.features$mzmed[i] < (mean(massneut) - 2)){
           if(y.features$polarity[i] == "POS"){smbl <- "+"
           } else if(y.features$polarity[i] == "NEG"){smbl <- "-"}
@@ -599,7 +639,6 @@ identification <- function(features){
                 y.prec <- c(y.prec, y.ms2[[j]]@precursor)
               }
               if((max(y.prec) - min(y.prec)) > 1){
-                #tmp <- as.numeric(names(which.max(table(round(y.prec)))))
                 tmp <- data.frame(table(round(y.prec)))
                 tmp <- tmp[order(tmp$Freq, decreasing = T), ]
                 tmp$Var1 <- as.numeric(as.character(tmp$Var1))
@@ -618,7 +657,8 @@ identification <- function(features){
                 } else {
                   y.prec <- NA
                 }
-              } else {y.prec <- mean(y.prec)} # close "if((max(y.prec) - min(y.prec)) > 1)"
+              } else {y.prec <- mean(y.prec)
+              } # close "if((max(y.prec) - min(y.prec)) > 1)"
             } else if(length(y.ms2) == 1){
               y.prec <- y.ms2@precursor
             }
@@ -655,7 +695,8 @@ identification <- function(features){
           idx <- grep(gsub(".*\\[", "", y.features$isotopes[i]),
                       y.features$isotopes)
           idx <- idx[y.features$polarity[idx] == y.features$polarity[i]]
-          if(!is.na(y.features$isotopes[idx][1]) & !is.na(y.features$annotation[idx][1])){
+          if(!is.na(y.features$isotopes[idx][1]) & 
+             !is.na(y.features$annotation[idx][1])){
             y.features$assignation[idx] <- gsub(
               paste0("\\", y.features$isotopes[idx][1]), y.features$annotation[i],
               y.features$isotopes[idx])
@@ -696,35 +737,18 @@ identification <- function(features){
     dt_fg$NEG[y] <- paste(paste(round(y.features$mzmed[idx], 4),
                                 y.features$assignation[idx]), collapse = "; ")
     
+    features[rownames(y.features), "assignation"] <- y.features[, "assignation"]
+    
   } #close "for(y in seq(nrow(dt_fg)))"
   dt_fg$POS <- gsub(" NA", "", dt_fg$POS)
   dt_fg$NEG <- gsub(" NA", "", dt_fg$NEG)
   
-  
-  cmps <- read.csv("../compounds_RT_formula.csv")
-  #cmps <- cmps[cmps$class == "IS", ]
-  old <- read.csv("../z_old/compounds.csv")
-  old <- old[old$type == "MIXnativi",]
-  mix <- cmps[cmps$ID %in% old$name, ]
-  mix2 <- old[!old$name %in% cmps$ID, ]
-  mix2 <- subset(mix2, select = c("name", "RT", "class", "formula", "C"))
-  colnames(mix2)[1] <- "ID"
-  mix2$POS <- NA
-  mix2$NEG <- NA
-  mix2$RT <- mix2$RT/60
-  cmps <- rbind(mix, mix2)
-  cmps$RT <- cmps$RT*60 + 20
-  cmps$mass <- NA
-  for(i in seq(nrow(cmps))){
-    cmps$mass[i] <- getMolecule(cmps$formula[i])$exactmass
-  }
-  
   dt_fg$compound <- NA
   for(i in seq(nrow(dt_fg))){
-    i.cmps <- cmps[unlist(matchWithPpm(dt_fg$mass[i], cmps$mass, ppm = 10)), ]
+    i.cmps <- cmps[unlist(matchWithPpm(dt_fg$mass[i], cmps$mass, ppm = ppm_d)), ]
     if(nrow(i.cmps) > 0){
-      i.cmps <- i.cmps[(i.cmps$RT > (dt_fg$RT[i] - 20)) & 
-                         (i.cmps$RT < (dt_fg$RT[i] + 20)), ]
+      i.cmps <- i.cmps[(i.cmps$RT > (dt_fg$RT[i] - rt_d)) & 
+                         (i.cmps$RT < (dt_fg$RT[i] + rt_d)), ]
       if(nrow(i.cmps) > 0){
         dt_fg$compound[i] <- paste(i.cmps$ID, collapse = "; ")
       } else {
@@ -753,7 +777,12 @@ identification <- function(features){
   dt_fg$compound[dt_fg$background & dt_fg$unknown] <- gsub(
     "Unknown", "Background", dt_fg$compound[dt_fg$background & dt_fg$unknown])
   
-  return(dt_fg)
+  datax <- list(
+    features = features,
+    dt_fg = dt_fg
+  )
+  
+  return(datax)
 }
 
 
