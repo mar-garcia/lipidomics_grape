@@ -9,5 +9,5 @@
 *.sld
 *.txt
 *.xlsx
-*z_old*
+*old*
 !IS_feature_grouping_v2.html
