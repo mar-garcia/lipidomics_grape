@@ -30,7 +30,7 @@ if(polarity == "NEG"){
   int <- 4e6
 }
 
-thr_int <- 2e7
+thr_int <- 2e4
 
 if(study == "maturation"){
   v.class <- "time"
@@ -196,7 +196,7 @@ features <- fg_grouping(data = datax[["data"]],
 
 # Identification
 
-```{r identification}
+```{r identification, message=FALSE}
 cmps <- read.csv("compounds_RT_formula.csv")
 IS <- cmps[cmps$class == "IS", ]
 old <- read.csv("z_old/compounds.csv")
@@ -304,7 +304,7 @@ datatable(t(ft_id)[-1,], caption = "Features",
 
 ## Plots
 
-```{r, message=FALSE}
+```{r, message=FALSE, warning=FALSE}
 features <- features[!is.na(features$ppm), ]
 plot_ly(x = features$d_RT, y = features$ppm, 
         text = paste(features$FGx, features$assignation), 
