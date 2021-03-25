@@ -1,0 +1,306 @@
+---
+title: "RT and ppm deviations"
+output: html_document
+---
+
+The scope of this document is to check which are the RT and m/z deviations of each experiment.  
+For that I´ll use the following types of samples: `solvent` (we shouldn't see "anything"), `blank` (we should see "only" the IS) and `STDmix` (we should see the ions related with the 77 compounds included in this mix). There are 2 injections of each type of sample. Therefore, we will use 6 samples in total.  
+
+The workflow will be the following:  
+
+  - Data processing with XCMS  
+  - Feature grouping  
+  - Identification based on theoretical database of IS and STDmix compounds  
+  
+  
+# Preliminaries
+
+```{r preliminaries}
+polarity <- "NEG" # specify "POS" or "NEG"
+study <- "tissues" # specify "maturation" or "tissues"
+
+if(polarity == "NEG"){
+  int <- 1e5
+} else if(polarity == "POS"){
+  int <- 1e6
+}
+
+thr_int <- 5e7
+
+
+library(xcms)
+library(DT)
+library(plotly)
+
+startpoint <- Sys.time()
+```
+
+# XCMS processing
+
+## Data import
+
+```{r data-import}
+#  Get filenames
+injections <- list.files(paste0(study, "/data/", polarity, "_FS_fixed/"))
+injections <- data.frame(
+  filename = injections[grepl("blank|STDmix|solv_rep1|solv_rep2", injections)])
+tmp <- strsplit(gsub(".mzData", "", injections$filename), "_")
+tmp <- data.frame(do.call(rbind, tmp))
+tmp$X2 <- paste(tmp$X2, tmp$X3, sep = "_")
+tmp <- tmp[,-3]
+colnames(tmp) <- c("order", "project", "pt", "tissue", "rep", "polarity", "mode")
+injections <- cbind(injections, tmp)
+rm(tmp)
+
+# Read the data
+data_raw <- readMSData(
+  paste0(study, "/data/", polarity, "_FS_fixed/" , injections$filename),
+  pdata = as(AnnotatedDataFrame(injections),
+             "NAnnotatedDataFrame"), 
+  mode = "onDisk")
+```
+
+
+## Peak detection
+
+```{r peak-detection}
+cwp <- CentWaveParam(ppm = 20,
+                     peakwidth = c(2, 20),
+                     prefilter = c(5, int),
+                     snthresh = 5,
+                     noise = 1000,
+                     mzdiff = 0.001,
+                     integrate = 2)
+xdata <- findChromPeaks(data_raw, param = cwp)
+```
+
+### Filter low-intensity peaks
+
+```{r filter-low-intensity-peaks}
+xdata <- refineChromPeaks(xdata, 
+                          param = FilterIntensityParam(
+                            nValues = 5, threshold = int)
+)
+```
+
+### Peak post-processing
+
+```{r peak-post-processing}
+mnp <- MergeNeighboringPeaksParam(
+  expandRt = 2, 
+  expandMz = 0.001, 
+  ppm = 10,
+  minProp = 0.66)
+register(SerialParam())
+xdata <- refineChromPeaks(xdata, param = mnp)
+```
+
+
+## Aligment
+
+```{r aligment}
+# Define the hook peaks
+pdp <- PeakDensityParam(sampleGroups = xdata$tissue,
+                        minFraction = 1,
+                        binSize = 0.02,
+                        bw = 3)
+xdata <- groupChromPeaks(xdata, param = pdp)
+
+# Perform the aligment
+pgp <- PeakGroupsParam(span = 0.3,
+                       subset = which(xdata$tissue == "STDmix"),
+                       subsetAdjust = "average",
+                       minFraction = 1)
+xdata <- adjustRtime(xdata, param = pgp)
+```
+
+## Correspondance
+
+```{r correspondance}
+pdp <- PeakDensityParam(sampleGroups = xdata$tissue,
+                        minFraction = 1,
+                        minSamples = 2,
+                        binSize = 0.02,
+                        bw = 1)
+xdata <- groupChromPeaks(xdata, param = pdp)
+```
+
+## Peak filling
+
+```{r peak-filling}
+fcp <- ChromPeakAreaParam()
+xdata <- fillChromPeaks(xdata, param = fcp)
+
+rm(cwp, mnp, pgp, pdp, fcp, int, injections, data_raw)
+```
+
+
+# Feature grouping
+
+```{r feature-grouping}
+source("../../R/ft_group.R")
+
+datax <- dt_preparation(xobj = xdata, class = "tissue", 
+                        mznoise = c(158.975, 184.0731, 219.174, 221.154, 
+                                    251.164, 267.196, 269.2115, 283.699, 
+                                    415.284))
+
+features <- datax[["features"]]
+features <- features[features$npeaks == 2 & features$blank == 0 &                       
+                       features$solv == 0 & features$STDmix == 2, ]
+features <- features[features$prop_solv > thr_int |
+                       features$prop_blank > thr_int |
+                       features$prop_STDmix > thr_int, ]
+datax[["features"]] <- features
+
+load(paste0(study, "/data/RData/MS2_library_", polarity, ".RData"))
+datax <- ft_grouping(datax = datax, 
+                     MS2x = ms2list)
+
+features <- isotopologues(features = datax[["features"]])
+
+features <- fg_grouping(data = datax[["data"]],
+                        features = features)
+```
+
+
+# Identification
+
+```{r identification}
+cmps <- read.csv("compounds_RT_formula.csv")
+IS <- cmps[cmps$class == "IS", ]
+old <- read.csv("z_old/compounds.csv")
+old <- old[old$type == "MIXnativi",]
+mix <- cmps[cmps$ID %in% old$name, ]
+mix2 <- old[!old$name %in% cmps$ID, ]
+mix2 <- subset(mix2, select = c("name", "RT", "class", "formula", "C"))
+colnames(mix2)[1] <- "ID"
+mix2$POS <- NA
+mix2$NEG <- NA
+mix2$RT <- mix2$RT/60
+cmps <- rbind(IS, mix, mix2)
+cmps$RT <- cmps$RT*60
+cmps$mass <- NA
+for(i in seq(nrow(cmps))){
+  cmps$mass[i] <- getMolecule(cmps$formula[i])$exactmass
+}
+rm(IS, old, mix, mix2, i)
+
+ann <- c(
+  "[M+H]+", "13C[M+H]+", "(2)13C[M+H]+", "[M]+",
+  "[M+NH4]+", "13C[M+NH4]+", "(2)13C[M+NH4]+", "[M]+ +NH3",
+  "[M+Na]+", "13C[M+Na]+", "[M+K]+", 
+  "[M+C2H8N]+", "13C[M+C2H8N]+",
+  "[2M+H]+", "13C[2M+H]+", "(2)13C[2M+H]+", "[3M+H]+", "13C[3M+H]+",
+  "[2M+Na]+", "13C[2M+Na]+",
+  
+  "[M-H]-", "13C[M-H]-", "(2)13C[M-H]-", "(3)13C[M-H]-",
+  "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", 
+  "[2M-H]-", "13C[2M-H]-", "(2)13C[2M-H]-", "(3)13C[2M-H]-",
+  "[2M-2H+Na]-",
+  "[3M-H]-"
+)
+
+
+dt_ids <- identification(features, cmps, MS2x = ms2list)
+
+rm(datax, features, ms2list, ann, thr_int)
+
+
+
+dt_fg <- dt_ids[["dt_fg"]]
+features <- dt_ids[["features"]]
+features$d_RT <- NA
+features$ppm <- NA
+for(i in seq(nrow(dt_fg))){
+  idx <- which(cmps$ID %in% unlist(strsplit(dt_fg$compound[i], "; ")))
+  if(length(idx) == 1){
+    i.features <- features[features$FGx == dt_fg$FG[i], ]
+    for(j in seq(nrow(i.features))){
+      if(grepl("13C", i.features$assignation[j])){
+        mz.thr <- unlist(mass2mz(
+          getMolecule(cmps$formula[idx])$exactmass, 
+          gsub("13C", "", i.features$assignation[j]))) + 1.003355
+      } else {
+        mz.thr <- unlist(mass2mz(getMolecule(cmps$formula[idx])$exactmass, 
+                                 i.features$assignation[j]))
+      } # close "if(grepl("13C", i.features$assignation[j]))"
+      
+      i.features$ppm[j] <- ppm_dev(i.features$mzmed[j], mz.thr)
+      
+    } # close i.features "j"
+    
+    i.features$d_RT <- i.features$rtmed - cmps$RT[idx]
+    
+    features[rownames(i.features), "ppm"] <- i.features[, "ppm"]
+    features[rownames(i.features), "d_RT"] <- i.features[, "d_RT"]
+    
+  } # close "if(length(idx) > 0)"
+} # close dt_fg "i"
+rm(i, idx, i.features, j, mz.thr)
+
+cmp_id <- data.frame(table(dt_fg$color))
+rownames(cmp_id) <- c("unknown", "identified")
+cmp_id$perc <-  round((cmp_id$Freq/sum(cmp_id$Freq))*100, 1)
+
+ft_id <- data.frame(table(!is.na(features$d_RT)))
+rownames(ft_id) <- c("unknown", "identified")
+ft_id$perc <-  round((ft_id$Freq/sum(ft_id$Freq))*100, 1)
+```
+
+## Tables
+
+```{r id-table}
+datatable(dt_fg[, c(1:5,9)], rownames = FALSE,  
+          options = list(dom = 't', pageLength = nrow(dt_fg))) %>% 
+  formatStyle("color", target = "row", 
+              backgroundColor = styleEqual(
+                c(0, 1, 2, 3), c('', 'lightblue', '#C0819E60', 'lightgreen')))
+
+datatable(t(cmp_id)[-1,], caption = "Compounds",  
+          options = list(dom = 't'))
+datatable(t(ft_id)[-1,], caption = "Features",  
+          options = list(dom = 't', pageLength = 2))
+```
+
+## Plots
+
+```{r}
+features <- features[!is.na(features$ppm), ]
+plot_ly(x = features$d_RT, y = features$ppm, 
+                text = paste(features$FGx, features$assignation), 
+                color = features$FGx, colors = "Set2") %>%
+  layout(xaxis = list(title = "d(RT)"), yaxis = list(title = "ppm"))
+plot_ly(x = features$rtmed, y = features$d_RT,
+        text = paste(features$FGx, features$assignation), 
+                color = features$FGx, colors = "Set2") %>%
+  layout(xaxis = list(title = "RT - experimental"), 
+         yaxis = list(title = "d(RT)"))
+plot_ly(x = (features$rtmed - features$d_RT), y = features$d_RT,
+        text = paste(features$FGx, features$assignation), 
+                color = features$FGx, colors = "Set2") %>%
+  layout(xaxis = list(title = "RT - theoretical"), 
+         yaxis = list(title = "d(RT)"))
+tapply(features$ppm, features$polarity, summary)
+tapply(features$d_RT, features$polarity, summary)
+```
+
+
+# Deviations
+
+```{r}
+dt <- data.frame(
+  ppm = c(sprintf("%.1f", min(features$ppm)), sprintf("%.1f", max(features$ppm))),
+  RT = c(round(min(features$d_RT)), round(max(features$d_RT)))
+)
+rownames(dt) <- c("min", "max")
+datatable(dt, options = list(dom = 't'))
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
