@@ -39,11 +39,14 @@ for(z in seq(length(z.polarities))){
   features$mean_blank_NO <- rowMeans(data[,xdata$tissue != "blank"])
   features$mean_STDmix_NO <- rowMeans(data[,xdata$tissue != "STDmix"])
   features$solv_prop <- features$mean_solv / features$mean_solv_NO
-  features$solv_prop[features$solv_prop == "Inf"] <- features$mean_solv[features$solv_prop == "Inf"]
+  features$solv_prop[features$solv_prop == "Inf"] <- features$mean_solv[
+    features$solv_prop == "Inf"]
   features$blank_prop <- features$mean_blank / features$mean_blank_NO
-  features$blank_prop[features$blank_prop == "Inf"] <- features$mean_blank[features$blank_prop == "Inf"]
+  features$blank_prop[features$blank_prop == "Inf"] <- features$mean_blank[
+    features$blank_prop == "Inf"]
   features$STDmix_prop <- features$mean_STDmix / features$mean_STDmix_NO
-  features$STDmix_prop[features$STDmix_prop == "Inf"] <- features$mean_STDmix[features$STDmix_prop == "Inf"]
+  features$STDmix_prop[features$STDmix_prop == "Inf"] <- features$mean_STDmix[
+    features$STDmix_prop == "Inf"]
   
   rownames(data) <- gsub("FT", substr(z.polarities[z], 1, 1), rownames(data))
   colnames(data) <- gsub(paste0("_", z.polarities[z], "_FS.mzData"), "", 
@@ -181,14 +184,19 @@ ann <- c(
 source("../../../R/ft_group.R")
 
 x.polarity <- c("POS", "NEG")
+
 for(x in seq(length(x.polarity))){
-  datax_tmp <- dt_preparation(polarity = x.polarity[x], class = "tissue", 
+  
+  load(paste0("data/RData/IS_data_XCMS_", x.polarity[x], ".RData"))
+  load(paste0("../tissues/data/RData/MS2_library_", x.polarity[x], ".RData"))
+
+  
+  datax_tmp <- dt_preparation(xobj = xdata, class = "tissue", 
                               mznoise = c(158.975, 184.0731, 219.174, 221.154, 
                                           251.164, 267.196, 269.2115, 283.699, 
                                           415.284))
   features <- datax_tmp[["features"]]
-  features <- features[features$npeaks == 2 & features$blank == 0 &                       
-                         features$solv == 0 & features$STDmix == 2, ]
+  features <- features[features$npeaks == 2, ]
   features <- features[features$prop_solv > thr_int |
                          features$prop_blank > thr_int |
                          features$prop_STDmix > thr_int, ]
@@ -238,8 +246,16 @@ for(i in seq(nrow(cmps))){
 }
 rm(data, IS, old, mix, mix2, i)
 
+load("../tissues/data/RData/MS2_library_POS.RData")
+for(i in seq(length(ms2list))){
+  ms2list[[i]]@polarity <- "positive"
+}
+ms2list_pos <- ms2list
+load("../tissues/data/RData/MS2_library_NEG.RData")
+ms2list <- c(ms2list, ms2list_pos)
+
 startpointx <- Sys.time()
-dt_ids <- identification(features, cmps)
+dt_ids <- identification(features, cmps, MS2x = ms2list)
 Sys.time()-startpointx
 
 dt_fg <- dt_ids[["dt_fg"]]
@@ -294,16 +310,13 @@ plot_ly(x = features$d_RT, y = features$ppm,
                 text = paste(features$FGx, features$assignation), 
                 color = features$FGx, colors = "Set2") %>%
   layout(xaxis = list(title = "d(RT)"), yaxis = list(title = "ppm"))
-plot_ly(x = features$rtmed, y = features$d_RT,
-        text = paste(features$FGx, features$assignation), 
-                color = features$FGx, colors = "Set2") %>%
-  layout(xaxis = list(title = "RT - experimental"), 
-         yaxis = list(title = "d(RT)"))
+
 plot_ly(x = (features$rtmed - features$d_RT), y = features$d_RT,
         text = paste(features$FGx, features$assignation), 
                 color = features$FGx, colors = "Set2") %>%
   layout(xaxis = list(title = "RT - theoretical"), 
          yaxis = list(title = "d(RT)"))
+
 tapply(features$ppm, features$polarity, summary)
 tapply(features$d_RT, features$polarity, summary)
 ```
