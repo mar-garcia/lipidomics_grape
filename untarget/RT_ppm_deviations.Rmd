@@ -21,16 +21,16 @@ The workflow will be the following:
 # Preliminaries
 
 ```{r preliminaries, message=FALSE, warning=FALSE}
-polarity <- "NEG" # specify "POS" or "NEG"
+polarity <- "POS" # specify "POS" or "NEG"
 study <- "maturation" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   int <- 1e5
 } else if(polarity == "POS"){
-  int <- 4e6
+  int <- 1e6
 }
 
-thr_int <- 2e4
+thr_int <- 100
 
 if(study == "maturation"){
   v.class <- "time"
@@ -50,7 +50,7 @@ startpoint <- Sys.time()
 
 ## Data import
 
-```{r data-import}
+```{r data-import,warning=FALSE}
 #  Get filenames
 if(study == "maturation"){
   injections <- list.files(paste0(study, "/data/", polarity, "_FS_round1_fixed/"))
@@ -329,6 +329,8 @@ dt <- data.frame(
 )
 rownames(dt) <- c("min", "max")
 datatable(dt, options = list(dom = 't'))
+
+save.image(paste0("RT_ppm_dev_", study, "_", polarity, ".RData"))
 ```
 
 
