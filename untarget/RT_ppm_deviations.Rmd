@@ -21,8 +21,8 @@ The workflow will be the following:
 # Preliminaries
 
 ```{r preliminaries, message=FALSE, warning=FALSE}
-polarity <- "POS" # specify "POS" or "NEG"
-study <- "maturation" # specify "maturation" or "tissues"
+polarity <- "NEG" # specify "POS" or "NEG"
+study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   int <- 1e5
@@ -177,15 +177,19 @@ datax <- dt_preparation(xobj = xdata, class = v.class,
                                     251.164, 267.196, 269.2115, 283.699, 
                                     415.284))
 
-features <- datax[["features"]]
-features <- features[features$npeaks == 2, ]
-features <- features[
-  apply(features[,grepl("prop_", colnames(features))], 1, max) > thr_int, ]
-datax[["features"]] <- features
+#features <- datax[["features"]]
+#features <- features[features$npeaks == 2, ]
+#features <- features[
+#  apply(features[,grepl("prop_", colnames(features))], 1, max) > thr_int, ]
+#datax[["features"]] <- features
 
 load(paste0(study, "/data/RData/MS2_library_", polarity, ".RData"))
-datax <- ft_grouping(datax = datax, 
-                     MS2x = ms2list)
+datax <- ft_grouping(
+  datax = datax, 
+  MS2x = ms2list,
+  ft_idx = which(features$npeaks == 2 & 
+                   apply(features[,grepl("prop_", colnames(features))], 1, 
+                         max) > thr_int))
 
 features <- isotopologues(features = datax[["features"]])
 
