@@ -18,8 +18,8 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "NEG" # specify "POS" or "NEG"
-study <- "tissues" # specify "maturation" or "tissues"
+polarity <- "POS" # specify "POS" or "NEG"
+study <- "maturation" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   int <- 1e5
@@ -28,7 +28,7 @@ if(polarity == "NEG"){
 }
 
 if(study == "maturation"){
-  v.class <- "time"
+  v.class <- "type"
 } else if(study == "tissues"){
   v.class <- "tissue"
 }
@@ -37,7 +37,7 @@ if(study == "maturation"){
 
 ## Libraries
 
-```{r libraries, message = FALSE}
+```{r libraries, message = FALSE, warning = FALSE}
 library(xcms)
 library(plotly)
 ```
@@ -114,14 +114,17 @@ if(study == "maturation"){
   tmp$X2 <- paste(tmp$X2, tmp$X3, sep = "_")
   tmp <- tmp[,-3]
   colnames(tmp) <- c("order", "project", "pt", "tissue", "rep", "polarity", "mode")
-  tmp$tissue[grep("QC", tmp$pt)] <-paste(tmp$pt[grep("QC", tmp$pt)], tmp$tissue[grep("QC", tmp$pt)], sep = "_")
+  tmp$tissue[grep("QC", tmp$pt)] <- paste(tmp$pt[grep("QC", tmp$pt)], 
+                                          tmp$tissue[grep("QC", tmp$pt)], sep = "_")
   tmp$pt[grep("QC", tmp$pt)] <- "xx00"
+  tmp$tissue[tmp$tissue == "entire" | tmp$tissue == "skin" | 
+               tmp$tissue == "pulp" | tmp$tissue == "seeds"] <- "study"
 }
 
 injections <- cbind(injections, tmp)
 rm(tmp)
 
-if(study == "matruation"){
+if(study == "maturation"){
   injections <- injections[grep("slv_01", injections$filename):nrow(injections),]
 } else if(study == "tissues"){
   injections <- injections[grep("solv_rep1", injections$filename):nrow(injections),]
@@ -246,7 +249,8 @@ pca <- prcomp(dt, center = FALSE, scale. = FALSE)
 tmp <- data.frame(pca$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = gsub(".mzData", "", rownames(tmp)),
-        color = xdata$type)
+        color = pData(xdata)[,v.class])
+
 features <- data.frame(featureDefinitions(xdata))
 tmp <- data.frame(pca$rotation)
 rownames(tmp) <- paste(sprintf("%.4f",round(features$mzmed, 4)), 
@@ -255,7 +259,7 @@ rownames(tmp) <- paste(sprintf("%.4f",round(features$mzmed, 4)),
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp))
 
-dt <- data[xdata$type == "study",]
+dt <- data[pData(xdata)[,v.class] == "study",]
 dt <- log10(dt)
 dt <- data.frame(scaling.pareto(dt))
 pca <- prcomp(dt, center = FALSE, scale. = FALSE)
