@@ -47,7 +47,8 @@ class[grep("QC", class)] <- "QC"
 
 
 ```{r, warning=FALSE}
-fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+#fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+fl <- "C:/Users/lenovo/Documents/GitHub/lipidomics/new_rt.xlsx"
 cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
               read_xlsx(fl, sheet = "FORMULE")[, 1:2])
 cmps$ID <- gsub("_Na", "", cmps$ID)
@@ -152,19 +153,35 @@ pval.li <- topTable(fit, number = nrow(dt))[,"P.Value"]
 
 padj.lm <- p.adjust(pval.lm, "BH")
 padj.li <- p.adjust(pval.li, "BH")
+```
 
+
+```{r, message=FALSE, warning=FALSE}
 Time <- as.numeric(gsub("Pt_", "", cl))
 Subject <- gsub(".*_R", "R", colnames(dt))
 Subject[grep("MIX", Subject)] <- "Rep_04"
-dt.ma <- cbind(Time, Subject, t(dt))
-mSet <- InitDataObjects("conc", "ts", FALSE)
-mSet<-SetDesignType(mSet, "time0")
-mSet<-Read.TextData(mSet, dt.ma, "rowts", "disc")
+ID <- colnames(dt)
+dt.ma <- cbind(ID, Time, Subject, t(dt))
+dt.ma[is.na(dt.ma)] <- 0
+dt.ma <- dt.ma[as.numeric(dt.ma[,"Time"]) <= 11, ]
+write.csv(dt.ma, "data/dt_metaboanalyst.csv", row.names = FALSE)
 
-dt.ma <- InitDataObjects(data.type = dt.ma, anal.type = "ts", paired = FALSE)
-dt.ma <- SetDesignType(dt.ma, "time0")
-mSet <- ANOVA2.Anal(mSetObj = dt.ma, thresh = 0.05, p.cor = "fdr", 
-                    type = "time0", aov.type = 1, use.interact = 1)
+mSet<-InitDataObjects("conc", "ts", FALSE)
+mSet<-SetDesignType(mSet, "time0")
+mSet<-Read.TextData(mSet, "data/dt_metaboanalyst.csv", "rowts", "disc");
+mSet<-SanityCheckData(mSet)
+#mSet<-ContainMissing(mSet)
+mSet<-ReplaceMin(mSet)
+mSet<-PreparePrenormData(mSet)
+mSet<-Normalization(mSet, "NULL", "NULL", "NULL", ratio=FALSE, ratioNum=20)
+#mSet<-PlotNormSummary(mSet, "norm_1_", "png", 72, width=NA)
+#mSet<-PlotSampleNormSummary(mSet, "snorm_1_", "png", 72, width=NA)
+mSet <- ANOVA2.Anal(mSet, 2, "fdr", "time0", 1, 1)
+#mSet <- performMB(mSet, ncol(mSet$dataSet$orig))
+pval.ma <- data.frame(mSet$analSet$aov2$sig.mat)
+#tmp2 <- data.frame(mSet$analSet$MB$stats)
+pval.ma <- pval.ma$Raw.P.val
+padj.ma <- p.adjust(pval.ma, "BH")
 ```
 
 
@@ -224,6 +241,19 @@ draw.pairwise.venn(
   category = c("Regression", "limma"),
   fill = c("#E69F00", "#009E73")
 )
+
+grid.newpage()
+draw.triple.venn(
+  area1 = sum(pval.lm < 0.05),
+  area2 = sum(pval.li < 0.05),
+  area3 = sum(pval.ma < 0.05),
+  n12 = sum(pval.lm < 0.05 & pval.li < 0.05),
+  n13 = sum(pval.lm < 0.05 & pval.ma < 0.05),
+  n23 = sum(pval.li < 0.05 & pval.lm < 0.05),
+  n123 = sum(pval.lm < 0.05 & pval.li < 0.05 & pval.ma < 0.05),
+  category = c("Regression", "limma", "MetaboAnalyst"),
+  fill = c("#E69F00", "#56B4E9", "#009E73")
+)
 ```
 
 
@@ -238,6 +268,19 @@ draw.pairwise.venn(
   category = c("Regression", "limma"),
   fill = c("#E69F00", "#009E73")
 )
+
+grid.newpage()
+draw.triple.venn(
+  area1 = sum(padj.lm < 0.05),
+  area2 = sum(padj.li < 0.05),
+  area3 = sum(padj.ma < 0.05),
+  n12 = sum(padj.lm < 0.05 & padj.li < 0.05),
+  n13 = sum(padj.lm < 0.05 & padj.ma < 0.05),
+  n23 = sum(padj.li < 0.05 & padj.ma < 0.05),
+  n123 = sum(padj.lm < 0.05 & padj.li < 0.05 & padj.ma < 0.05),
+  category = c("Regression", "limma", "MetaboAnalyst"),
+  fill = c("#E69F00", "#56B4E9", "#009E73")
+)
 ```
 
 
@@ -246,7 +289,7 @@ draw.pairwise.venn(
 ### ANOVA
 
 ```{r}
-idx <- which(padj.lm < 0.05 & padj.li > 0.05)
+idx <- which(padj.lm < 0.05 & padj.li > 0.05 & padj.ma > 0.05)
 p <- list()
 for(i in seq(length(idx))){
   tmp_dt <- data.frame(
@@ -277,8 +320,8 @@ gridExtra::grid.arrange(grobs = p, ncol = 3)
 Below I plot a random subset of compounds (in order to be faster and to get a lighter file).
 
 ```{r}
-idx <- which(padj.lm > 0.05 & padj.li < 0.05)
-idx <- idx[sample(length(idx), 25*3)]
+idx <- which(padj.lm > 0.05 & padj.li < 0.05 & padj.ma > 0.05)
+idx <- idx[sample(length(idx), 15*3)]
 idx <- idx[order(idx)]
 p <- list()
 for(i in seq(length(idx))){
@@ -304,6 +347,38 @@ for(i in seq(length(idx))){
 gridExtra::grid.arrange(grobs = p, ncol = 3)
 ```
 
+
+### MetaboAnalyst
+
+Here I plot a random subset of compounds significant only by the methods limma-MetaboAnalyst.
+
+```{r}
+idx <- which(padj.lm > 0.05 & padj.li < 0.05 & padj.ma < 0.05)
+idx <- idx[sample(length(idx), 15*3)]
+idx <- idx[order(idx)]
+p <- list()
+for(i in seq(length(idx))){
+  tmp_dt <- data.frame(
+    value = t(dt[rownames(dt)[idx[i]],]),
+    class = cl
+  )
+  tmp_dt$na <- is.na(tmp_dt$value)
+  tmp_dt$value[is.na(tmp_dt$value)] <- 0
+  p[[i]] <- ggplot(
+    data = tmp_dt, 
+    aes(x = class, y = value, 
+        label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
+    geom_point(aes(color = class, shape = na), 
+               position = position_jitter(0.1), size = 2) +
+    geom_text(check_overlap = T) + 
+    ggtitle(rownames(dt)[idx[i]]) +
+    xlab("") + ylab("")
+}
+```
+
+```{r, fig.width = 15, fig.height = (ceiling(length(idx)/3)*4)}
+gridExtra::grid.arrange(grobs = p, ncol = 3)
+```
 
 # Session information
 
