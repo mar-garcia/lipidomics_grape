@@ -24,6 +24,7 @@ library(plotly)
 library(pheatmap)
 library(RColorBrewer)
 library(limma)
+library(MetaboAnalystR)
 library(VennDiagram)
 ```
 
@@ -151,13 +152,26 @@ pval.li <- topTable(fit, number = nrow(dt))[,"P.Value"]
 
 padj.lm <- p.adjust(pval.lm, "BH")
 padj.li <- p.adjust(pval.li, "BH")
+
+Time <- as.numeric(gsub("Pt_", "", cl))
+Subject <- gsub(".*_R", "R", colnames(dt))
+Subject[grep("MIX", Subject)] <- "Rep_04"
+dt.ma <- cbind(Time, Subject, t(dt))
+mSet <- InitDataObjects("conc", "ts", FALSE)
+mSet<-SetDesignType(mSet, "time0")
+mSet<-Read.TextData(mSet, dt.ma, "rowts", "disc")
+
+dt.ma <- InitDataObjects(data.type = dt.ma, anal.type = "ts", paired = FALSE)
+dt.ma <- SetDesignType(dt.ma, "time0")
+mSet <- ANOVA2.Anal(mSetObj = dt.ma, thresh = 0.05, p.cor = "fdr", 
+                    type = "time0", aov.type = 1, use.interact = 1)
 ```
 
 
 ## Compounds with highest significance
 
 ```{r}
-i = which.min(colMeans(rbind(padj.lm, padj.li)))
+i <- which.min(colMeans(rbind(padj.lm, padj.li)))
 tmp_dt <- data.frame(
   value = t(dt[rownames(dt)[i],]),
   class = cl
