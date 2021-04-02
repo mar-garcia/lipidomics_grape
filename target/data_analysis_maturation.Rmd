@@ -1,0 +1,299 @@
+---
+title: "Data analysis: maturation"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+## Libraries
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+library(readxl)
+library(xcms)
+library(plotly)
+library(pheatmap)
+library(RColorBrewer)
+library(limma)
+library(VennDiagram)
+```
+
+
+# Read data
+
+```{r, message=FALSE, echo=TRUE}
+data <- read_xlsx("data/data_maturation.xlsx", sheet = "trans_data")
+```
+
+
+```{r}
+colnames(data)[1] <- "ID"
+
+class <- colnames(data)[-1]
+class <- gsub("_Rep.*", "", class)
+class <- gsub("_MIX.*", "", class)
+class[grep("QC", class)] <- "QC"
+```
+
+
+```{r, warning=FALSE}
+fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
+              read_xlsx(fl, sheet = "FORMULE")[, 1:2])
+cmps$ID <- gsub("_Na", "", cmps$ID)
+rm(fl)
+```
+
+# Exploratory data analysis
+
+## PCA
+
+```{r, message=FALSE, warning=FALSE}
+scaling.pareto <- BioMark::scalefun(sc.p="pareto")
+
+set.seed(123)
+dt <- t(imputeRowMinRand(as.matrix(data[,-1]), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
+colnames(dt) <- data$ID
+dt <- log10(dt)
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class)
+class2 <- class
+class2[class2 %in% c("Pt_01", "Pt_02", "Pt_03", "Pt_04", "Pt_05", "Pt_06")] <- "Pt_01_06"
+class2[class2 %in% c("Pt_07", "Pt_08", "Pt_09", "Pt_10", "Pt_11", "Pt_12", "Pt_13")] <- "Pt_07_13"
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class2)
+
+cmps <- cmps[cmps$ID %in% data$ID, ]
+cmps <- cmps[match(data$ID, cmps$ID), ]
+#all(cmps$ID == data$ID) # TRUE
+tmp <- data.frame(pca$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = cmps$class)
+rm(pca, tmp, scaling.pareto)
+```
+
+
+## Heatmap
+
+```{r, fig.height=10, fig.width=14}
+dt_pt <- data.frame(point = class)
+rownames(dt_pt) <- rownames(dt)
+
+#all(cmps$ID == data$ID) # TRUE
+dt_class <- data.frame(class = cmps$class)
+rownames(dt_class) <- colnames(dt)
+pheatmap(dt, annotation_row = dt_pt, annotation_col = dt_class)
+
+dt_pt2 <- data.frame(point = class2)
+rownames(dt_pt2) <- rownames(dt)
+
+dt_class$class[grep("Lyso", dt_class$class)] <- "Lyso"
+dt_class$class[grep("P", dt_class$class)] <- "P*"
+dt_class$class[dt_class$class %in% c("DAG", "DGDG", "MAG", "MGDG")] <- "Glycerol-lipidi"
+dt_class$class[dt_class$class %in% c("CAR", "CER", "FFA")] <- "Others"
+
+ann_color <- list(
+  "class" = c(brewer.pal(length(unique(dt_class$class)), "Dark2")),
+  "point" = c(brewer.pal(length(unique(dt_pt2$point)), "Set1"))
+)
+names(ann_color[[1]]) <- unique(dt_class$class)
+names(ann_color[[2]]) <- unique(dt_pt2$point)
+
+pheatmap(dt, annotation_row = dt_pt2, annotation_col = dt_class,
+         annotation_colors = ann_color, show_colnames = F, show_rownames = F)
+rm(dt, cmps, dt_class, ann_color)
+```
+
+# Differential abundance analysis
+
+```{r}
+dt <- data[,-1]
+dt <- dt[, !grepl("QC", class)]
+# delete compounds with ALL NAs
+na_n <- apply(dt, 1, function(x) length(which(is.na(x))))
+dt <- dt[na_n < ncol(dt), ]
+```
+
+
+```{r, warning=FALSE}
+rownames(dt) <- data$ID[na_n < ncol(dt)]
+```
+
+
+```{r}
+cl <- class[!grepl("QC", class)]
+
+stat.lm <- function(x){coef(summary(lm(log10(x) ~ as.numeric(gsub("Pt_", "", cl)))))[2,4]}
+pval.lm <- apply(FUN = stat.lm, MARGIN = 1, X = dt)
+
+
+dsgn <- model.matrix(~ 0 + as.numeric(gsub("Pt_", "", cl)))
+fit <- lmFit(log10(dt), design = dsgn)
+fit <- eBayes(fit)
+pval.li <- topTable(fit, number = nrow(dt))[,"P.Value"]
+
+padj.lm <- p.adjust(pval.lm, "BH")
+padj.li <- p.adjust(pval.li, "BH")
+```
+
+
+## Compounds with highest significance
+
+```{r}
+i = which.min(colMeans(rbind(padj.lm, padj.li)))
+tmp_dt <- data.frame(
+  value = t(dt[rownames(dt)[i],]),
+  class = cl
+)
+tmp_dt$na <- is.na(tmp_dt$value)
+tmp_dt$value[is.na(tmp_dt$value)] <- 0
+ggplot(
+  data = tmp_dt, 
+  aes(x = class, y = value, 
+      label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
+  geom_point(aes(color = class, shape = na), 
+             position = position_jitter(0.1), size = 2) +
+  geom_text(check_overlap = T) + 
+  ggtitle(rownames(dt)[i]) +
+  xlab("") + ylab("")
+
+
+
+
+i = order(colMeans(rbind(padj.lm, padj.li)))[2]
+
+tmp_dt <- data.frame(
+  value = t(dt[rownames(dt)[i],]),
+  class = cl
+)
+tmp_dt$na <- is.na(tmp_dt$value)
+tmp_dt$value[is.na(tmp_dt$value)] <- 0
+ggplot(
+  data = tmp_dt, 
+  aes(x = class, y = value, 
+      label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
+  geom_point(aes(color = class, shape = na), 
+             position = position_jitter(0.1), size = 2) +
+  geom_text(check_overlap = T) + 
+  ggtitle(rownames(dt)[i]) +
+  xlab("") + ylab("")
+```
+
+
+## Venn Diagrams
+
+### raw p-values
+
+```{r}
+grid.newpage()
+draw.pairwise.venn(
+  area1 = sum(pval.lm < 0.05),
+  area2 = sum(pval.li < 0.05),
+  cross.area = sum(pval.lm < 0.05 & pval.li < 0.05),
+  category = c("Regression", "limma"),
+  fill = c("#E69F00", "#009E73")
+)
+```
+
+
+### adjusted p-values
+
+```{r}
+grid.newpage()
+draw.pairwise.venn(
+  area1 = sum(padj.lm < 0.05),
+  area2 = sum(padj.li < 0.05),
+  cross.area = sum(padj.lm < 0.05 & padj.li < 0.05),
+  category = c("Regression", "limma"),
+  fill = c("#E69F00", "#009E73")
+)
+```
+
+
+## Non-concordant compounds
+
+### ANOVA
+
+```{r}
+idx <- which(padj.lm < 0.05 & padj.li > 0.05)
+p <- list()
+for(i in seq(length(idx))){
+  tmp_dt <- data.frame(
+    value = t(dt[rownames(dt)[idx[i]],]),
+    class = cl
+  )
+  tmp_dt$na <- is.na(tmp_dt$value)
+  tmp_dt$value[is.na(tmp_dt$value)] <- 0
+  p[[i]] <- ggplot(
+    data = tmp_dt, 
+    aes(x = class, y = value, 
+        label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
+    geom_point(aes(color = class, shape = na), 
+               position = position_jitter(0.1), size = 2) +
+    geom_text(check_overlap = T) + 
+    ggtitle(rownames(dt)[idx[i]]) +
+    xlab("") + ylab("")
+}
+```
+
+```{r, fig.width = 15, fig.height = (ceiling(length(idx)/3)*4)}
+gridExtra::grid.arrange(grobs = p, ncol = 3)
+```
+
+
+### limma
+
+Below I plot a random subset of compounds (in order to be faster and to get a lighter file).
+
+```{r}
+idx <- which(padj.lm > 0.05 & padj.li < 0.05)
+idx <- idx[sample(length(idx), 25*3)]
+idx <- idx[order(idx)]
+p <- list()
+for(i in seq(length(idx))){
+  tmp_dt <- data.frame(
+    value = t(dt[rownames(dt)[idx[i]],]),
+    class = cl
+  )
+  tmp_dt$na <- is.na(tmp_dt$value)
+  tmp_dt$value[is.na(tmp_dt$value)] <- 0
+  p[[i]] <- ggplot(
+    data = tmp_dt, 
+    aes(x = class, y = value, 
+        label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
+    geom_point(aes(color = class, shape = na), 
+               position = position_jitter(0.1), size = 2) +
+    geom_text(check_overlap = T) + 
+    ggtitle(rownames(dt)[idx[i]]) +
+    xlab("") + ylab("")
+}
+```
+
+```{r, fig.width = 15, fig.height = (ceiling(length(idx)/3)*4)}
+gridExtra::grid.arrange(grobs = p, ncol = 3)
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+#devtools::session_info()
+```
