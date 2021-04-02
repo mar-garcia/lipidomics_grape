@@ -1,0 +1,114 @@
+---
+title: "Checkings"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+
+# Read data
+
+```{r}
+files <- list.files("data/")
+```
+
+
+# Quali composti sono integrati solo in 1 o 2 campioni?
+
+Escludere `Blank`, `IS` e `STDmix` samples.
+
+```{r results='asis'}
+for(i in seq(length(files))){
+  cat("\n\n**", files[i], "**\n\n" , sep="")
+  data <- read.table(paste0("data/", files[i]), 
+                     sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
+                     col.names = colnames(read.table(paste0("data/", files[i]),
+                                                     sep = "\t", header = T)))
+  class <- rep("sample", ncol(data))
+  class[grep("blank", colnames(data))] <- "blank"
+  class[grep("IS", colnames(data))] <- "IS"
+  class[grep("STDmix", colnames(data))] <- "STDmix"
+  class[grep("QC", colnames(data))] <- "QC"
+  data <- data[,!(class %in% c("blank", "IS", "STDmix"))]
+  na_n <- apply(data, 1, function(x) length(which(!is.na(x))))
+  cat(names(na_n[na_n == 1 | na_n == 2]), sep = "\n\n")
+}
+```
+
+# Quali composti sono integrati in tutti i campioni tranne 1 o 2? 
+
+Escludere `Blank`, `IS` e `STDmix` samples.
+
+```{r results='asis'}
+for(i in seq(length(files))){
+  cat("\n\n**", files[i], "**\n\n" , sep="")
+  data <- read.table(paste0("data/", files[i]), 
+                     sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
+                     col.names = colnames(read.table(paste0("data/", files[i]),
+                                                     sep = "\t", header = T)))
+  class <- rep("sample", ncol(data))
+  class[grep("blank", colnames(data))] <- "blank"
+  class[grep("IS", colnames(data))] <- "IS"
+  class[grep("STDmix", colnames(data))] <- "STDmix"
+  class[grep("QC", colnames(data))] <- "QC"
+  data <- data[,!(class %in% c("blank", "IS", "STDmix"))]
+  na_n <- apply(data, 1, function(x) length(which(is.na(x))))
+  cat(names(na_n[na_n == 1 | na_n == 2]), sep = "\n\n")
+}
+```
+
+
+# In quale composti l'area del IS è > 1/3 della media delle aree dei campioni 
+
+Per vedere se c'è carryover.
+
+```{r results='asis'}
+for(i in seq(length(files))){
+  cat("\n\n**", files[i], "**\n\n" , sep="")
+  data <- read.table(paste0("data/", files[i]), 
+                     sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
+                     col.names = colnames(read.table(paste0("data/", files[i]),
+                                                     sep = "\t", header = T)))
+  class <- rep("sample", ncol(data))
+  class[grep("blank", colnames(data))] <- "blank"
+  class[grep("IS", colnames(data))] <- "IS"
+  class[grep("STDmix", colnames(data))] <- "STDmix"
+  class[grep("QC", colnames(data))] <- "QC"
+  
+  data[is.na(data)] <- 0
+  
+  data_IS <- data[, class == "IS"]
+  data_smpl <- data[, class == "sample"]
+  
+  mean_IS <- rowMeans(data_IS)
+  mean_smpl <- rowMeans(data_smpl)
+  
+  ratio_smpl_IS <- mean_smpl / mean_IS
+  
+  cat("*NA values in all IS & all study samples:*\n\n", sep = "")
+  cat(names(which(is.na(ratio_smpl_IS))), sep = "\n\n")
+  ratio_smpl_IS[is.na(ratio_smpl_IS)] <- 0
+  
+  ratio_smpl_IS[ratio_smpl_IS == "Inf"] <- 0 # 0 values in all IS samples, and quantified values in study samples
+  
+  cat("\n\n*compounds for which levels in IS are >1/3 of levels in study samples:*\n\n", sep = "")
+  cat(names(which(ratio_smpl_IS > 3)), sep = "\n\n")
+  }
+```
+
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
