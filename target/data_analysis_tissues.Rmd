@@ -1,0 +1,266 @@
+---
+title: "Data analysis: tissue distribution"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+
+## Libraries
+
+```{r, warning=FALSE, message=FALSE, echo=TRUE}
+library(readxl)
+library(xcms)
+library(plotly)
+library(pheatmap)
+library(RColorBrewer)
+library(limma)
+library(VennDiagram)
+library(ggplot2)
+library(gridExtra)
+```
+
+
+# Read data
+
+```{r, message=FALSE, echo=TRUE}
+data <- read_xlsx("data/data_tissues.xlsx", sheet = "trans_data")
+```
+
+
+```{r}
+colnames(data)[1] <- "ID"
+
+class <- colnames(data)[-1]
+class <- gsub("pt11_", "", class)
+class <- gsub("_.*", "", class)
+```
+
+
+```{r, warning=FALSE}
+fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
+              read_xlsx(fl, sheet = "FORMULE")[, 1:2])
+cmps$ID <- gsub("_Na", "", cmps$ID)
+rm(fl)
+```
+
+# Exploratory data analysis
+
+## PCA
+
+```{r, message=FALSE, warning=FALSE}
+scaling.pareto <- BioMark::scalefun(sc.p="pareto")
+
+set.seed(123)
+dt <- t(imputeRowMinRand(as.matrix(data[,-1]), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
+colnames(dt) <- data$ID
+dt <- log10(dt)
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class)
+
+cmps <- cmps[cmps$ID %in% data$ID, ]
+cmps <- cmps[match(data$ID, cmps$ID), ]
+#all(cmps$ID == data$ID) # TRUE
+tmp <- data.frame(pca$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = cmps$class)
+rm(pca, tmp, scaling.pareto)
+```
+
+
+## Heatmap
+
+```{r, fig.height=10, fig.width=14}
+dt_tissue <- data.frame(tissue = class)
+rownames(dt_tissue) <- rownames(dt)
+
+#all(cmps$ID == data$ID) # TRUE
+dt_class <- data.frame(class = cmps$class)
+rownames(dt_class) <- colnames(dt)
+pheatmap(dt, annotation_row = dt_tissue, annotation_col = dt_class)
+
+dt_class$class[grep("Lyso", dt_class$class)] <- "Lyso"
+dt_class$class[grep("P", dt_class$class)] <- "P*"
+dt_class$class[dt_class$class %in% c("DAG", "DGDG", "MAG", "MGDG")] <- "Glycerol-lipidi"
+dt_class$class[dt_class$class %in% c("CAR", "CER", "FFA")] <- "Others"
+
+ann_color <- list(
+  "class" = c(brewer.pal(length(unique(dt_class$class)), "Dark2")),
+  "tissue" = c(brewer.pal(length(unique(dt_tissue$tissue)), "Set1"))
+)
+names(ann_color[[1]]) <- unique(dt_class$class)
+names(ann_color[[2]]) <- unique(dt_tissue$tissue)
+
+pheatmap(dt, annotation_row = dt_tissue, annotation_col = dt_class,
+         annotation_colors = ann_color, show_colnames = F)
+rm(dt, cmps, dt_tissue, dt_class, ann_color)
+```
+
+
+# Differential abundance analysis
+
+```{r, warning=FALSE}
+dt <- data[,-1]
+dt <- dt[, class %in% c("seeds", "pulp", "skin")]
+# delete compounds with ALL NAs
+na_n <- apply(dt, 1, function(x) length(which(is.na(x))))
+dt <- dt[na_n < ncol(dt), ]
+rownames(dt) <- data$ID[na_n < ncol(dt)]
+```
+
+
+```{r}
+cl <- class[class %in% c("seeds", "pulp", "skin")]
+
+
+
+dt.kw <- dt
+dt.kw[is.na(dt.kw)] <- 0
+stat.kw <- function(x){kruskal.test(x, factor(cl))$p.value}
+pval.kw <- apply(FUN = stat.kw, MARGIN = 1, X = dt.kw)
+
+
+
+dt.aov <- dt
+set.seed(123)
+dt.aov <- imputeRowMinRand(as.matrix(dt.aov), method = "from_to",
+                           min_fraction = 1/100,
+                           min_fraction_from = 1/1000)
+stat.aov <- function(x){summary(aov(log10(x)~factor(cl)))[[1]][1,5]}
+pval.aov <- apply(FUN = stat.aov, MARGIN = 1, X = dt.aov)
+
+
+dsgn <- model.matrix(~ 0 + cl)
+fit <- lmFit(log10(dt.aov), design = dsgn)
+fit <- eBayes(fit)
+pval.lm <- topTable(fit, number = nrow(dt))[,"P.Value"]
+
+padj.kw <- p.adjust(pval.kw, "BH")
+padj.aov <- p.adjust(pval.aov, "BH")
+padj.lm <- p.adjust(pval.lm, "BH")
+
+rm(dt.kw, dt.aov, dsgn, fit, na_n, stat.kw, stat.aov)
+```
+
+## Venn Diagrams
+
+### raw p-values
+
+```{r, message=FALSE}
+grid.newpage()
+draw.triple.venn(
+  area1 = sum(pval.kw < 0.05),
+  area2 = sum(pval.aov < 0.05),
+  area3 = sum(pval.lm < 0.05),
+  n12 = sum(pval.kw < 0.05 & pval.aov < 0.05),
+  n13 = sum(pval.kw < 0.05 & pval.lm < 0.05),
+  n23 = sum(pval.aov < 0.05 & pval.lm < 0.05),
+  n123 = sum(pval.kw < 0.05 & pval.aov < 0.05 & pval.lm < 0.05),
+  category = c("Kruskal-Wallis", "ANOVA", "limma"),
+  fill = c("#E69F00", "#56B4E9", "#009E73")
+)
+```
+
+### adjusted p-values
+
+```{r, message=FALSE}
+grid.newpage()
+draw.triple.venn(
+  area1 = sum(padj.kw < 0.05),
+  area2 = sum(padj.aov < 0.05),
+  area3 = sum(padj.lm < 0.05),
+  n12 = sum(padj.kw < 0.05 & padj.aov < 0.05),
+  n13 = sum(padj.kw < 0.05 & padj.lm < 0.05),
+  n23 = sum(padj.aov < 0.05 & padj.lm < 0.05),
+  n123 = sum(padj.kw < 0.05 & padj.aov < 0.05 & padj.lm < 0.05),
+  category = c("Kruskal-Wallis", "ANOVA", "limma"),
+  fill = c("#E69F00", "#56B4E9", "#009E73")
+)
+```
+
+
+## Non-concordant compounds
+
+### ANOVA
+
+There are `r sum(padj.kw > 0.05 & padj.aov < 0.05 & padj.lm > 0.05)` that are only significant according to the ANOVA analyses. I'm going to print the distribution of these compounds (together with their names) according to the tissue in the pdf file `outputs/plots_anova_only.pdf`, and below I print just one example.
+
+```{r, fig.height = 12, fig.width = 15}
+idx <- which(padj.kw > 0.05 & padj.aov < 0.05 & padj.lm > 0.05)
+p <- list()
+for(i in seq(length(idx))){
+  tmp_dt <- data.frame(
+    value = t(dt[rownames(dt)[idx[i]],]),
+    class = cl
+  )
+  tmp_dt$na <- is.na(tmp_dt$value)
+  tmp_dt$value[is.na(tmp_dt$value)] <- 0
+  p[[i]] <- ggplot(
+    data = tmp_dt, 
+    aes(x = class, y = value, 
+        label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
+    geom_point(aes(color = class, shape = na), 
+               position = position_jitter(0.1), size = 2) +
+    geom_text(check_overlap = T) + 
+    ggtitle(rownames(dt)[idx[i]]) +
+    xlab("") + ylab("")
+}
+gridExtra::grid.arrange(grobs = p, ncol = 3)
+```
+
+
+### limma
+
+Now, I'll do the same for the `r sum(padj.kw > 0.05 & padj.aov > 0.05 & padj.lm < 0.05)` compounds taht are only statistically significant for the limma analyses.
+
+```{r, fig.width = 15, fig.height = 200}
+idx <- which(padj.kw > 0.05 & padj.aov > 0.05 & padj.lm < 0.05)
+p <- list()
+for(i in seq(length(idx))){
+  tmp_dt <- data.frame(
+    value = t(dt[rownames(dt)[idx[i]],]),
+    class = cl
+  )
+  tmp_dt$na <- is.na(tmp_dt$value)
+  tmp_dt$value[is.na(tmp_dt$value)] <- 0
+  p[[i]] <-  ggplot(
+    data = tmp_dt, 
+    aes(x = class, y = value, 
+        label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
+    geom_point(aes(color = class, shape = na), 
+               position = position_jitter(0.1), size = 2) +
+    geom_text(check_overlap = T) + 
+    ggtitle(rownames(dt)[idx[i]]) +
+    xlab("") + ylab("")
+}
+gridExtra::grid.arrange(grobs = p, ncol = 3)
+rm(p, i, idx, tmp_dt, pval.kw, pval.aov, pval.lm, padj.kw, padj.aov, padj.lm)
+```
+
+
+According to the generated plots I see that in some cases there are compounds for which the inter-class variability is very high and maybe we could flag and/or exclude these compounds from the analyses, since probably we are not interested in this ones when we are checking for the characteristic compounds of one/two specific tissue/s.
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+#devtools::session_info()
+```
