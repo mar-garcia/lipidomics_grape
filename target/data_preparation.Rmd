@@ -1,0 +1,165 @@
+---
+title: "Data preparation"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+# Preliminaries
+
+```{r}
+study <- "tissues" # specify "maturation" or "tissues"
+```
+
+## Libraries
+
+```{r, warning=FALSE}
+library(readxl)
+library(readODS)
+library(openxlsx)
+```
+
+
+# Read data
+
+```{r}
+files <- list.files("data/")
+files <- files[grep(toupper(study), files)]
+
+data <- list()
+for(i in 1:length(files)){
+  tmp_dt <- read.table(
+    paste0("data/", files[i]), 
+    sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
+    col.names = colnames(read.table(paste0("data/", files[i]),
+                                    sep = "\t", header = T)))
+  
+  colnames(tmp_dt) <- substring(colnames(tmp_dt), 6, nchar(colnames(tmp_dt))-4)
+  tmp_dt <- tmp_dt[, order(colnames(tmp_dt))]
+  data[[i]] <- tmp_dt
+  
+}
+all(colnames(data[[1]]) == colnames(data[[2]])) # TRUE
+data <- do.call("rbind", data)
+rm(i, tmp_dt, files)
+
+class <- rep("sample", ncol(data))
+class[grep("blank", colnames(data))] <- "blank"
+class[grep("IS", colnames(data))] <- "IS"
+class[grep("STDmix", colnames(data))] <- "STDmix"
+class[grep("QC", colnames(data))] <- "QC"
+```
+
+
+## Delete those compounds NOT detected in any study samples
+
+```{r}
+tmp_dt <- data[,class == "sample"]
+na_n <- apply(tmp_dt, 1, function(x) length(which(is.na(x))))
+which(na_n == ncol(tmp_dt))
+data <- data[na_n <  ncol(tmp_dt), ]
+rm(tmp_dt, na_n)
+```
+
+
+
+# Normalizzazione per IS
+
+Aa x 0.5/AIS (così otteniamo µg/ml)    
+(Aa= Area analita; AIS= area standard interno corrispondente   
+(es: area FFA_14:0*0.5/area STEARIC ACID_D3)  
+
+```{r, warning=FALSE}
+fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+class_IS <- read_xlsx(fl, sheet = "class_IS")
+cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
+              read_xlsx(fl, sheet = "FORMULE")[, 1:2])
+
+rownames(data) <- gsub("-COO", "", rownames(data))
+rownames(data) <- gsub("-H2O", "", rownames(data))
+rownames(data) <- gsub("_Na", "", rownames(data))
+class_IS$IS <- gsub("_Na", "", class_IS$IS)
+cmps$ID <- gsub("_Na", "", cmps$ID)
+```
+
+
+```{r}
+data_norm <- data
+for(i in seq(nrow(data_norm))){
+  tmp_class <- cmps$class[cmps$ID == rownames(data_norm)[i]]
+  if(length(tmp_class) == 0 & grepl("CER", rownames(data_norm)[i])){
+    tmp_class <- "CER"
+    print(rownames(data_norm)[i])
+  }
+  if(length(tmp_class) == 1){
+    if(tmp_class == "IS"){
+      data_norm[i, ] <- data_norm[i,] * 0.5 / data[i,]
+    } else {
+      tmp_IS <- class_IS$IS[class_IS$class == tmp_class]
+      j <- which(rownames(data_norm) == tmp_IS)
+      data_norm[i, ] <- data_norm[i,] * 0.5 / data[j,]
+    }
+  } else{
+    print(i)
+  }
+}
+rm(i, j, fl, class_IS, cmps, tmp_class, tmp_IS)
+```
+
+
+# Trasformazione
+
+```{r}
+if(study == "tissues"){
+  smpl_name <- read_ods("data/samples distribution lipids.ods")
+  smpl_name$ID <- gsub("pt-11", "pt11", tolower(smpl_name$name))
+  smpl_name$ID <- paste0(smpl_name$ID, "_rep", smpl_name$rep)
+  smpl_name[nrow(smpl_name) + 1, ] <- NA
+  smpl_name$ID[nrow(smpl_name)] <- "QC"
+  smpl_name$weight[nrow(smpl_name)] <- 100
+  smpl_name$gr <- smpl_name$weight / 1000
+} else if(study == "maturation"){
+  smpl_name <- read_xlsx("data/maturation curve lipids.xlsx", skip = 1)
+  smpl_name$ID <- smpl_name$Code
+  smpl_name[nrow(smpl_name) + 1, ] <- NA
+  smpl_name$ID[nrow(smpl_name)] <- "QC"
+  smpl_name$mg[nrow(smpl_name)] <- 100
+  smpl_name$gr <- smpl_name$mg / 1000
+}
+
+data_tras <- data_norm[, class %in% c("sample", "QC")]
+for(i in seq(ncol(data_tras))){
+  if(!grepl("QC", colnames(data_tras)[i])){
+    j <- which(smpl_name$ID == colnames(data_tras)[i])
+    data_tras[,i] <- data_tras[,i] * 0.3 / smpl_name$gr[j]
+  } else{
+    j <- which(smpl_name$ID == "QC")
+    data_tras[,i] <- data_tras[,i] * 0.3 / smpl_name$gr[j]
+  }
+}
+rm(i, j)
+```
+
+# Save data
+
+```{r}
+list_of_datasets <- list(
+  "raw_data" = data, "norm_data" = data_norm, "trans_data" = data_tras)
+write.xlsx(list_of_datasets, file = paste0("data/data_", study, ".xlsx"), 
+           rowNames = TRUE)
+```
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
