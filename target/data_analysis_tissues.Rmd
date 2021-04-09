@@ -11,61 +11,81 @@ output:
 
 ```{r startpoint, include = FALSE}
 startpoint <- Sys.time()
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
+In this document we first do an unsupervised exploratory analysis and later we identify compounds with significantly different abundances in compound concentrations measured in different grape tissues.
 
 ## Libraries
 
-```{r, warning=FALSE, message=FALSE, echo=TRUE}
+```{r}
 library(readxl)
 library(xcms)
 library(plotly)
 library(pheatmap)
+library(knitr)
 library(RColorBrewer)
-library(limma)
-library(VennDiagram)
+library(car)
 library(ggplot2)
+library(grid)
 library(gridExtra)
 ```
 
 
 # Read data
 
-```{r, message=FALSE, echo=TRUE}
-data <- read_xlsx("data/data_tissues.xlsx", sheet = "trans_data")
-```
-
-
 ```{r}
+# Import compound quantification data:
+data <- read_xlsx("data/data_tissues.xlsx", sheet = "trans_data")
 colnames(data)[1] <- "ID"
 
+# Create a vector specifying the sample classes:
 class <- colnames(data)[-1]
 class <- gsub("pt11_", "", class)
 class <- gsub("_.*", "", class)
-```
 
-
-```{r, warning=FALSE}
+# Load compound annotations:
 fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
 cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
               read_xlsx(fl, sheet = "FORMULE")[, 1:2])
 cmps$ID <- gsub("_Na", "", cmps$ID)
-rm(fl)
+cmps <- cmps[cmps$ID %in% data$ID, ]
+cmps <- cmps[match(data$ID, cmps$ID), ]
+
+# Replace R problematic symbols in compound names:
+all(cmps$ID == data$ID) # TRUE
+cmps$ID <- data$ID <- gsub("[^0-9A-Za-z///' ]", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub("/", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub(" ", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub("__", "_", cmps$ID)
+idx <- grep("_$", cmps$ID)
+cmps$ID[idx] <- data$ID[idx] <- substr(cmps$ID[idx], 1, nchar(cmps$ID[idx])-1)
+data <- data[,-1]
+rownames(data) <- cmps$ID
 ```
+
+The dataset contains information about the quantification of n=`r nrow(data)` compounds in n=`r ncol(data)` samples of the following classes: `r paste0(aggregate(class, list(class), function(x){sum(class == x)})[,1], " (n=", aggregate(class, list(class), function(x){sum(class == x)})[,2], ")", collapse = "; ")`. 
+
+Missing values (n=`r sum(is.na(data))`) in the dataset will be replaced by a random value between the range obtained by dividing by 1000 and 100 of the smallest measured concentration for the corresponding compound.  
+Principal component analysis (PCA) and heatmaps will be performed on log-transformed and Pareto-scaled abundances, whereas one-way analysis of variance (ANOVA) on log-transformed data.
+
 
 # Exploratory data analysis
 
-## PCA
+As mentioned, we start with an exploratory analysis of the data, first using all compounds and all samples and then only with samples of interest and excluding some potential problematic compounds.
 
-```{r, message=FALSE, warning=FALSE}
+## All samples
+
+### PCA
+
+```{r}
 scaling.pareto <- BioMark::scalefun(sc.p="pareto")
 
 set.seed(123)
-dt <- t(imputeRowMinRand(as.matrix(data[,-1]), method = "from_to",
+dt <- t(imputeRowMinRand(as.matrix(data), method = "from_to",
                          min_fraction = 1/100,
                          min_fraction_from = 1/1000))
-colnames(dt) <- data$ID
+colnames(dt) <- rownames(data)
 dt <- log10(dt)
 dt <- data.frame(scaling.pareto(dt))
 pca <- prcomp(dt, center = FALSE, scale. = FALSE)
@@ -73,194 +93,494 @@ tmp <- data.frame(pca$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = class)
+```
 
-cmps <- cmps[cmps$ID %in% data$ID, ]
-cmps <- cmps[match(data$ID, cmps$ID), ]
-#all(cmps$ID == data$ID) # TRUE
+Injections from the same biological/technical replicates cluster together.  
+`QC` samples are tightly clustered at the origin of the scores plot. They show a lower dispersion between them compared to that observed for the different groups of samples, indicating a good analytical reproducibility (i.e., the variability due to the analytical platform is much smaller than the biological/technical variability between the samples).    
+The PCA shows a separation of `seed` samples from `skin` and `pulp` samples on PC1
+(explaining `r round(summary(pca)$importance[2,1]*100, 1)`% of the total variance), whereas the PC2 (`r round(summary(pca)$importance[2,2]*100, 1)`% of total variance) separates `skin` samples from `pulp` ones.   
+Within skin samples, the first replicate seems to present some differences compared to the other two.  
+Along the PC1, samples from the class `entire` are in the central part, which confirms that they are a representation of the three different tissues. However, within the PC2 they are closer to pulp samples, probably because this is the tissue with highest proportion in a grape berry.  
+
+```{r}
 tmp <- data.frame(pca$rotation)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = cmps$class)
-rm(pca, tmp, scaling.pareto)
 ```
 
+The loadings plot suggest that the main compounds driving the separation along the PC1 probably are the ones from the class `TAG`.
 
-## Heatmap
+
+### Heatmap
 
 ```{r, fig.height=10, fig.width=14}
 dt_tissue <- data.frame(tissue = class)
 rownames(dt_tissue) <- rownames(dt)
 
-#all(cmps$ID == data$ID) # TRUE
+all(cmps$ID == data$ID) # TRUE
 dt_class <- data.frame(class = cmps$class)
 rownames(dt_class) <- colnames(dt)
-pheatmap(dt, annotation_row = dt_tissue, annotation_col = dt_class)
 
-dt_class$class[grep("Lyso", dt_class$class)] <- "Lyso"
-dt_class$class[grep("P", dt_class$class)] <- "P*"
-dt_class$class[dt_class$class %in% c("DAG", "DGDG", "MAG", "MGDG")] <- "Glycerol-lipidi"
-dt_class$class[dt_class$class %in% c("CAR", "CER", "FFA")] <- "Others"
+n.class <- length(unique(dt_class$class))
+n.tissues <- length(unique(dt_tissue$tissue))
 
 ann_color <- list(
-  "class" = c(brewer.pal(length(unique(dt_class$class)), "Dark2")),
-  "tissue" = c(brewer.pal(length(unique(dt_tissue$tissue)), "Set1"))
+  "class" = colorRampPalette(brewer.pal(12, "Paired"))(n.class),
+  "tissue" = brewer.pal(n.tissues, "Set1")
 )
 names(ann_color[[1]]) <- unique(dt_class$class)
 names(ann_color[[2]]) <- unique(dt_tissue$tissue)
 
-pheatmap(dt, annotation_row = dt_tissue, annotation_col = dt_class,
-         annotation_colors = ann_color, show_colnames = F)
-rm(dt, cmps, dt_tissue, dt_class, ann_color)
+pheatmap(dt, show_colnames = F, 
+         annotation_row = dt_tissue, annotation_col = dt_class,
+         annotation_colors = ann_color, 
+         cutree_cols = 2, cutree_rows = 2)
+```
+
+In line with what has been observed in the PCA, `seed` samples clearly separate from all other samples, showing higher intensities for a considerable amount of compounds (a lot of them from the `TAG` class).   
+This plot also suggests that `skin` and `pulp` samples are the ones with lower concentrations, whereas `QC` and `entire` samples seems to have an intermediate situation.  
+
+
+## Quality control samples
+
+We check (and, if any, list) if there are compounds not detected in all QC samples:
+
+```{r}
+idx <- which(rowSums(is.na(data[, class == "QC"])) > 0)
+tmp <- data[idx, class == "QC"]
+rownames(tmp) <- rownames(data)[idx]
+knitr::kable(tmp)
+```
+
+Next we calculate the CV across QC samples to check the quality of acquired data and their distribution is plotted below:
+
+```{r}
+CV <- function(x){(sd(x)/mean(x))*100}
+CV_QC <- apply(data[, class == "QC"], 1, CV)
+plot(density(CV_QC, na.rm = TRUE), xlab = "CV (%)", main = "")
+```
+
+The CV is arround or below 10% for most of the compounds, but some have a higher CV.  
+The following table shows the the amount of compounds with specific CV intervals:
+
+```{r}
+kable(table(cut(CV_QC, c(0, 10, 20, 30, 50, 80, max(CV_QC, na.rm = T)))))
+```
+
+Below it is plotted the distribution within QC samples of the 4 compounds with the highest CV in QCs:
+
+```{r, fig.height = 7}
+par(mfrow = c(2, 2))
+idx <- which(CV_QC > 80)
+for(i in seq(4)){
+  plot(t(data[idx[i], class == "QC"]), xlab = "", ylab = "", 
+       main = rownames(data)[idx][i], pch = 16)
+}
 ```
 
 
-# Differential abundance analysis
+We still have to decide if to exclude some compounds based what it has been observed within QC samples.  
 
-```{r, warning=FALSE}
-dt <- data[,-1]
-dt <- dt[, class %in% c("seeds", "pulp", "skin")]
-# delete compounds with ALL NAs
-na_n <- apply(dt, 1, function(x) length(which(is.na(x))))
-dt <- dt[na_n < ncol(dt), ]
-rownames(dt) <- data$ID[na_n < ncol(dt)]
+## Study samples
+
+The subsequent analyses will be applied only to samples of the classes `seeds`, `pulp` and `skin`. Therefore, below the samples from the classes `QC` and `entire` are excluded from the dataset:
+
+```{r}
+data_n9 <- data[, class %in% c("seeds", "pulp", "skin")]
+rownames(data_n9) <- rownames(data)
+```
+
+Additionally, we also remove data from internal standards (ISs) and potentially problematic analytes.
+
+```{r}
+data_n9 <- data_n9[cmps$class != "IS",]
+cmps <- cmps[cmps$class != "IS",]
+rownames(data_n9) <- cmps$ID
+
+na_n <- apply(data_n9, 1, function(x) length(which(is.na(x))))
 ```
 
 
 ```{r}
-cl <- class[class %in% c("seeds", "pulp", "skin")]
+cmps <- cmps[cmps$ID %in% rownames(data)[na_n < (ncol(data_n9)-1)], ]
+```
 
+There is n=`r sum(na_n == ncol(data_n9))` compound (``r rownames(data_n9)[which(na_n == ncol(data_n9))]``) that has `NA` values for all selected samples. It was detected only in the n=`r table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9))],])])` samples from the class ``r names(table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9))],])]))``. This compound is excluded from the dataset.  
+Additionally, there is n=`r sum(na_n == ncol(data_n9)-1)` compound (``r rownames(data_n9)[which(na_n == ncol(data_n9)-1)]``) that was detected only in n=`r paste(table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9)-1)],])]), collapse = " & ")` samples from the classes `r paste(names(table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9)-1)],])])), collapse = " & ")`, respecticely. This compound is also excluded from the dataset.  
 
+```{r}
+data_n9 <- data_n9[na_n < (ncol(data_n9)-1), ]
+rownames(data_n9) <- cmps$ID
+class_n9 <- class[class %in% c("seeds", "pulp", "skin")]
+```
 
-dt.kw <- dt
-dt.kw[is.na(dt.kw)] <- 0
-stat.kw <- function(x){kruskal.test(x, factor(cl))$p.value}
-pval.kw <- apply(FUN = stat.kw, MARGIN = 1, X = dt.kw)
+Therefore a total of n=`r nrow(data_n9)` compounds and n=`r ncol(data_n9)` samples will be used in the subsequent analyses.  
 
+### PCA
 
-
-dt.aov <- dt
+```{r}
 set.seed(123)
-dt.aov <- imputeRowMinRand(as.matrix(dt.aov), method = "from_to",
-                           min_fraction = 1/100,
-                           min_fraction_from = 1/1000)
-stat.aov <- function(x){summary(aov(log10(x)~factor(cl)))[[1]][1,5]}
-pval.aov <- apply(FUN = stat.aov, MARGIN = 1, X = dt.aov)
+dt <- t(imputeRowMinRand(as.matrix(data_n9), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
+dt <- log10(dt)
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class_n9)
 
-
-dsgn <- model.matrix(~ 0 + cl)
-fit <- lmFit(log10(dt.aov), design = dsgn)
-fit <- eBayes(fit)
-pval.lm <- topTable(fit, number = nrow(dt))[,"P.Value"]
-
-padj.kw <- p.adjust(pval.kw, "BH")
-padj.aov <- p.adjust(pval.aov, "BH")
-padj.lm <- p.adjust(pval.lm, "BH")
-
-rm(dt.kw, dt.aov, dsgn, fit, na_n, stat.kw, stat.aov)
+all(cmps$ID == rownames(data_n9)) # TRUE
+tmp <- data.frame(pca$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = cmps$class)
 ```
 
-## Venn Diagrams
+In concordance with what observed previously, the PC1 (`r round(summary(pca)$importance[2,1]*100, 1)`%) separates `seed` samples from the other ones, whereas the PC2 (`r round(summary(pca)$importance[2,2]*100, 1)`%) separates `skin` samples from `pulp` samples, being the first replicate of skin samples slightly different from its counterparts.  
+Also here, in the loadings plot the PC1 is dominated by `TAG` compounds.
 
-### raw p-values
 
-```{r, message=FALSE}
-grid.newpage()
-draw.triple.venn(
-  area1 = sum(pval.kw < 0.05),
-  area2 = sum(pval.aov < 0.05),
-  area3 = sum(pval.lm < 0.05),
-  n12 = sum(pval.kw < 0.05 & pval.aov < 0.05),
-  n13 = sum(pval.kw < 0.05 & pval.lm < 0.05),
-  n23 = sum(pval.aov < 0.05 & pval.lm < 0.05),
-  n123 = sum(pval.kw < 0.05 & pval.aov < 0.05 & pval.lm < 0.05),
-  category = c("Kruskal-Wallis", "ANOVA", "limma"),
-  fill = c("#E69F00", "#56B4E9", "#009E73")
+### Heatmap
+
+```{r}
+dt_tissue <- data.frame(tissue = class_n9)
+rownames(dt_tissue) <- rownames(dt)
+
+dt_class <- data.frame(class = cmps$class)
+rownames(dt_class) <- colnames(dt)
+
+n.tissues <- length(unique(dt_tissue$tissue))
+n.class <- length(unique(dt_class$class))
+
+ann_color <- list(
+  "tissue" = brewer.pal(n.tissues, "Set1"),
+  "class" = colorRampPalette(brewer.pal(12, "Paired"))(n.class)
 )
+names(ann_color[[1]]) <- unique(dt_tissue$tissue)
+names(ann_color[[2]]) <- unique(dt_class$class)
+
+pheatmap(dt, annotation_row = dt_tissue, annotation_col = dt_class,
+         annotation_colors = ann_color, show_colnames = F, 
+         cutree_rows = 3, cutree_cols = 3)
 ```
 
-### adjusted p-values
+Also this new heatmap is in concordance with what already observed: `seeds` samples are the most different ones, having very high amounts of a considerable number of compounds (most of them from the class `TAG`).   
+The next cluster of compounds seems to be characteristic for both `skin` and `seeds` samples.  
 
-```{r, message=FALSE}
-grid.newpage()
-draw.triple.venn(
-  area1 = sum(padj.kw < 0.05),
-  area2 = sum(padj.aov < 0.05),
-  area3 = sum(padj.lm < 0.05),
-  n12 = sum(padj.kw < 0.05 & padj.aov < 0.05),
-  n13 = sum(padj.kw < 0.05 & padj.lm < 0.05),
-  n23 = sum(padj.aov < 0.05 & padj.lm < 0.05),
-  n123 = sum(padj.kw < 0.05 & padj.aov < 0.05 & padj.lm < 0.05),
-  category = c("Kruskal-Wallis", "ANOVA", "limma"),
-  fill = c("#E69F00", "#56B4E9", "#009E73")
+
+# Differential abundance analysis
+
+One-factor ANOVA is performed to identify compounds with significant differences between the different tissues.    
+Source: [http://www.sthda.com/english/wiki/one-way-anova-test-in-r](http://www.sthda.com/english/wiki/one-way-anova-test-in-r)  
+
+```{r}
+set.seed(123)
+dt <- t(imputeRowMinRand(as.matrix(data_n9), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
+```
+
+## Assumptions
+
+The ANOVA test assumes that the data are normally distributed and the variance across groups is homogeneous.  
+
+### Homogeneity of variance
+
+It is  possible to use **Levene’s test** to check the homogeneity of variances. 
+We apply the function `leveneTest()` from `car` package to the log-transformed data.  
+
+```{r}
+stat.levene <- function(x){
+  unlist(leveneTest(log10(x) ~ factor(class_n9)))["Pr(>F)1"]
+}
+lev <- apply(FUN = stat.levene, MARGIN = 2, X = dt)
+hist(lev)
+summary(lev)
+```
+
+The compound with the minimum p-value got from Levene's test is `r min(lev)`. 
+Therefore, all p-values from all compounds are not less than the significance level of 0.05. This means that there is no evidence to suggest that the variance across groups is statistically significantly different. Therefore, we can assume the homogeneity of variances in the different classes of tissues.
+
+
+### Normality
+
+The normality of the residuals is used to check the assumption that the residuals are normally distributed. The **Shapiro-Wilk test** on the ANOVA residuals is used to check if the normality assumption is violated.
+
+```{r}
+stat.shap <- function(x){
+  as.numeric(
+    unlist(shapiro.test(residuals(aov(log10(x) ~ class_n9))))["p.value"]
+  )}
+shap <- apply(FUN = stat.shap, MARGIN = 2, X = dt)
+hist(shap, breaks = 32)
+summary(shap)
+```
+
+In this case, it can be seen that for a total of `r sum(shap < 0.05)` out of `r ncol(dt)` (`r round((sum(shap < 0.05) / ncol(dt))*100, 1)`%) compounds, the normality assumption is violated. 
+Since for most of compounds (i.e., `r round(((ncol(dt) - sum(shap < 0.05)) / ncol(dt))*100, 1)`%) the normality assumption is NOT violated, we will apply the one-way ANOVA test for comparing the amount of quantified compounds among the different tissues.
+
+
+## Compute test
+
+Raw p-values for significant differences in abundances are estimated using the function `aov()` on log-transformed data.  
+Raw p-values are adjusted for multiple hypothesis testing with the method from Benjamini and Hochberg.  
+Analytes will be considered significant if they have an adjusted p-value smaller than 0.05 (representing a 5% false discovery rate) and an Eta-squared ($\eta^{2}$) > 0.14 ([source](https://docs.google.com/spreadsheets/d/1dqbPqj3VfiHC3oZE4azLypiFOQaeoj9HQ8Z5yjOvybs/edit#gid=0)).  
+
+```{r}
+stat.pval <- function(x){unlist(summary(aov(log10(x) ~ class_n9)))["Pr(>F)1"]}
+pval <- apply(FUN = stat.pval, MARGIN = 2, X = dt)
+padj <- p.adjust(pval, "BH")
+par(mfrow = c(1, 2))
+hist(pval, breaks = 32)
+hist(padj, breaks = 32)
+```
+
+There is a clear enrichment of small p-values. 
+
+Eta-squared measures in percentage how much of the variation in the compound concentrations can be explained by the variation between the different tissues.  
+Eta-squared is calculated from the the sum of squares (the difference between individual observations and the mean for the group, squared, and summed) of the effect divided by the total sum of squares:
+\[
+\eta^{2}=
+\frac{\mathit{SS}_{\mathit{effect}}}
+{\mathit{SS}_{\mathit{total}}(\mathit{SS}_{\mathit{effect}}+\mathit{SS}_{\mathit{residuals)}}}
+\]
+
+```{r}
+stat.eta <- function(x){
+  m <- unlist(summary(aov(log10(x) ~ class_n9)))
+  m["Sum Sq1"] / (m["Sum Sq1"] + m["Sum Sq2"])
+}
+eta <- apply(FUN = stat.eta, MARGIN = 2, X = dt)
+
+hist(eta)
+abline(v = 0.14, col = "grey", lty = 2)
+```
+
+Pairwise comparisons are estimated by calculating the Cohen's d effect size, considering as benchmark value an absolute value > 0.8 to select relevant differences among tissues ([source](https://docs.google.com/spreadsheets/d/1dqbPqj3VfiHC3oZE4azLypiFOQaeoj9HQ8Z5yjOvybs/edit#gid=0)).   
+It is a measure of the distance between two means divided by the standard deviation of the population from which the groups were sampled. The formula used to calculate the Cohen’s d looks like this:
+\[
+Cohen's\ d=
+\frac{\mathit{M}_{\mathit{1}}-\mathit{M}_{\mathit{2}}}
+{\mathit{SD}_{\mathit{pooled}}}
+\]
+
+```{r}
+cohens_d <- function(x){
+  (mean(log10(x)[class_n9 == a]) - mean(log10(x)[class_n9 == b])) / sd(log10(x))
+}
+
+class_pair <- combn(c(unique(class_n9)[1:2], unique(class_n9)[3]), 2)
+for(i in seq(ncol(class_pair))){
+  a <- class_pair[1,i]
+  b <- class_pair[2,i]
+  cd <- apply(FUN = cohens_d, MARGIN = 2, X = dt)
+  assign(paste("cd", b, a, sep = "_"), cd)
+}
+
+par(mfrow = c(1, 3))
+hist(cd_seeds_pulp) 
+abline(v = c(-0.8, 0.8), col = "grey", lty = 2)
+hist(cd_skin_pulp)
+abline(v = c(-0.8, 0.8), col = "grey", lty = 2)
+hist(cd_skin_seeds)
+abline(v = c(-0.8, 0.8), col = "grey", lty = 2)
+```
+
+From the histograms it seems that most of compounds are characteristic of `seeds` class (as already outlined in the exploratory analyses), whereas the class `pulp` seems to be the one with the lower amount of characteristic compounds.   
+
+```{r}
+cd <- cbind(cd_seeds_pulp, cd_skin_pulp, cd_skin_seeds)
+pheatmap(cd, show_rownames = F, cutree_rows = 3)
+```
+
+
+## Discriminant compounds
+
+A total of n=`r sum(padj < 0.05 & eta > 0.14)` compounds (`r round((sum(padj < 0.05 & eta > 0.14)/nrow(data_n9))*100, 1)`%) are found to have significant differences between tissues.  
+Below there is plotted again the loadings plot of the PCA and the heatmap highlighting the significant compounds.
+
+```{r}
+tmp <- data.frame(pca$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = (padj < 0.05 & eta > 0.14), colors = c("#377EB8", "#E41A1C"))
+
+dt_sig <- data.frame(significant = (padj < 0.05 & eta > 0.14))
+dt_sig$significant <- as.factor(dt_sig$significant)
+rownames(dt_sig) <- colnames(dt)
+ann_color <- list(
+  "tissue" = brewer.pal(5, "Set1")[3:5],
+  "significant" = c("#377EB8", "#E41A1C")
 )
+names(ann_color[[1]]) <- unique(dt_tissue$tissue)
+names(ann_color[[2]]) <- c("FALSE", "TRUE")
+pheatmap(data.frame(scaling.pareto(log10(dt))), 
+         annotation_row = dt_tissue, annotation_col = dt_sig,
+         annotation_colors = ann_color, show_colnames = F)
+```
+
+The relationships between the different tissues for each metabolite are then automatically established:
+
+```{r}
+beh <- c()
+for(i in seq(length(padj))){
+  if(padj[i] > 0.05){
+    behx <- "NS"
+  } else if(abs(cd_seeds_pulp[i]) > 0.8 & abs(cd_skin_pulp[i]) > 0.8 & 
+            abs(cd_skin_seeds[i]) > 0.8){ # 3 significant
+    a <- 1
+    b <- 2
+    j <- 3
+    ax <- get(paste("cd", class_pair[2, a], class_pair[1, a], sep = "_"))[i]
+    bx <- get(paste("cd", class_pair[2, b], class_pair[1, b], sep = "_"))[i]
+    jx <- get(paste("cd", class_pair[2, j], class_pair[1, j], sep = "_"))[i]
+    
+    if(ax > 0){ay <- class_pair[1, a]} else {ay <- class_pair[2, a]}
+    if(bx > 0){by <- class_pair[1, b]} else {by <- class_pair[2, b]}
+    if(jx > 0){jy <- class_pair[1, j]} else {jy <- class_pair[2, j]}
+    
+    z1 <- c(ay, by, jy)[duplicated(c(ay, by, jy))]
+    z2 <- unique(c(ay, by, jy))[!unique(c(ay, by, jy)) %in% z1]
+    z3 <- unique(class_n9[!class_n9 %in% c(z1, z2)])
+    
+    behx <- paste(z1, ">", z2, ">", z3)
+  } else {
+    for(j in seq(3)){ # 2 significant (j NOT significant)
+      a <- seq(3)[!seq(3) %in% j][1]
+      b <- seq(3)[!seq(3) %in% j][2]
+      
+      ax <- get(paste("cd", class_pair[2, a], class_pair[1, a], sep = "_"))[i]
+      bx <- get(paste("cd", class_pair[2, b], class_pair[1, b], sep = "_"))[i]
+      jx <- get(paste("cd", class_pair[2, j], class_pair[1, j], sep = "_"))[i]
+      
+      if(abs(ax) > 0.8 & abs(bx) > 0.8 & abs(jx) < 0.8){ 
+        z1 <- class_pair[1, j]
+        z2 <- class_pair[2, j]
+        zz <- unique(class_n9[!class_n9 %in% c(z1, z2)])
+        if((ax < 0 & zz == class_pair[1, a]) |
+           (ax > 0 & zz == class_pair[2, a])){
+          behx <- paste0("(", z1, " & ", z2, ") > ", zz)
+        } else if((ax < 0 & zz == class_pair[2, a]) |
+                  (ax > 0 & zz == class_pair[1, a])){
+          behx <- paste0(zz, " > (", z1, " & ", z2, ")")
+        }
+      } 
+    }
+  }
+  if(exists("behx")){
+    beh <- c(beh, behx)
+    rm(behx)
+  } else{print(i)}
+}
+cmps$beh <- factor(beh, levels = c(
+          "(pulp & skin) > seeds",
+          "pulp > skin > seeds",
+          "pulp > (seeds & skin)",
+          "pulp > seeds > skin",
+          "skin > pulp > seeds",
+          "skin > (pulp & seeds)",
+          "skin > seeds > pulp",
+          "(seeds & skin) > pulp",
+          "seeds > skin > pulp",
+          "seeds > (pulp & skin)",
+          "seeds > pulp > skin",
+          "(pulp & seeds) > skin", 
+          "NS"))
+table(beh)
+data.frame(table(beh))[order(data.frame(table(beh))[,"Freq"], decreasing = T),]
+```
+
+Below, we compute again both the PCA and heatmap, but this time using only statistically significant compounds:
+
+```{r}
+idx <- which(padj < 0.05 & eta > 0.14)
+
+dt <- log10(dt[,idx])
+dt <- data.frame(scaling.pareto(dt))
+pca_sig <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca_sig$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class_n9)
+
+tmp <- data.frame(pca_sig$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = cmps$beh[idx])
+
+
+
+
+dt_beh <- data.frame(behaviour = cmps$beh[idx])
+rownames(dt_beh) <- cmps$ID[idx]
+
+n.beh <- length(unique(dt_beh$behaviour))
+ann_color <- list(
+  "tissue" = brewer.pal(n.tissues, "Set1"),
+  "behaviour" = colorRampPalette(brewer.pal(8, "Set2"))(n.beh)
+)
+names(ann_color[[1]]) <- unique(dt_tissue$tissue)
+names(ann_color[[2]]) <- unique(dt_beh$behaviour)
+
+pm <- pheatmap(dt, annotation_row = dt_tissue, annotation_col = dt_beh,
+         annotation_colors = ann_color, show_colnames = F)
+cmps$hm_order <- NA
+cmps$hm_order[idx] <- pm$tree_col$order
+cmpsx <- cmps[cmps$beh != "NS", ]
+cmpsx <- cmpsx[order(cmpsx$beh, cmpsx$hm_order),]
+dtx <- dt[, cmpsx$ID]
+dt_beh <- data.frame(behaviour = cmpsx$beh)
+rownames(dt_beh) <- colnames(dtx)
+pheatmap(dtx, annotation_row = dt_tissue, annotation_col = dt_beh,
+         annotation_colors = ann_color, show_colnames = F, cluster_cols = F)
 ```
 
 
-## Non-concordant compounds
 
-### ANOVA
-
-There are `r sum(padj.kw > 0.05 & padj.aov < 0.05 & padj.lm > 0.05)` that are only significant according to the ANOVA analyses. I'm going to print the distribution of these compounds (together with their names) according to the tissue in the pdf file `outputs/plots_anova_only.pdf`, and below I print just one example.
-
-```{r, fig.height = 12, fig.width = 15}
-idx <- which(padj.kw > 0.05 & padj.aov < 0.05 & padj.lm > 0.05)
+```{r, eval=TRUE}
+cmps <- cmps[order(cmps$beh), ]
+# Plot individual analyte concentrations for all compounds.
 p <- list()
-for(i in seq(length(idx))){
+for(i in seq(nrow(cmps))){
   tmp_dt <- data.frame(
-    value = t(dt[rownames(dt)[idx[i]],]),
-    class = cl
+    value = t(data_n9[rownames(data_n9) == cmps$ID[i],]),
+    class = class_n9
   )
   tmp_dt$na <- is.na(tmp_dt$value)
   tmp_dt$value[is.na(tmp_dt$value)] <- 0
-  p[[i]] <- ggplot(
+  p1 <- ggplot(
     data = tmp_dt, 
     aes(x = class, y = value, 
         label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
-    geom_point(aes(color = class, shape = na), 
+    geom_point(aes(color = class, pch = na), 
                position = position_jitter(0.1), size = 2) +
-    geom_text(check_overlap = T) + 
-    ggtitle(rownames(dt)[idx[i]]) +
-    xlab("") + ylab("")
-}
-gridExtra::grid.arrange(grobs = p, ncol = 3)
-```
-
-
-### limma
-
-Now, I'll do the same for the `r sum(padj.kw > 0.05 & padj.aov > 0.05 & padj.lm < 0.05)` compounds taht are only statistically significant for the limma analyses.
-
-```{r, fig.width = 15, fig.height = 200}
-idx <- which(padj.kw > 0.05 & padj.aov > 0.05 & padj.lm < 0.05)
-p <- list()
-for(i in seq(length(idx))){
-  tmp_dt <- data.frame(
-    value = t(dt[rownames(dt)[idx[i]],]),
-    class = cl
-  )
-  tmp_dt$na <- is.na(tmp_dt$value)
-  tmp_dt$value[is.na(tmp_dt$value)] <- 0
-  p[[i]] <-  ggplot(
+    ggtitle(cmps$ID[i]) +
+    xlab("") + ylab("") + theme(legend.position = "none")
+  p2 <- ggplot(
     data = tmp_dt, 
-    aes(x = class, y = value, 
+    aes(x = class, y = log10(value), 
         label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
-    geom_point(aes(color = class, shape = na), 
+    geom_point(aes(color = class, pch = na), 
                position = position_jitter(0.1), size = 2) +
-    geom_text(check_overlap = T) + 
-    ggtitle(rownames(dt)[idx[i]]) +
-    xlab("") + ylab("")
+    ggtitle(cmps$beh[i]) +
+    xlab("") + ylab("") + theme(legend.position = "none")
+  p[[i]] <- gtable::gtable_add_grob(arrangeGrob(p1, p2, ncol=2),
+                                    rectGrob(gp=gpar(lwd=5, fill=NA)), 1, 1, 1, 2)
 }
-gridExtra::grid.arrange(grobs = p, ncol = 3)
-rm(p, i, idx, tmp_dt, pval.kw, pval.aov, pval.lm, padj.kw, padj.aov, padj.lm)
+ggsave(
+  filename = "data_analysis_tissues_boxplots.pdf",
+  plot = marrangeGrob(p, nrow = 4, ncol = 3),
+  width = 15, height = 12
+)
 ```
-
-
-According to the generated plots I see that in some cases there are compounds for which the inter-class variability is very high and maybe we could flag and/or exclude these compounds from the analyses, since probably we are not interested in this ones when we are checking for the characteristic compounds of one/two specific tissue/s.
 
 
 # Session information
 
 ```{r session}
 Sys.time()-startpoint
-#devtools::session_info()
+devtools::session_info()
 ```

@@ -4,6 +4,7 @@
 *.mzData
 *.mzML
 *.mzXML
+*.pdf
 *.raw
 *.RData
 *.sld
