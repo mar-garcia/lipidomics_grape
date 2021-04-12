@@ -11,62 +11,92 @@ output:
 
 ```{r startpoint, include = FALSE}
 startpoint <- Sys.time()
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
+This document belongs to the project of application of the new targeted lipidomics method to grape samples collected at different maturation stages.  
 
 ## Libraries
 
-```{r, echo=TRUE, warning=FALSE, message=FALSE}
+```{r}
 library(readxl)
 library(xcms)
 library(plotly)
 library(pheatmap)
 library(RColorBrewer)
-library(limma)
-library(MetaboAnalystR)
-library(VennDiagram)
+library(knitr)
+library(car)
+library(mgcv)
+library(beeswarm)
 ```
 
 
 # Read data
 
-```{r, message=FALSE, echo=TRUE}
-data <- read_xlsx("data/data_maturation.xlsx", sheet = "trans_data")
-```
-
-
 ```{r}
+# Import compound quantification data:
+data <- read_xlsx("data/data_maturation.xlsx", sheet = "trans_data")
 colnames(data)[1] <- "ID"
 
+# Create a vector specifying the sample classes:
 class <- colnames(data)[-1]
 class <- gsub("_Rep.*", "", class)
 class <- gsub("_MIX.*", "", class)
 class[grep("QC", class)] <- "QC"
-```
 
-
-```{r, warning=FALSE}
-#fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
-fl <- "C:/Users/lenovo/Documents/GitHub/lipidomics/new_rt.xlsx"
+# Load compound annotations:
+fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
 cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
               read_xlsx(fl, sheet = "FORMULE")[, 1:2])
 cmps$ID <- gsub("_Na", "", cmps$ID)
-rm(fl)
+cmps <- cmps[cmps$ID %in% data$ID, ]
+cmps <- cmps[match(data$ID, cmps$ID), ]
+
+# Replace R problematic symbols in compound names:
+all(cmps$ID == data$ID) # TRUE
+cmps$ID <- data$ID <- gsub("[^0-9A-Za-z///' ]", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub("/", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub(" ", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub("__", "_", cmps$ID)
+idx <- grep("_$", cmps$ID)
+cmps$ID[idx] <- data$ID[idx] <- substr(cmps$ID[idx], 1, nchar(cmps$ID[idx])-1)
+data <- data[,-1]
+data <- sapply(data, as.numeric)
+rownames(data) <- cmps$ID
 ```
+
+Below we import and plot the data regarding the brix degree of collected samples according to the sampling date.  
+
+```{r}
+brix <- readxl::read_excel("data/Grape_Brix_Datafile.xlsx")
+plot(as.Date(brix$data), brix$Brix, 
+     col = brix$Replicate + 1, pch = 16, xlab = "Date", ylab = "Brix")
+legend("bottomright", legend = paste("Rep ", seq(5)), col = 2:6, pch = 16)
+```
+
+The dataset contains information about the quantification of n=`r nrow(data)` compounds in n=`r ncol(data)` samples of the following classes: `r paste0(aggregate(class, list(class), function(x){sum(class == x)})[,1], " (n=", aggregate(class, list(class), function(x){sum(class == x)})[,2], ")", collapse = "; ")`. 
+
+Missing values (n=`r sum(is.na(data))`) in the dataset will be replaced by a random value between the range obtained by dividing by 1000 and 100 of the smallest measured concentration for the corresponding compound.    
+Principal component analysis (PCA) and heatmaps will be performed on log-transformed and Pareto-scaled abundances, whereas one-way analysis of variance (ANOVA) on log-transformed data.  
+
 
 # Exploratory data analysis
 
-## PCA
+As mentioned, we start with an exploratory analysis of the data, first using all compounds and all samples and then only with samples of interest and excluding some potential problematic compounds.
 
-```{r, message=FALSE, warning=FALSE}
+
+## All samples
+
+### PCA
+
+```{r}
 scaling.pareto <- BioMark::scalefun(sc.p="pareto")
 
 set.seed(123)
-dt <- t(imputeRowMinRand(as.matrix(data[,-1]), method = "from_to",
+dt <- t(imputeRowMinRand(as.matrix(data), method = "from_to",
                          min_fraction = 1/100,
                          min_fraction_from = 1/1000))
-colnames(dt) <- data$ID
+colnames(dt) <- rownames(data)
 dt <- log10(dt)
 dt <- data.frame(scaling.pareto(dt))
 pca <- prcomp(dt, center = FALSE, scale. = FALSE)
@@ -74,315 +104,300 @@ tmp <- data.frame(pca$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = class)
+```
+
+`QC` samples are clustered together close to the origin of the scores plot. They show a lower dispersion between them compared to that observed among the study samples and also among the samples from the same study group (i.e., time-point), indicating a good analytical reproducibility (i.e., the variability due to the analytical platform is smaller than the biological/technical variability between the samples, eiher the ones collected at the same moment).  
+
+Visual inspection of the PCA score shows a certain degree of separation between the first and second half of samples along the first two components (accounting for `r round(summary(pca)$importance[2,1]*100, 1)`% and `r round(summary(pca)$importance[2,2]*100, 1)`% of the total variance explained, respectively).  
+To visualise this more clearly, the samples below are coloured according to whether they belong to the first or the second half of sampling:
+
+
+```{r}
 class2 <- class
-class2[class2 %in% c("Pt_01", "Pt_02", "Pt_03", "Pt_04", "Pt_05", "Pt_06")] <- "Pt_01_06"
-class2[class2 %in% c("Pt_07", "Pt_08", "Pt_09", "Pt_10", "Pt_11", "Pt_12", "Pt_13")] <- "Pt_07_13"
+class2[class2 %in% c("Pt_01", "Pt_02", "Pt_03", "Pt_04", "Pt_05", 
+                     "Pt_06")] <- "Pt_01_06"
+class2[class2 %in% c("Pt_07", "Pt_08", "Pt_09", "Pt_10", "Pt_11", 
+                     "Pt_12", "Pt_13")] <- "Pt_07_13"
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = class2)
 
-cmps <- cmps[cmps$ID %in% data$ID, ]
-cmps <- cmps[match(data$ID, cmps$ID), ]
-#all(cmps$ID == data$ID) # TRUE
+
 tmp <- data.frame(pca$rotation)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = cmps$class)
-rm(pca, tmp, scaling.pareto)
 ```
 
+The distribution of the compounds along the first 2 components in the loading plot does not match the same pattern observed in the samples: while in the case of samples a separation according to the sampling time is observed along a diagonal that goes from the upper-right corner to the lower-left corner, the compounds seem to be distributed along a diagonal that goes from the upper-left corner to the lower-right corner.   
+However, it can be clearly observed how the `TAGs` are located outside this diagonal in the lower-left quadrant of the graph, although *a priori* it is not easy to associate them to a certain group of samples.
 
-## Heatmap
+
+### Heatmap
 
 ```{r, fig.height=10, fig.width=14}
 dt_pt <- data.frame(point = class)
 rownames(dt_pt) <- rownames(dt)
 
-#all(cmps$ID == data$ID) # TRUE
+all(cmps$ID == rownames(data)) # TRUE
 dt_class <- data.frame(class = cmps$class)
 rownames(dt_class) <- colnames(dt)
-pheatmap(dt, annotation_row = dt_pt, annotation_col = dt_class)
+
+n.pt <- length(unique(dt_pt$point))
+n.class <- length(unique(dt_class$class))
+
+ann_color <- list(
+  "time-point" = colorRampPalette(brewer.pal(9, "Set1"))(n.pt),
+  "class" = colorRampPalette(brewer.pal(12, "Paired"))(n.class)
+)
+names(ann_color[[1]]) <- unique(dt_pt$point)
+names(ann_color[[2]]) <- unique(dt_class$class)
+
+pheatmap(dt, show_colnames = F, show_rownames = F, 
+         annotation_row = dt_pt, annotation_col = dt_class,
+         annotation_colors = ann_color)
+
 
 dt_pt2 <- data.frame(point = class2)
 rownames(dt_pt2) <- rownames(dt)
 
-dt_class$class[grep("Lyso", dt_class$class)] <- "Lyso"
-dt_class$class[grep("P", dt_class$class)] <- "P*"
-dt_class$class[dt_class$class %in% c("DAG", "DGDG", "MAG", "MGDG")] <- "Glycerol-lipidi"
-dt_class$class[dt_class$class %in% c("CAR", "CER", "FFA")] <- "Others"
+ann_color <- list(
+  "time-point" = brewer.pal(3, "Set2"),
+  "class" = colorRampPalette(brewer.pal(12, "Paired"))(n.class)
+)
+names(ann_color[[1]]) <- unique(dt_pt2$point)
+names(ann_color[[2]]) <- unique(dt_class$class)
+
+pheatmap(dt, show_colnames = F, show_rownames = F, 
+         annotation_row = dt_pt2, annotation_col = dt_class,
+         annotation_colors = ann_color)
+```
+
+## Quality control samples
+
+We check (and, if any, list) if there are compounds not detected in all QC samples:
+
+
+```{r}
+idx <- which(rowSums(is.na(data[, class == "QC"])) > 0)
+tmp <- data[idx, class == "QC"]
+rownames(tmp) <- rownames(data)[idx]
+kable(tmp)
+```
+
+Next we calculate the CV across QC samples to check the quality of acquired data and their distribution is plotted below:
+
+```{r}
+CV <- function(x){(sd(x)/mean(x))*100}
+CV_QC <- apply(data[, class == "QC"], 1, CV)
+plot(density(CV_QC, na.rm = TRUE), xlab = "CV (%)", main = "")
+```
+
+The CV is arround or below 10% for most of the compounds, but some have a higher CV.  
+The following table shows the the amount of compounds with specific CV intervals:  
+
+```{r}
+kable(table(cut(CV_QC, c(0, 10, 20, 30, 50, 80, max(CV_QC, na.rm = T)))))
+```
+
+Below it is plotted the distribution within QC samples of the 4 compounds with the highest CV in QCs:
+
+```{r, fig.height = 7}
+par(mfrow = c(2, 2))
+idx <- order(CV_QC, decreasing = T)[1:4]
+for(i in seq(4)){
+  plot(data[idx[i], class == "QC"], xlab = "", ylab = "", pch = 16, 
+       main = paste0(rownames(data)[idx][i], " (CV=", round(CV_QC[idx[i]]), "%)"))
+}
+```
+
+We still have to decide if to exclude some compounds based what it has been observed within QC samples.
+
+
+## Study samples
+
+Below, we will repeat the unsupervised exploratory data anlyses, but this time excluding the `QC` samples, and `IS` compounds and potentially problematic analytes.
+
+```{r}
+class_st <- class[class != "QC"]
+
+data_st <- data[, class != "QC"]
+rownames(data_st) <- rownames(data)
+
+data_st <- data_st[cmps$class != "IS", ]
+cmps <- cmps[cmps$class != "IS",]
+rownames(data_st) <- cmps$ID
+
+na_n <- apply(data_st, 1, function(x) length(which(is.na(x))))
+table(na_n)
+
+idx <- which(na_n > 30)
+kable(t(data_st[idx,]))
+
+na_n <- aggregate(t(data_st), by=list(class_st), function(x){sum(!is.na(x))})
+na_n <- apply(na_n[,-1], 2, max)
+head(na_n[order(na_n)])
+```
+
+There is n=`r sum(na_n == 1)` compound (`r names(which(na_n == 1))`) that, although it has detected in >1 sample, it has only been detected at maximum in 1 sample sample within a same class.  
+In parallel, there are n=`r sum(na_n > 1 & na_n < 5)` other compounds (`r paste(names(which(na_n > 1 & na_n < 5)), collapse = " & ")`) that at maximum have been detected in 2 and 3 samples, respectively, within the sample class.  
+We still have to decide if to exclude some or all of these compounds.  
+
+
+### PCA
+
+```{r}
+set.seed(123)
+dt <- t(imputeRowMinRand(as.matrix(data_st), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
+dt <- log10(dt)
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class_st)
+
+all(cmps$ID == rownames(data_st)) # TRUE
+tmp <- data.frame(pca$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = cmps$class)
+```
+
+
+### Heatmap
+
+```{r}
+dt_pt2 <- data.frame(point = class2[class != "QC"])
+rownames(dt_pt2) <- rownames(dt)
 
 ann_color <- list(
-  "class" = c(brewer.pal(length(unique(dt_class$class)), "Dark2")),
-  "point" = c(brewer.pal(length(unique(dt_pt2$point)), "Set1"))
+  "time-point" = brewer.pal(3, "Set2"),
+  "class" = colorRampPalette(brewer.pal(12, "Paired"))(n.class)
 )
-names(ann_color[[1]]) <- unique(dt_class$class)
-names(ann_color[[2]]) <- unique(dt_pt2$point)
+names(ann_color[[1]]) <- unique(dt_pt2$point)
+names(ann_color[[2]]) <- unique(dt_class$class)
 
-pheatmap(dt, annotation_row = dt_pt2, annotation_col = dt_class,
-         annotation_colors = ann_color, show_colnames = F, show_rownames = F)
-rm(dt, cmps, dt_class, ann_color)
+pheatmap(dt, show_colnames = F, show_rownames = F, 
+         annotation_row = dt_pt2, annotation_col = dt_class,
+         annotation_colors = ann_color)
 ```
+
 
 # Differential abundance analysis
 
-```{r}
-dt <- data[,-1]
-dt <- dt[, !grepl("QC", class)]
-# delete compounds with ALL NAs
-na_n <- apply(dt, 1, function(x) length(which(is.na(x))))
-dt <- dt[na_n < ncol(dt), ]
-```
-
-
-```{r, warning=FALSE}
-rownames(dt) <- data$ID[na_n < ncol(dt)]
-```
-
+Generalised Additive Models (GAMs) are performed to identify those compounds that show specific trends over time. GAMs have been selected since they also catch those trends that do not fit a simple linear model.  
+GAMs are regression models which allow for the inclusion of a non-parametric smoothing and will fit a regression spline to the data, allowing for nonlinear relationships.   
+  
+Sources:   
+  
+  - http://environmentalcomputing.net/intro-to-gams/  
+  - https://www.nature.com/articles/hortres201738  
 
 ```{r}
-cl <- class[!grepl("QC", class)]
-
-stat.lm <- function(x){coef(summary(lm(log10(x) ~ as.numeric(gsub("Pt_", "", cl)))))[2,4]}
-pval.lm <- apply(FUN = stat.lm, MARGIN = 1, X = dt)
-
-
-dsgn <- model.matrix(~ 0 + as.numeric(gsub("Pt_", "", cl)))
-fit <- lmFit(log10(dt), design = dsgn)
-fit <- eBayes(fit)
-pval.li <- topTable(fit, number = nrow(dt))[,"P.Value"]
-
-padj.lm <- p.adjust(pval.lm, "BH")
-padj.li <- p.adjust(pval.li, "BH")
+set.seed(123)
+dt <- t(imputeRowMinRand(as.matrix(data_st), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
 ```
 
 
-```{r, message=FALSE, warning=FALSE}
-Time <- as.numeric(gsub("Pt_", "", cl))
-Subject <- gsub(".*_R", "R", colnames(dt))
-Subject[grep("MIX", Subject)] <- "Rep_04"
-ID <- colnames(dt)
-dt.ma <- cbind(ID, Time, Subject, t(dt))
-dt.ma[is.na(dt.ma)] <- 0
-dt.ma <- dt.ma[as.numeric(dt.ma[,"Time"]) <= 11, ]
-write.csv(dt.ma, "data/dt_metaboanalyst.csv", row.names = FALSE)
+## Assumtions
 
-mSet<-InitDataObjects("conc", "ts", FALSE)
-mSet<-SetDesignType(mSet, "time0")
-mSet<-Read.TextData(mSet, "data/dt_metaboanalyst.csv", "rowts", "disc");
-mSet<-SanityCheckData(mSet)
-#mSet<-ContainMissing(mSet)
-mSet<-ReplaceMin(mSet)
-mSet<-PreparePrenormData(mSet)
-mSet<-Normalization(mSet, "NULL", "NULL", "NULL", ratio=FALSE, ratioNum=20)
-#mSet<-PlotNormSummary(mSet, "norm_1_", "png", 72, width=NA)
-#mSet<-PlotSampleNormSummary(mSet, "snorm_1_", "png", 72, width=NA)
-mSet <- ANOVA2.Anal(mSet, 2, "fdr", "time0", 1, 1)
-#mSet <- performMB(mSet, ncol(mSet$dataSet$orig))
-pval.ma <- data.frame(mSet$analSet$aov2$sig.mat)
-#tmp2 <- data.frame(mSet$analSet$MB$stats)
-pval.ma <- pval.ma$Raw.P.val
-padj.ma <- p.adjust(pval.ma, "BH")
-```
+### Homogeneity of variance
 
-
-## Compounds with highest significance
+Below we apply the function `leveneTest()` from `car` package to the log-transformed data to check the homogeneity of variances across the time-defined groups using the **Levene's test**.  
 
 ```{r}
-i <- which.min(colMeans(rbind(padj.lm, padj.li)))
-tmp_dt <- data.frame(
-  value = t(dt[rownames(dt)[i],]),
-  class = cl
-)
-tmp_dt$na <- is.na(tmp_dt$value)
-tmp_dt$value[is.na(tmp_dt$value)] <- 0
-ggplot(
-  data = tmp_dt, 
-  aes(x = class, y = value, 
-      label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
-  geom_point(aes(color = class, shape = na), 
-             position = position_jitter(0.1), size = 2) +
-  geom_text(check_overlap = T) + 
-  ggtitle(rownames(dt)[i]) +
-  xlab("") + ylab("")
-
-
-
-
-i = order(colMeans(rbind(padj.lm, padj.li)))[2]
-
-tmp_dt <- data.frame(
-  value = t(dt[rownames(dt)[i],]),
-  class = cl
-)
-tmp_dt$na <- is.na(tmp_dt$value)
-tmp_dt$value[is.na(tmp_dt$value)] <- 0
-ggplot(
-  data = tmp_dt, 
-  aes(x = class, y = value, 
-      label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
-  geom_point(aes(color = class, shape = na), 
-             position = position_jitter(0.1), size = 2) +
-  geom_text(check_overlap = T) + 
-  ggtitle(rownames(dt)[i]) +
-  xlab("") + ylab("")
-```
-
-
-## Venn Diagrams
-
-### raw p-values
-
-```{r}
-grid.newpage()
-draw.pairwise.venn(
-  area1 = sum(pval.lm < 0.05),
-  area2 = sum(pval.li < 0.05),
-  cross.area = sum(pval.lm < 0.05 & pval.li < 0.05),
-  category = c("Regression", "limma"),
-  fill = c("#E69F00", "#009E73")
-)
-
-grid.newpage()
-draw.triple.venn(
-  area1 = sum(pval.lm < 0.05),
-  area2 = sum(pval.li < 0.05),
-  area3 = sum(pval.ma < 0.05),
-  n12 = sum(pval.lm < 0.05 & pval.li < 0.05),
-  n13 = sum(pval.lm < 0.05 & pval.ma < 0.05),
-  n23 = sum(pval.li < 0.05 & pval.lm < 0.05),
-  n123 = sum(pval.lm < 0.05 & pval.li < 0.05 & pval.ma < 0.05),
-  category = c("Regression", "limma", "MetaboAnalyst"),
-  fill = c("#E69F00", "#56B4E9", "#009E73")
-)
-```
-
-
-### adjusted p-values
-
-```{r}
-grid.newpage()
-draw.pairwise.venn(
-  area1 = sum(padj.lm < 0.05),
-  area2 = sum(padj.li < 0.05),
-  cross.area = sum(padj.lm < 0.05 & padj.li < 0.05),
-  category = c("Regression", "limma"),
-  fill = c("#E69F00", "#009E73")
-)
-
-grid.newpage()
-draw.triple.venn(
-  area1 = sum(padj.lm < 0.05),
-  area2 = sum(padj.li < 0.05),
-  area3 = sum(padj.ma < 0.05),
-  n12 = sum(padj.lm < 0.05 & padj.li < 0.05),
-  n13 = sum(padj.lm < 0.05 & padj.ma < 0.05),
-  n23 = sum(padj.li < 0.05 & padj.ma < 0.05),
-  n123 = sum(padj.lm < 0.05 & padj.li < 0.05 & padj.ma < 0.05),
-  category = c("Regression", "limma", "MetaboAnalyst"),
-  fill = c("#E69F00", "#56B4E9", "#009E73")
-)
-```
-
-
-## Non-concordant compounds
-
-### ANOVA
-
-```{r}
-idx <- which(padj.lm < 0.05 & padj.li > 0.05 & padj.ma > 0.05)
-p <- list()
-for(i in seq(length(idx))){
-  tmp_dt <- data.frame(
-    value = t(dt[rownames(dt)[idx[i]],]),
-    class = cl
-  )
-  tmp_dt$na <- is.na(tmp_dt$value)
-  tmp_dt$value[is.na(tmp_dt$value)] <- 0
-  p[[i]] <- ggplot(
-    data = tmp_dt, 
-    aes(x = class, y = value, 
-        label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
-    geom_point(aes(color = class, shape = na), 
-               position = position_jitter(0.1), size = 2) +
-    geom_text(check_overlap = T) + 
-    ggtitle(rownames(dt)[idx[i]]) +
-    xlab("") + ylab("")
+stat.levene <- function(x){
+  unlist(leveneTest(log10(x) ~ factor(class_st)))["Pr(>F)1"]
 }
+lev <- apply(FUN = stat.levene, MARGIN = 2, X = dt)
+hist(lev, breaks = 32)
+summary(lev)
 ```
 
-```{r, fig.width = 15, fig.height = (ceiling(length(idx)/3)*4)}
-gridExtra::grid.arrange(grobs = p, ncol = 3)
-```
+For n=`r sum(lev < 0.05)` out of `r ncol(dt)` (`r round((sum(lev < 0.05) / ncol(dt))*100, 1)`%) compounds, the homoscedasticity assumption is violated. 
 
 
-### limma
+### Normality
 
-Below I plot a random subset of compounds (in order to be faster and to get a lighter file).
+The **Shapiro-Wilk test** on the GAM residuals is used to check if the residuals satisfy the homoscedasticity assumption. 
 
 ```{r}
-idx <- which(padj.lm > 0.05 & padj.li < 0.05 & padj.ma > 0.05)
-idx <- idx[sample(length(idx), 15*3)]
-idx <- idx[order(idx)]
-p <- list()
-for(i in seq(length(idx))){
-  tmp_dt <- data.frame(
-    value = t(dt[rownames(dt)[idx[i]],]),
-    class = cl
-  )
-  tmp_dt$na <- is.na(tmp_dt$value)
-  tmp_dt$value[is.na(tmp_dt$value)] <- 0
-  p[[i]] <- ggplot(
-    data = tmp_dt, 
-    aes(x = class, y = value, 
-        label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
-    geom_point(aes(color = class, shape = na), 
-               position = position_jitter(0.1), size = 2) +
-    geom_text(check_overlap = T) + 
-    ggtitle(rownames(dt)[idx[i]]) +
-    xlab("") + ylab("")
+brix <- rbind(brix, 
+              c(2019, "diradamento", "corno - az. Oliva", "2019-09-17", "C", 0, 
+                mean(brix$Brix[brix$data == "2019-09-17"])),
+              c(2019, "diradamento", "corno - az. Oliva", "2019-09-24", "C", 0, 
+                mean(brix$Brix[brix$data == "2019-09-24"])))
+brix <- brix[order(brix$data, brix$Replicate), ]
+
+stat.shap <- function(x){
+  as.numeric(unlist(shapiro.test(residuals.gam(
+    gam(log10(x) ~ s(as.integer(as.Date(brix$data))), method = "REML")
+    )))["p.value"])
 }
+shap <- apply(FUN = stat.shap, MARGIN = 2, X = dt)
+hist(shap, breaks = 32)
+summary(shap)
 ```
 
-```{r, fig.width = 15, fig.height = (ceiling(length(idx)/3)*4)}
-gridExtra::grid.arrange(grobs = p, ncol = 3)
-```
+In this case, it can be seen that for a total of `r sum(shap < 0.05)` out of `r ncol(dt)` (`r round((sum(shap < 0.05) / ncol(dt))*100, 1)`%) compounds, the normality assumption is violated.   
 
 
-### MetaboAnalyst
+## Compute the test 
 
-Here I plot a random subset of compounds significant only by the methods limma-MetaboAnalyst.
+GAMs are fitted by using the `gam` function of the `mgcv` package on log-transformed data.  
+GAMs are fitted by using the restricted maximum likelihood (REML) algorithm because REML estimates are more nearly unbiased in presence of small data sets.  
+Raw p-values are adjusted for multiple hypothesis testing with the method from Benjamini and Hochberg.  
+Analytes will be considered significant if they have an adjusted p-value smaller than 0.05 (representing a 5% false discovery rate).  
 
 ```{r}
-idx <- which(padj.lm > 0.05 & padj.li < 0.05 & padj.ma < 0.05)
-idx <- idx[sample(length(idx), 15*3)]
-idx <- idx[order(idx)]
-p <- list()
-for(i in seq(length(idx))){
-  tmp_dt <- data.frame(
-    value = t(dt[rownames(dt)[idx[i]],]),
-    class = cl
-  )
-  tmp_dt$na <- is.na(tmp_dt$value)
-  tmp_dt$value[is.na(tmp_dt$value)] <- 0
-  p[[i]] <- ggplot(
-    data = tmp_dt, 
-    aes(x = class, y = value, 
-        label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
-    geom_point(aes(color = class, shape = na), 
-               position = position_jitter(0.1), size = 2) +
-    geom_text(check_overlap = T) + 
-    ggtitle(rownames(dt)[idx[i]]) +
-    xlab("") + ylab("")
+stat.gam <- function(x){
+  as.numeric(unlist(summary(
+    gam(log10(x) ~ s(as.integer(as.Date(brix$data))), method = "REML")
+  ))["s.table4"])
 }
+pval <- apply(FUN = stat.gam, MARGIN = 2, X = dt)
+padj <- p.adjust(pval, "BH")
+par(mfrow = c(1, 2))
+hist(pval, breaks = 32)
+hist(padj, breaks = 32)
 ```
 
-```{r, fig.width = 15, fig.height = (ceiling(length(idx)/3)*4)}
-gridExtra::grid.arrange(grobs = p, ncol = 3)
+There is a clear enrichment of small p-values.  
+A total of n=`r sum(padj < 0.05)` compounds (`r round((sum(padj < 0.05)/nrow(data_st))*100, 1)`%) are found to present significant time-related trends.   
+
+## Some specific examples
+
+```{r, fig.height = 10}
+idx <- which(colnames(dt) %in% c("PG_14_5_18_3", "PG_16_0_18_1", "PG_14_1_20_2"))
+col_group <- colorRampPalette(brewer.pal(9, "Set1"))(13)
+names(col_group) <- unique(class_st)
+
+par(mfrow = c(3, 3))
+for(i in seq(3)){
+  vals <- split(dt[,idx[i]], f = class_st)
+  beeswarm(vals, col = col_group[names(vals)], pch = 16, main = colnames(dt)[idx[i]])
+  bxplot(vals, probs = 0.5, col = "#00000060", add = TRUE)
+  
+  vals <- split(log10(dt[,idx[i]]), f = class_st)
+  beeswarm(vals, col = col_group[names(vals)], pch = 16, main = "log-data")
+  bxplot(vals, probs = 0.5, col = "#00000060", add = TRUE)
+  
+  
+  gam_i <- gam(log10(dt[,idx[i]]) ~ s(as.integer(as.Date(brix$data))), method = "REML")
+  plot(gam_i)
+  print(colnames(dt)[idx[i]])
+  print(summary(gam_i))
+}
 ```
 
 # Session information
 
 ```{r session}
 Sys.time()-startpoint
-#devtools::session_info()
+devtools::session_info()
 ```
