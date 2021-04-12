@@ -93,9 +93,12 @@ gam.edf <- function(x){
 edfs <- apply(FUN = gam.edf, MARGIN = 2, X = dt)
 
 corsx <- cors[padj < 0.05]
+table(cut(corsx , c(0, 0.5, 0.6, 0.7, 0.8, 0.9, 1)))
 edfs <- edfs[padj < 0.05]
 
-tmp <- edfs[order(edfs, decreasing = T)]
+#tmp <- edfs[order(edfs, decreasing = T)]
+tmp <- corsx[order(corsx, decreasing = T)]
+
 col_group <- colorRampPalette(brewer.pal(9, "Set1"))(13)
 names(col_group) <- unique(class[class != "QC"])
 
