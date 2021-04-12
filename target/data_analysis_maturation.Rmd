@@ -290,11 +290,11 @@ pheatmap(dt, show_colnames = F, show_rownames = F,
 
 Generalised Additive Models (GAMs) are performed to identify those compounds that show specific trends over time. GAMs have been selected since they also catch those trends that do not fit a simple linear model.  
 GAMs are regression models which allow for the inclusion of a non-parametric smoothing and will fit a regression spline to the data, allowing for nonlinear relationships.   
-  
+
 Sources:   
-  
-  - http://environmentalcomputing.net/intro-to-gams/  
-  - https://www.nature.com/articles/hortres201738  
+
+- http://environmentalcomputing.net/intro-to-gams/  
+- https://www.nature.com/articles/hortres201738  
 
 ```{r}
 set.seed(123)
@@ -337,7 +337,7 @@ brix <- brix[order(brix$data, brix$Replicate), ]
 stat.shap <- function(x){
   as.numeric(unlist(shapiro.test(residuals.gam(
     gam(log10(x) ~ s(as.integer(as.Date(brix$data))), method = "REML")
-    )))["p.value"])
+  )))["p.value"])
 }
 shap <- apply(FUN = stat.shap, MARGIN = 2, X = dt)
 hist(shap, breaks = 32)
@@ -368,7 +368,6 @@ hist(padj, breaks = 32)
 ```
 
 There is a clear enrichment of small p-values.  
-A total of n=`r sum(padj < 0.05)` compounds (`r round((sum(padj < 0.05)/nrow(data_st))*100, 1)`%) are found to present significant time-related trends.   
 
 ## Some specific examples
 
@@ -394,6 +393,86 @@ for(i in seq(3)){
   print(summary(gam_i))
 }
 ```
+
+
+## Discriminant compounds
+
+A total of n=`r sum(padj < 0.05)` compounds (`r round((sum(padj < 0.05)/nrow(data_st))*100, 1)`%) are found to present significant time-related trends.   
+
+Below there is plotted again the loadings plot of the PCA and the heatmap highlighting the significant compounds.
+
+```{r}
+tmp <- data.frame(pca$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class2[class != "QC"])
+
+tmp <- data.frame(pca$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = (padj < 0.05), colors = c("#377EB8", "#E41A1C"))
+
+dt_sig <- data.frame(significant = (padj < 0.05))
+dt_sig$significant <- as.factor(dt_sig$significant)
+rownames(dt_sig) <- colnames(dt)
+ann_color <- list(
+  "time-point" = brewer.pal(5, "Set1")[2:3],
+  "significant" = c("#377EB8", "#E41A1C")
+)
+names(ann_color[[1]]) <- unique(dt_pt2$point)
+names(ann_color[[2]]) <- c("FALSE", "TRUE")
+pheatmap(data.frame(scaling.pareto(log10(dt))), 
+         annotation_row = dt_pt2, annotation_col = dt_sig,
+         annotation_colors = ann_color, show_colnames = F, show_rownames = F)
+```
+
+The time-trends for each metabolite are established according to Pearson-correlation values:
+
+```{r, eval=FALSE}
+tmp <- apply(dt, 2, function(x){cor(log10(x), as.integer(as.Date(brix$data)))})
+head(tmp[padj < 0.05][order(tmp[padj < 0.05])])
+tail(tmp[padj < 0.05][order(tmp[padj < 0.05])])
+tmp[which(names(tmp) == "PG_14_1_20_2")]
+cor(log10(dt[1:30,207]), as.integer(as.Date(brix$data[1:30])))
+cor(log10(dt[31:63,207]), as.integer(as.Date(brix$data[31:63])))
+
+tmp1 <- apply(dt, 2, function(x){cor(log10(x[1:30]), as.integer(as.Date(brix$data[1:30])))})
+tmp2 <- apply(dt, 2, function(x){cor(log10(x[31:63]), as.integer(as.Date(brix$data[31:63])))})
+
+cmps$beh <- "X"
+cmps$beh[tmp1 > 0.5 & tmp2 < (-0.5)] <- "up-down"
+cmps$beh[tmp1 < (-0.5) & tmp2 > 0.5] <- "down-up"
+cmps$beh[tmp > 0.5] <- "up"
+cmps$beh[tmp < (-0.5)] <- "down"
+table(cmps$beh, padj < 0.05)
+
+which(cmps$beh == "X" & padj < 0.05)[1]
+```
+
+
+## Correlation with predicted values
+
+```{r}
+xtime <- as.integer(as.Date(brix$data))
+gam.cor.pred <- function(x){
+  cor(log10(x), 
+      predict(gam(log10(x) ~ s(xtime), method = "REML"), 
+              data.frame(xtime = xtime)))
+}
+
+cors <- apply(FUN = gam.cor.pred, MARGIN = 2, X = dt)
+
+tmp <- cors[padj < 0.05]
+tmp <- tmp[order(tmp, decreasing = T)]
+
+par(mfrow =c(1, 3))
+for(i in seq(length(tmp))){
+  y <- dt[,names(tmp[i])]
+  gam_i <- gam(log10(y) ~ s(xtime), method = "REML")
+  plot(gam_i, main = paste0(names(tmp[i]), " (cor=", round(tmp[i], 3), ")"))
+}
+```
+
 
 # Session information
 
