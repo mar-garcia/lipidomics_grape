@@ -16,9 +16,9 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
 This document belongs to the project of application of the new targeted lipidomics method to grape samples collected at different maturation stages.  
 
-## Libraries
+# Libraries
 
-```{r}
+```{r libraries}
 library(readxl)
 library(xcms)
 library(plotly)
@@ -28,12 +28,14 @@ library(knitr)
 library(car)
 library(mgcv)
 library(beeswarm)
+library(ggplot2)
+library(gridExtra)
 ```
 
 
 # Read data
 
-```{r}
+```{r import-data}
 # Import compound quantification data:
 data <- read_xlsx("data/data_maturation.xlsx", sheet = "trans_data")
 colnames(data)[1] <- "ID"
@@ -67,7 +69,7 @@ rownames(data) <- cmps$ID
 
 Below we import and plot the data regarding the brix degree of collected samples according to the sampling date.  
 
-```{r}
+```{r brix}
 brix <- readxl::read_excel("data/Grape_Brix_Datafile.xlsx")
 plot(as.Date(brix$data), brix$Brix, 
      col = brix$Replicate + 1, pch = 16, xlab = "Date", ylab = "Brix")
@@ -89,7 +91,7 @@ As mentioned, we start with an exploratory analysis of the data, first using all
 
 ### PCA
 
-```{r}
+```{r pca-all}
 scaling.pareto <- BioMark::scalefun(sc.p="pareto")
 
 set.seed(123)
@@ -112,7 +114,7 @@ Visual inspection of the PCA score shows a certain degree of separation between 
 To visualise this more clearly, the samples below are coloured according to whether they belong to the first or the second half of sampling:
 
 
-```{r}
+```{r pca-all-2}
 class2 <- class
 class2[class2 %in% c("Pt_01", "Pt_02", "Pt_03", "Pt_04", "Pt_05", 
                      "Pt_06")] <- "Pt_01_06"
@@ -135,7 +137,7 @@ However, it can be clearly observed how the `TAGs` are located outside this diag
 
 ### Heatmap
 
-```{r, fig.height=10, fig.width=14}
+```{r heatmap-all, fig.height=10, fig.width=14}
 dt_pt <- data.frame(point = class)
 rownames(dt_pt) <- rownames(dt)
 
@@ -173,12 +175,13 @@ pheatmap(dt, show_colnames = F, show_rownames = F,
          annotation_colors = ann_color)
 ```
 
+
 ## Quality control samples
 
 We check (and, if any, list) if there are compounds not detected in all QC samples:
 
 
-```{r}
+```{r qc}
 idx <- which(rowSums(is.na(data[, class == "QC"])) > 0)
 tmp <- data[idx, class == "QC"]
 rownames(tmp) <- rownames(data)[idx]
@@ -187,7 +190,7 @@ kable(tmp)
 
 Next we calculate the CV across QC samples to check the quality of acquired data and their distribution is plotted below:
 
-```{r}
+```{r qc-cv}
 CV <- function(x){(sd(x)/mean(x))*100}
 CV_QC <- apply(data[, class == "QC"], 1, CV)
 plot(density(CV_QC, na.rm = TRUE), xlab = "CV (%)", main = "")
@@ -196,13 +199,13 @@ plot(density(CV_QC, na.rm = TRUE), xlab = "CV (%)", main = "")
 The CV is arround or below 10% for most of the compounds, but some have a higher CV.  
 The following table shows the the amount of compounds with specific CV intervals:  
 
-```{r}
+```{r qc-cv-table}
 kable(table(cut(CV_QC, c(0, 10, 20, 30, 50, 80, max(CV_QC, na.rm = T)))))
 ```
 
 Below it is plotted the distribution within QC samples of the 4 compounds with the highest CV in QCs:
 
-```{r, fig.height = 7}
+```{r qc-cv-plot, fig.height = 7}
 par(mfrow = c(2, 2))
 idx <- order(CV_QC, decreasing = T)[1:4]
 for(i in seq(4)){
@@ -218,7 +221,7 @@ We still have to decide if to exclude some compounds based what it has been obse
 
 Below, we will repeat the unsupervised exploratory data anlyses, but this time excluding the `QC` samples, and `IS` compounds and potentially problematic analytes.
 
-```{r}
+```{r filter-data}
 class_st <- class[class != "QC"]
 
 data_st <- data[, class != "QC"]
@@ -246,7 +249,7 @@ We still have to decide if to exclude some or all of these compounds.
 
 ### PCA
 
-```{r}
+```{r pca-st}
 set.seed(123)
 dt <- t(imputeRowMinRand(as.matrix(data_st), method = "from_to",
                          min_fraction = 1/100,
@@ -269,7 +272,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
 
 ### Heatmap
 
-```{r}
+```{r heatmap-st}
 dt_pt2 <- data.frame(point = class2[class != "QC"])
 rownames(dt_pt2) <- rownames(dt)
 
@@ -296,7 +299,7 @@ Sources:
 - http://environmentalcomputing.net/intro-to-gams/  
 - https://www.nature.com/articles/hortres201738  
 
-```{r}
+```{r impute-na}
 set.seed(123)
 dt <- t(imputeRowMinRand(as.matrix(data_st), method = "from_to",
                          min_fraction = 1/100,
@@ -310,7 +313,7 @@ dt <- t(imputeRowMinRand(as.matrix(data_st), method = "from_to",
 
 Below we apply the function `leveneTest()` from `car` package to the log-transformed data to check the homogeneity of variances across the time-defined groups using the **Levene's test**.  
 
-```{r}
+```{r variance}
 stat.levene <- function(x){
   unlist(leveneTest(log10(x) ~ factor(class_st)))["Pr(>F)1"]
 }
@@ -326,7 +329,7 @@ For n=`r sum(lev < 0.05)` out of `r ncol(dt)` (`r round((sum(lev < 0.05) / ncol(
 
 The **Shapiro-Wilk test** on the GAM residuals is used to check if the residuals satisfy the homoscedasticity assumption. 
 
-```{r}
+```{r normality}
 brix <- rbind(brix, 
               c(2019, "diradamento", "corno - az. Oliva", "2019-09-17", "C", 0, 
                 mean(brix$Brix[brix$data == "2019-09-17"])),
@@ -352,9 +355,9 @@ In this case, it can be seen that for a total of `r sum(shap < 0.05)` out of `r 
 GAMs are fitted by using the `gam` function of the `mgcv` package on log-transformed data.  
 GAMs are fitted by using the restricted maximum likelihood (REML) algorithm because REML estimates are more nearly unbiased in presence of small data sets.  
 Raw p-values are adjusted for multiple hypothesis testing with the method from Benjamini and Hochberg.  
-Analytes will be considered significant if they have an adjusted p-value smaller than 0.05 (representing a 5% false discovery rate).  
+Analytes will be considered significant if they have an adjusted p-value smaller than 0.05 (representing a 5% false discovery rate) and if they show a correlation between observed *vs* predicted values higher than 0.7 (in order to focus on those compounds that, in addition to showing statistical significance, also show a high fit between observed and predicted values).  
 
-```{r}
+```{r gam}
 stat.gam <- function(x){
   as.numeric(unlist(summary(
     gam(log10(x) ~ s(as.integer(as.Date(brix$data))), method = "REML")
@@ -369,108 +372,198 @@ hist(padj, breaks = 32)
 
 There is a clear enrichment of small p-values.  
 
-## Some specific examples
-
-```{r, fig.height = 10}
-idx <- which(colnames(dt) %in% c("PG_14_5_18_3", "PG_16_0_18_1", "PG_14_1_20_2"))
-col_group <- colorRampPalette(brewer.pal(9, "Set1"))(13)
-names(col_group) <- unique(class_st)
-
-par(mfrow = c(3, 3))
-for(i in seq(3)){
-  vals <- split(dt[,idx[i]], f = class_st)
-  beeswarm(vals, col = col_group[names(vals)], pch = 16, main = colnames(dt)[idx[i]])
-  bxplot(vals, probs = 0.5, col = "#00000060", add = TRUE)
-  
-  vals <- split(log10(dt[,idx[i]]), f = class_st)
-  beeswarm(vals, col = col_group[names(vals)], pch = 16, main = "log-data")
-  bxplot(vals, probs = 0.5, col = "#00000060", add = TRUE)
-  
-  
-  gam_i <- gam(log10(dt[,idx[i]]) ~ s(as.integer(as.Date(brix$data))), method = "REML")
-  plot(gam_i)
-  print(colnames(dt)[idx[i]])
-  print(summary(gam_i))
-}
-```
-
-
-## Discriminant compounds
-
-A total of n=`r sum(padj < 0.05)` compounds (`r round((sum(padj < 0.05)/nrow(data_st))*100, 1)`%) are found to present significant time-related trends.   
-
-Below there is plotted again the loadings plot of the PCA and the heatmap highlighting the significant compounds.
-
-```{r}
-tmp <- data.frame(pca$x)
-plot_ly(x = tmp$PC1, y = tmp$PC2,
-        text = rownames(tmp),
-        color = class2[class != "QC"])
-
-tmp <- data.frame(pca$rotation)
-plot_ly(x = tmp$PC1, y = tmp$PC2,
-        text = rownames(tmp),
-        color = (padj < 0.05), colors = c("#377EB8", "#E41A1C"))
-
-dt_sig <- data.frame(significant = (padj < 0.05))
-dt_sig$significant <- as.factor(dt_sig$significant)
-rownames(dt_sig) <- colnames(dt)
-ann_color <- list(
-  "time-point" = brewer.pal(5, "Set1")[2:3],
-  "significant" = c("#377EB8", "#E41A1C")
-)
-names(ann_color[[1]]) <- unique(dt_pt2$point)
-names(ann_color[[2]]) <- c("FALSE", "TRUE")
-pheatmap(data.frame(scaling.pareto(log10(dt))), 
-         annotation_row = dt_pt2, annotation_col = dt_sig,
-         annotation_colors = ann_color, show_colnames = F, show_rownames = F)
-```
-
-The time-trends for each metabolite are established according to Pearson-correlation values:
-
-```{r, eval=FALSE}
-tmp <- apply(dt, 2, function(x){cor(log10(x), as.integer(as.Date(brix$data)))})
-head(tmp[padj < 0.05][order(tmp[padj < 0.05])])
-tail(tmp[padj < 0.05][order(tmp[padj < 0.05])])
-tmp[which(names(tmp) == "PG_14_1_20_2")]
-cor(log10(dt[1:30,207]), as.integer(as.Date(brix$data[1:30])))
-cor(log10(dt[31:63,207]), as.integer(as.Date(brix$data[31:63])))
-
-tmp1 <- apply(dt, 2, function(x){cor(log10(x[1:30]), as.integer(as.Date(brix$data[1:30])))})
-tmp2 <- apply(dt, 2, function(x){cor(log10(x[31:63]), as.integer(as.Date(brix$data[31:63])))})
-
-cmps$beh <- "X"
-cmps$beh[tmp1 > 0.5 & tmp2 < (-0.5)] <- "up-down"
-cmps$beh[tmp1 < (-0.5) & tmp2 > 0.5] <- "down-up"
-cmps$beh[tmp > 0.5] <- "up"
-cmps$beh[tmp < (-0.5)] <- "down"
-table(cmps$beh, padj < 0.05)
-
-which(cmps$beh == "X" & padj < 0.05)[1]
-```
-
-
-## Correlation with predicted values
-
-```{r}
+```{r gam-cor-pred}
 xtime <- as.integer(as.Date(brix$data))
 gam.cor.pred <- function(x){
   cor(log10(x), 
       predict(gam(log10(x) ~ s(xtime), method = "REML"), 
               data.frame(xtime = xtime)))
 }
+cor.pred <- apply(FUN = gam.cor.pred, MARGIN = 2, X = dt)
+summary(cor.pred)
+par(mfrow = c(1, 2))
+hist(cor.pred, breaks = 10, xlim = c(0,1), ylim = c(0,170))
+hist(cor.pred[padj < 0.05], breaks = 10, xlim = c(0,1), ylim = c(0,170))
+```
 
-cors <- apply(FUN = gam.cor.pred, MARGIN = 2, X = dt)
 
-tmp <- cors[padj < 0.05]
-tmp <- tmp[order(tmp, decreasing = T)]
 
-par(mfrow =c(1, 3))
-for(i in seq(length(tmp))){
-  y <- dt[,names(tmp[i])]
-  gam_i <- gam(log10(y) ~ s(xtime), method = "REML")
-  plot(gam_i, main = paste0(names(tmp[i]), " (cor=", round(tmp[i], 3), ")"))
+## Discriminant compounds
+
+A total of n=`r sum(padj < 0.05)` compounds (`r round((sum(padj < 0.05)/nrow(data_st))*100, 1)`%) are found to present significant time-related trends, whereas n=`r sum(padj < 0.05 & cor.pred > 0.7)` of them (`r round((sum(padj < 0.05 & cor.pred > 0.7)/sum(padj < 0.05))*100, 1)`%) also showed a high correlation between observed and predicted values.   
+
+Below there is plotted again the loadings plot of the PCA and the heatmap highlighting the significant compounds.
+
+```{r discriminants}
+tmp <- data.frame(pca$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class2[class != "QC"])
+
+tmp_col <- rep("NS", ncol(dt))
+tmp_col[padj < 0.05] <- "padj < 0.05"
+tmp_col[padj < 0.05 & cor.pred > 0.7] <- "padj < 0.05 & cor.pred > 0.7"
+
+tmp <- data.frame(pca$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = tmp_col, colors = c("#377EB8", "#4DAF4A", "#E41A1C"))
+
+dt_sig <- data.frame(significe = tmp_col)
+dt_sig$significe <- as.factor(dt_sig$significe)
+rownames(dt_sig) <- colnames(dt)
+ann_color <- list(
+  "time-point" = brewer.pal(5, "Set1")[4:5],
+  "significe" =  brewer.pal(3, "Set1")
+)
+names(ann_color[[1]]) <- unique(dt_pt2$point)
+names(ann_color[[2]]) <- levels(dt_sig$significe)
+pheatmap(data.frame(scaling.pareto(log10(dt))), 
+         annotation_row = dt_pt2, annotation_col = dt_sig,
+         annotation_colors = ann_color, show_colnames = F, show_rownames = F)
+```
+
+Discriminant metabolites are grouped according to their time-trends observed in GAM models.  
+This classification is based on pairwise correlations between predicted values by each model.
+
+```{r plots}
+idx <- which(padj < 0.05 & cor.pred > 0.7)
+
+dt_pred <- matrix(NA, nrow = nrow(dt), ncol = ncol(dt), dimnames = dimnames(dt))
+dt_pred <- dt_pred[,idx]
+
+for(i in seq(ncol(dt_pred))){
+  dt_pred[,i] <- predict(gam(log10(dt[,idx[i]]) ~ s(xtime), method = "REML"), 
+                         data.frame(xtime = xtime))  
 }
+
+
+cormat <- cor(dt_pred)
+pm <- pheatmap(cormat, show_colnames = F, show_rownames = F)
+
+trends <- c()
+for(i in seq(ncol(dt))){
+  i.cmp <- colnames(dt)[i]
+  y <- dt[,i.cmp]
+  yna <- data[i.cmp, class != "QC"]
+  gam_i <- gam(log10(y) ~ s(xtime), method = "REML")
+  i.predictions <- predict(gam_i, data.frame(xtime = unique(xtime)))
+  i.pred.norm <- (i.predictions - min(i.predictions)) / (max(i.predictions) - min(i.predictions))
+  deltas <- diff(i.pred.norm)
+  tmp = data.frame(
+    direction = deltas, 
+    slope = abs(deltas)/mean(abs(deltas))
+  )
+  tmp$tendency <- "flat"
+  tmp$tendency[tmp$slope > 0.1 & tmp$direction < 0] <- "down"
+  tmp$tendency[tmp$slope > 0.1 & tmp$direction > 0] <- "up"
+  
+  trends <- c(trends, paste(tmp$tendency, collapse = "_"))
+}
+
+trends2 <- c()
+trends3 <- c()
+for(i in seq(length(trends))){
+  tmp <- rle(as.character(unlist(strsplit(as.character(trends[i]), "_"))))
+  trends2 <- c(trends2, paste0(tmp$values, formatC(tmp$lengths, width = 2, flag = "0"), collapse = "_"))
+  trends3 <- c(trends3, paste(tmp$values, collapse = "_"))
+}
+
+res <- data.frame(cbind(pval, padj, cor.pred))
+res$trends <- trends
+res$trends2 <- trends2
+res$trends3 <- trends3
+res_NS <- res[res$padj > 0.05 | res$cor.pred < 0.7, ]
+res <- res[res$padj < 0.05 & res$cor.pred > 0.7, ]
+res$pm_order <- pm$tree_row$order
+res$pm_cluster <- cutree(pm$tree_row, k = 3)
+
+res$trends4 <- res$trends3
+res$trends4[
+  !res$trends4 %in% 
+    c("down", #"down_up", "down_flat",
+      "up", "up_down"#, "up_flat", 
+      #"up_flat_down", "up_flat_down_flat", "up_flat_up_flat"
+      )] <- "others"
+res$trends4 <- factor(res$trends4, levels = c("up", "up_down", #"up_flat", 
+      #"up_flat_down", "up_flat_down_flat", "up_flat_up_flat", 
+      "down", #"down_up", "down_flat", 
+      "others"))
+table(res$trends4)
+data.frame(table(res$trends3))[order(data.frame(table(res$trends3))[,"Freq"], decreasing = T),]
+```
+
+Below, we compute again both the PCA and heatmap, but this time using only statistically significant compounds:
+
+```{r}
+idx <- which(padj < 0.05 & cor.pred > 0.7)
+
+dt <- log10(dt[,idx])
+dt <- data.frame(scaling.pareto(dt))
+pca_sig <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca_sig$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class2[class2 != "QC"])
+
+tmp <- data.frame(pca_sig$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = res$trends4)
+
+
+dt_beh <- data.frame(behaviour = res$trends4)
+rownames(dt_beh) <- rownames(res)
+
+n.beh <- length(unique(dt_beh$behaviour))
+ann_color <- list(
+  "time-point" = brewer.pal(3, "Set2"),
+  "behaviour" = colorRampPalette(brewer.pal(8, "Set2"))(n.beh)
+)
+names(ann_color[[1]]) <- unique(dt_pt2$point)
+names(ann_color[[2]]) <- unique(dt_beh$behaviour)
+
+pheatmap(dt, annotation_row = dt_pt2, annotation_col = dt_beh,
+         annotation_colors = ann_color, show_colnames = F, show_rownames = F)
+
+pheatmap(cormat, show_colnames = F, show_rownames = F, 
+         annotation_colors = ann_color, 
+         annotation_col = dt_beh, annotation_row = dt_beh)
+```
+
+
+```{r, eval = TRUE}
+res <- res[order(res$trends4, res$trends3, -as.numeric(as.factor(res$trends2))), ]
+res_NS$pm_order <- NA
+res_NS$pm_cluster <- NA
+res_NS$trends4 <- "NS"
+res_NS$trends4[res_NS$padj < 0.05] <- "NC"
+res_NS <- res_NS[order(res_NS$trends4), ]
+res <- rbind(res, res_NS)
+
+p <- list()
+for(i in seq(nrow(res))){
+  if(res$padj < 0.05 & res$cor.pred > 0.7){
+    ttl <- paste0(rownames(res)[i], " (", res$trends2[i], ")")
+  } else {
+    ttl <- paste0(rownames(res)[i], " (", res$trends4[i], ")")
+  }
+  
+  x <- xtime
+  y <- dt[,rownames(res)[i]]
+  Sample_data <- data.frame(y,x)
+  Sample_data$class <- class[class != "QC"]
+  p[[i]] <- ggplot(Sample_data, aes(x, log10(y))) + 
+    geom_point(color = as.numeric(as.factor(Sample_data$class))) + 
+    geom_smooth(method = "gam", formula = y ~s(x), col = "grey", alpha = 0.1) +
+    xlab("") + ylab("") + theme_light() + 
+    ggtitle(paste0(rownames(res)[i], " (", res$trends2[i], ")"))
+}
+ggsave(
+  filename = "data_analysis_maturation_curves.pdf",
+  plot = marrangeGrob(p, nrow = 4, ncol = 3),
+  width = 15, height = 12
+)
 ```
 
 
