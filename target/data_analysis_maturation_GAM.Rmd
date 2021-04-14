@@ -192,6 +192,7 @@ pm <- pheatmap(cormat, show_colnames = F, show_rownames = F)
 
 par(mfrow =c(1, 2))
 for(i in pm$tree_row$order){
+  print(names(idx[i]))
   y <- dt[,names(idx[i])]
   yna <- data[names(idx[i]), class != "QC"]
   gam_i <- gam(log10(y) ~ s(xtime), method = "REML")
