@@ -47,8 +47,8 @@ class <- gsub("_MIX.*", "", class)
 class[grep("QC", class)] <- "QC"
 
 # Load compound annotations:
-#fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
-fl <- "data/new_rt.xlsx"
+fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+#fl <- "data/new_rt.xlsx"
 cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
               read_xlsx(fl, sheet = "FORMULE")[, 1:2])
 cmps$ID <- gsub("_Na", "", cmps$ID)
@@ -377,8 +377,8 @@ There is a clear enrichment of small p-values.
 xtime <- as.integer(as.Date(brix$data))
 gam.cor.pred <- function(x){
   cor(log10(x), 
-      predict(gam(log10(x) ~ s(xtime), method = "REML"), 
-              data.frame(xtime = xtime)))
+      predict.gam(gam(log10(x) ~ s(xtime), method = "REML"), 
+                  data.frame(xtime = xtime)))
 }
 cor.pred <- apply(FUN = gam.cor.pred, MARGIN = 2, X = dt)
 summary(cor.pred)
@@ -391,7 +391,7 @@ hist(cor.pred[padj < 0.05], breaks = 10, xlim = c(0,1), ylim = c(0,170))
 
 ## Discriminant compounds
 
-A total of n=`r sum(padj < 0.05)` compounds (`r round((sum(padj < 0.05)/nrow(data_st))*100, 1)`%) are found to present significant time-related trends, whereas n=`r sum(padj < 0.05 & cor.pred > 0.7)` of them (`r round((sum(padj < 0.05 & cor.pred > 0.7)/sum(padj < 0.05))*100, 1)`%) also showed a high correlation between observed and predicted values.   
+A total of n=`r sum(padj < 0.05)` compounds (`r round((sum(padj < 0.05)/nrow(data_st))*100, 1)`%) are found to present significant time-related trends, whereas n=`r sum(padj < 0.05 & cor.pred > 0.7)` of them (`r round((sum(padj < 0.05 & cor.pred > 0.7)/sum(padj < 0.05))*100, 1)`%) also show a high correlation between observed and predicted values.   
 
 Below there is plotted again the loadings plot of the PCA and the heatmap highlighting the significant compounds.
 
@@ -425,41 +425,63 @@ pheatmap(data.frame(scaling.pareto(log10(dt))),
 ```
 
 Discriminant metabolites are grouped according to their time-trends observed in GAM models.  
-This classification is based on pairwise correlations between predicted values by each model.
 
-```{r trends}
+```{r pred-cor}
 idx <- which(padj < 0.05 & cor.pred > 0.7)
 
-dt_pred <- matrix(NA, nrow = nrow(dt), ncol = ncol(dt), dimnames = dimnames(dt))
+#dt_pred <- matrix(NA, nrow = nrow(dt), ncol = ncol(dt), dimnames = dimnames(dt))
+#dt_pred <- dt_pred[,idx]
+
+ytimes <- seq(min(xtime), max(xtime))
+dt_pred <- matrix(NA, nrow = length(ytimes), ncol = ncol(dt))
+colnames(dt_pred) <- colnames(dt)
 dt_pred <- dt_pred[,idx]
 
 for(i in seq(ncol(dt_pred))){
-  dt_pred[,i] <- predict(gam(log10(dt[,idx[i]]) ~ s(xtime), method = "REML"), 
-                         data.frame(xtime = xtime))  
+  dt_pred[,i] <- predict.gam(gam(log10(dt[,idx[i]]) ~ s(xtime), method = "REML"), 
+                             data.frame(xtime = ytimes))  
 }
 
 
 cormat <- cor(dt_pred)
+# pairwise correlations between predicted values by each model:
 pm <- pheatmap(cormat, show_colnames = F, show_rownames = F)
+```
 
+This classification is based on predicted values, following this scheme:  
+  
+  - predicted values are calculated within the time range of the present study  
+  - eight of the predicted values are taken on a time-equidistant basis  
+  - the angle between every 2 consecutive points is calculated  
+  - an increase or decrease is considered if the angle is >10°C (otherwise it is considered "flat")  
+
+```{r trends}
 trends <- c()
+xx <- seq(length(ytimes))
+xx2 <- xx[seq(1, 50, 7)]
 for(i in seq(ncol(dt))){
   i.cmp <- colnames(dt)[i]
   y <- dt[,i.cmp]
   yna <- data[i.cmp, class != "QC"]
   gam_i <- gam(log10(y) ~ s(xtime), method = "REML")
-  i.pred <- predict(gam_i, data.frame(xtime = unique(xtime)))
+  i.pred <- predict.gam(gam_i, data.frame(xtime = ytimes))
   i.pred_antilog <- 10^i.pred
   i.pred.norm <- (i.pred_antilog - min(i.pred_antilog)) / 
     (max(i.pred_antilog) - min(i.pred_antilog))
-  deltas <- diff(i.pred.norm)
-  tmp = data.frame(
-    direction = deltas, 
-    slope = abs(deltas)/mean(abs(deltas))
+  yy <- i.pred.norm*length(ytimes)
+  yy2 <- yy[seq(1, 50, 7)]
+  tmp <- data.frame(
+    direction = diff(i.pred.norm[seq(1, 50, 7)]),
+    slope = atan(diff(yy2) / diff(xx2))*(180/pi)
   )
+  #deltas <- diff(i.pred.norm)
+  #tmp <- data.frame(
+  #  direction = deltas, 
+  #  slope = deltas/mean(deltas)
+  #)
   tmp$tendency <- "flat"
-  tmp$tendency[tmp$slope > 0.1 & tmp$direction < 0] <- "down"
-  tmp$tendency[tmp$slope > 0.1 & tmp$direction > 0] <- "up"
+  tmp$tendency[abs(tmp$slope) > 10 & tmp$direction < 0] <- "down"
+  tmp$tendency[abs(tmp$slope) > 10 & tmp$direction > 0] <- "up"
   
   trends <- c(trends, paste(tmp$tendency, collapse = "_"))
 }
@@ -482,16 +504,14 @@ res$pm_order <- pm$tree_row$order
 res$pm_cluster <- cutree(pm$tree_row, k = 3)
 
 res$trends4 <- res$trends3
-res$trends4[
-  !res$trends4 %in% 
-    c("down", #"down_up", "down_flat",
-      "up", "up_down"#, "up_flat", 
-      #"up_flat_down", "up_flat_down_flat", "up_flat_up_flat"
-      )] <- "others"
-res$trends4 <- factor(res$trends4, levels = c("up", "up_down", #"up_flat", 
-      #"up_flat_down", "up_flat_down_flat", "up_flat_up_flat", 
-      "down", #"down_up", "down_flat", 
-      "others"))
+res$trends4[!res$trends4 %in% c(
+  "down", "down_flat", "down_flat_up", "down_up",
+  "up", "up_flat", "up_flat_down", "up_down" 
+)] <- "others"
+res$trends4 <- factor(res$trends4, levels = c(
+  "up", "up_flat", "up_flat_down", "up_down",
+  "down", "down_flat", "down_flat_up", "down_up",
+  "others"))
 table(res$trends4)
 data.frame(table(res$trends3))[order(data.frame(table(res$trends3))[,"Freq"], decreasing = T),]
 ```
@@ -541,15 +561,14 @@ dt <- data.frame(scaling.pareto(dt_pred))
 pca_sig <- prcomp(dt, center = FALSE, scale. = FALSE)
 tmp <- data.frame(pca_sig$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
-        text = rownames(tmp),
-        color = class2[class2 != "QC"])
+        text = zoo::as.Date(ytimes))
 
 tmp <- data.frame(pca_sig$rotation)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = res$trends4)
 
-pheatmap(dt, annotation_row = dt_pt2, annotation_col = dt_beh,
+pheatmap(dt, annotation_col = dt_beh,
          annotation_colors = ann_color, 
          show_colnames = F, show_rownames = F)
 
@@ -557,7 +576,7 @@ res <- res[order(res$trends4, res$trends3, -as.numeric(as.factor(res$trends2))),
 dt <- dt[,match(rownames(res), colnames(dt))]
 dt_beh <- data.frame(behaviour = res$trends4)
 rownames(dt_beh) <- rownames(res)
-pheatmap(dt, annotation_row = dt_pt2, annotation_col = dt_beh,
+pheatmap(dt, annotation_col = dt_beh,
          annotation_colors = ann_color, 
          show_colnames = F, show_rownames = F, 
          cluster_rows = F, cluster_cols = F)
