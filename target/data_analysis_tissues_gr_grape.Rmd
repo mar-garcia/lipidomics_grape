@@ -550,7 +550,7 @@ pheatmap(dtx, annotation_row = dt_tissue, annotation_col = dt_beh,
 
 
 
-```{r, eval=TRUE}
+```{r, eval=FALSE}
 cmps <- cmps[order(cmps$beh), ]
 # Plot individual analyte concentrations for all compounds.
 p <- list()
@@ -585,6 +585,42 @@ ggsave(
   plot = marrangeGrob(p, nrow = 4, ncol = 3),
   width = 15, height = 12
 )
+```
+
+# Classes of compounds
+
+```{r}
+idx <- rownames(data) %in% cmps$ID
+idx.names <- rownames(data)[idx]
+data <- data[idx,]
+rownames(data) <- idx.names
+
+par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
+quanti <- aggregate(colSums(data[,class != "QC"], na.rm = T), list(class[class != "QC"]), mean)
+for(i in seq(nrow(quanti))){
+  slices <- c(quanti$x[i], 1e6 - quanti$x[i]) 
+  lbls <- c("lipids", "others")
+  lbls <- paste0(lbls, "\n(", round(slices/1000), ' mg/g)')
+  pie(slices, lbls, main = quanti$Group.1[i])
+}
+
+for(i in seq(nrow(quanti))){
+  slices <- c(quanti$x[i], 2e3 - quanti$x[i]) 
+  lbls <- c("lipids", "others")
+  lbls <- paste0(lbls, "\n(", round(slices/1000), 'mg/2mg)')
+  pie(slices, lbls, main = quanti$Group.1[i])
+}
+
+all(rownames(data) == cmps$ID)
+classx <- c("entire", "skin", "pulp", "seeds")
+for(j in seq(length(classx))){
+  tmp <- data[, class == classx[j]]
+  quanti <- aggregate(rowSums(tmp), list(cmps$class), function(x){sum(x, na.rm=T)})
+  slices <- quanti$x
+  lbls <- quanti$Group.1
+  pie(slices, lbls, main = classx[j], 
+      col = colorRampPalette(brewer.pal(9, "Set1"))(nrow(quanti)),)
+}
 ```
 
 

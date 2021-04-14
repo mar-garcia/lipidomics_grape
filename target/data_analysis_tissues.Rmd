@@ -476,19 +476,19 @@ for(i in seq(length(padj))){
   } else{print(i)}
 }
 cmps$beh <- factor(beh, levels = c(
-          "(pulp & skin) > seeds",
-          "pulp > skin > seeds",
-          "pulp > (seeds & skin)",
-          "pulp > seeds > skin",
-          "skin > pulp > seeds",
-          "skin > (pulp & seeds)",
-          "skin > seeds > pulp",
-          "(seeds & skin) > pulp",
-          "seeds > skin > pulp",
-          "seeds > (pulp & skin)",
-          "seeds > pulp > skin",
-          "(pulp & seeds) > skin", 
-          "NS"))
+  "(pulp & skin) > seeds",
+  "pulp > skin > seeds",
+  "pulp > (seeds & skin)",
+  "pulp > seeds > skin",
+  "skin > pulp > seeds",
+  "skin > (pulp & seeds)",
+  "skin > seeds > pulp",
+  "(seeds & skin) > pulp",
+  "seeds > skin > pulp",
+  "seeds > (pulp & skin)",
+  "seeds > pulp > skin",
+  "(pulp & seeds) > skin", 
+  "NS"))
 table(beh)
 data.frame(table(beh))[order(data.frame(table(beh))[,"Freq"], decreasing = T),]
 ```
@@ -526,7 +526,7 @@ names(ann_color[[1]]) <- unique(dt_tissue$tissue)
 names(ann_color[[2]]) <- unique(dt_beh$behaviour)
 
 pm <- pheatmap(dt, annotation_row = dt_tissue, annotation_col = dt_beh,
-         annotation_colors = ann_color, show_colnames = F)
+               annotation_colors = ann_color, show_colnames = F)
 cmps$hm_order <- NA
 cmps$hm_order[idx] <- pm$tree_col$order
 cmpsx <- cmps[cmps$beh != "NS", ]
@@ -540,7 +540,7 @@ pheatmap(dtx, annotation_row = dt_tissue, annotation_col = dt_beh,
 
 
 
-```{r, eval=TRUE}
+```{r, eval=FALSE}
 cmps <- cmps[order(cmps$beh), ]
 # Plot individual analyte concentrations for all compounds.
 p <- list()
@@ -575,6 +575,44 @@ ggsave(
   plot = marrangeGrob(p, nrow = 4, ncol = 3),
   width = 15, height = 12
 )
+```
+
+
+# Classes of compounds
+
+```{r}
+idx <- rownames(data) %in% cmps$ID
+idx.names <- rownames(data)[idx]
+data <- data[idx,]
+rownames(data) <- idx.names
+
+par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
+quanti <- aggregate(colSums(data[class != "QC"], na.rm = T), list(class[class != "QC"]), mean)
+for(i in seq(nrow(quanti))){
+  slices <- c(quanti$x[i], 1e6 - quanti$x[i]) 
+  lbls <- c("lipids", "others")
+  lbls <- paste0(lbls, "\n(", round(slices/1000), ' mg/g)')
+  pie(slices, lbls, main = quanti$Group.1[i])
+}
+
+quanti <- aggregate(colSums(data[class != "QC"], na.rm = T), list(class[class != "QC"]), mean)
+for(i in seq(nrow(quanti))){
+  slices <- c(quanti$x[i], 3e4 - quanti$x[i]) 
+  lbls <- c("lipids", "others")
+  lbls <- paste0(lbls, "\n(", round(slices/1000), 'mg/30mg)')
+  pie(slices, lbls, main = quanti$Group.1[i])
+}
+
+all(rownames(data) == cmps$ID)
+classx <- c("entire", "skin", "pulp", "seeds")
+for(j in seq(length(classx))){
+  tmp <- data[, class == classx[j]]
+  quanti <- aggregate(rowSums(tmp), list(cmps$class), function(x){sum(x, na.rm=T)})
+  slices <- quanti$x
+  lbls <- quanti$Group.1
+  pie(slices, lbls, main = classx[j], 
+      col = colorRampPalette(brewer.pal(9, "Set1"))(nrow(quanti)),)
+}
 ```
 
 
