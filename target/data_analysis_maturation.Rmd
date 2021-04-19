@@ -50,8 +50,8 @@ class <- gsub("_MIX.*", "", class)
 class[grep("QC", class)] <- "QC"
 
 # Load compound annotations:
-fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
-#fl <- "data/new_rt.xlsx"
+#fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+fl <- "data/new_rt.xlsx"
 cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
               read_xlsx(fl, sheet = "FORMULE")[, 1:2])
 cmps$ID <- gsub("_Na", "", cmps$ID)
@@ -459,13 +459,21 @@ for(i in seq(ncol(dt_pred))){
 
 dt_pred_s <- scale(dt_pred)
 dt_pred_s_t <- t(dt_pred_s)
-dt_pred_dist <- TSdist::TSDatabaseDistances(dt_pred_s_t, distance = "tquest", 
-                     tau = mean(dt_pred_s_t), diag = T, upper = T)
+dt_pred_dist <- TSdist::TSDatabaseDistances(
+  dt_pred_s_t, distance = "tquest", 
+  tau = mean(dt_pred_s_t), diag = T, upper = T)
 
-pm <- pheatmap(dt_pred_dist, show_colnames = F, show_rownames = F,
-               color = colorRampPalette(brewer.pal(n = 7, name = "RdYlBu"))(100),
-               cutree_rows = 5, cutree_cols = 5, 
-               main = "Clustering of distance measurements on predicted data")
+km_tq <- data.frame(
+  cluster = KMedoids(as.matrix(dt_pred_dist), 2, "ccor" #"tquest", tau = 0
+                     ))
+km_tq$cluster <- paste0("c", km_tq$cluster)
+rownames(km_tq) <- rownames(dt_pred_s_t)
+
+pheatmap(dt_pred_dist, show_colnames = F, show_rownames = F,
+         color = colorRampPalette(brewer.pal(n = 7, name = "RdYlBu"))(100),
+         #cutree_rows = 5, cutree_cols = 5, 
+         annotation_row = km_tq, annotation_col = km_tq, legend = FALSE,
+         main = "Clustering of distance measurements on predicted data")
 ```
 
 From the heatmap output we can assume the existence of 5 groups of compounds with different trends over time.  
