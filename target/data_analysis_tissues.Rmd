@@ -180,7 +180,7 @@ for(i in seq(4)){
 ```
 
 
-We still have to decide if to exclude some compounds based what it has been observed within QC samples.  
+<span style="color:red">**We still have to decide if to exclude some compounds based what it has been observed within QC samples.**</span>    
 
 ## Study samples
 
@@ -585,33 +585,111 @@ idx <- rownames(data) %in% cmps$ID
 idx.names <- rownames(data)[idx]
 data <- data[idx,]
 rownames(data) <- idx.names
+```
 
-par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
+Proportion of quantified lipids by gr of tissue.
+
+```{r}
 quanti <- aggregate(colSums(data[class != "QC"], na.rm = T), list(class[class != "QC"]), mean)
+par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
 for(i in seq(nrow(quanti))){
   slices <- c(quanti$x[i], 1e6 - quanti$x[i]) 
   lbls <- c("lipids", "others")
   lbls <- paste0(lbls, "\n(", round(slices/1000), ' mg/g)')
   pie(slices, lbls, main = quanti$Group.1[i])
 }
+```
 
+Total of quantified lipids by 30 mg of tissue (it is not proportional!!! It indicates the total amount of quantified lipids and the amount of "other" compounds is obtained by extrating the calculated lipid value from 30 mg).
+
+```{r}
 quanti <- aggregate(colSums(data[class != "QC"], na.rm = T), list(class[class != "QC"]), mean)
+par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
 for(i in seq(nrow(quanti))){
   slices <- c(quanti$x[i], 3e4 - quanti$x[i]) 
   lbls <- c("lipids", "others")
   lbls <- paste0(lbls, "\n(", round(slices/1000), 'mg/30mg)')
   pie(slices, lbls, main = quanti$Group.1[i])
 }
+```
 
+Lipid composition of the different analyzed tissues.  
+
+```{r}
 all(rownames(data) == cmps$ID)
 classx <- c("entire", "skin", "pulp", "seeds")
+col_class_cmps <- colorRampPalette(brewer.pal(9, "Set1"))(length(unique(cmps$class)))
+names(col_class_cmps) <- unique(cmps$class)
+par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
 for(j in seq(length(classx))){
   tmp <- data[, class == classx[j]]
   quanti <- aggregate(rowSums(tmp), list(cmps$class), function(x){sum(x, na.rm=T)})
   slices <- quanti$x
   lbls <- quanti$Group.1
   pie(slices, lbls, main = classx[j], 
-      col = colorRampPalette(brewer.pal(9, "Set1"))(nrow(quanti)),)
+      col = col_class_cmps[lbls])
+}
+```
+
+Proportion of distribution for discriminant compounds:
+
+```{r}
+tmp <- data.frame(table(cmps$beh))
+tmp <- tmp[tmp$Var1 != "NS",]
+slices <- tmp$Freq
+lbls <- tmp$Var1
+pie(slices, lbls, col = colorRampPalette(brewer.pal(8, "Set2"))(nrow(tmp)))
+```
+
+Proportion of distribution for discriminant compounds considering the tissue with the highest values (those compounds for which there where >1 category as the one with the highest values are excluded):
+
+```{r}
+tmp <- tmp[substr(tmp$Var1, 1, 1) != "(", ]
+tmp$class <- gsub(" .*", "", tmp$Var1)
+slices <- aggregate(tmp$Freq, list(tmp$class), sum)[, "x"]
+lbls <- aggregate(tmp$Freq, list(tmp$class), sum)[,"Group.1"]
+pie(slices, lbls, col = brewer.pal(3, "Set1"))
+```
+
+Proportion of discriminant compounds by class:
+
+```{r}
+tmp <- data.frame(table(cmps$class[cmps$beh != "NS"]))
+tmp$Var1 <- as.character(tmp$Var1)
+slices <- tmp$Freq
+lbls <- tmp$Var1
+pie(slices, lbls, col = col_class_cmps[lbls])
+```
+
+Proportion of discriminant compounds per compound class:
+
+```{r}
+tmp$Total <- data.frame(table(cmps$class))[,"Freq"]
+tmp$perc <- (tmp$Freq/tmp$Total)*100
+barplot(tmp$perc, horiz = T, 
+        col = col_class_cmps[tmp$Var1], 
+        names = tmp$Var1, las = 1, cex.names = 0.9)
+```
+
+
+Proportion of discriminant compound classes by tissue:
+
+```{r}
+tmp <- data.frame(table(cmps$beh))
+tmp <- tmp[tmp$Var1 != "NS",]
+tmp <- tmp[substr(tmp$Var1, 1, 1) != "(", ]
+tmp$class <- gsub(" .*", "", tmp$Var1)
+
+tissues <- c("skin", "pulp", "seeds")
+par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
+for(i in seq(3)){
+  tmp2 <- cmps[cmps$beh %in% tmp$Var1[tmp$class == tissues[i]], ]
+  tmp2 <- data.frame(table(tmp2$class))
+  tmp2$Var1 <- as.character(tmp2$Var1)
+  slices <- tmp2$Freq
+  lbls <- paste0(tmp2$Var1, " (n=", tmp2$Freq, ")")
+  pie(slices, lbls, main = tissues[i], 
+      col = col_class_cmps[tmp2$Var1])
 }
 ```
 

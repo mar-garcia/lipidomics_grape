@@ -50,8 +50,8 @@ class <- gsub("_MIX.*", "", class)
 class[grep("QC", class)] <- "QC"
 
 # Load compound annotations:
-#fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
-fl <- "data/new_rt.xlsx"
+fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+#fl <- "data/new_rt.xlsx"
 cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
               read_xlsx(fl, sheet = "FORMULE")[, 1:2])
 cmps$ID <- gsub("_Na", "", cmps$ID)
@@ -439,8 +439,8 @@ pheatmap(data.frame(scaling.pareto(log10(dt))),
 
 Discriminant compounds are grouped according to their time-trends observed in GAM models. 
 For that, we first create a new matrix of predicted values over 50 time-points, starting and finishing from the first and last sample collection date, respectively.  
-Then, we compute a distance matrix for the generated data with the function `TSDatabaseDistances` of the R package `TSdist`. In addition to use logarithmic data, for this estimation the values are also scaled.   
-Finally, we do a new clustered heatmap to ascertain the possible existence of compound groups (i.e., clusters) showing similar trends along the time.  
+Then, we compute a distance matrix for the generated data with the function `TSDatabaseDistances` of the R package `TSdist`. As a distance measure we use the algorithm `dtw` (i.e., *dynamic time warping*). In addition to use logarithmic data, for this estimation the values are also scaled.   
+Finally, clustering based on slope/shape/trend similarity over time is done using the algorithm `pacf` (i.e., *partial autocorrelation function*).
 
 ```{r pred-cor}
 idx <- which(padj < 0.05 & dev > 0.7)
@@ -460,33 +460,36 @@ for(i in seq(ncol(dt_pred))){
 dt_pred_s <- scale(dt_pred)
 dt_pred_s_t <- t(dt_pred_s)
 dt_pred_dist <- TSdist::TSDatabaseDistances(
-  dt_pred_s_t, distance = "tquest", 
-  tau = mean(dt_pred_s_t), diag = T, upper = T)
+  dt_pred_s_t, distance = "dtw", diag = T, upper = T)
 
-km_tq <- data.frame(
-  cluster = KMedoids(as.matrix(dt_pred_dist), 2, "ccor" #"tquest", tau = 0
-                     ))
+km_tq <- data.frame(cluster = KMedoids(as.matrix(dt_pred_dist), 6, "pacf"))
 km_tq$cluster <- paste0("c", km_tq$cluster)
 rownames(km_tq) <- rownames(dt_pred_s_t)
 
-pheatmap(dt_pred_dist, show_colnames = F, show_rownames = F,
+pm <- pheatmap(dt_pred_dist, show_colnames = F, show_rownames = F,
          color = colorRampPalette(brewer.pal(n = 7, name = "RdYlBu"))(100),
          #cutree_rows = 5, cutree_cols = 5, 
          annotation_row = km_tq, annotation_col = km_tq, legend = FALSE,
          main = "Clustering of distance measurements on predicted data")
+
+pheatmap(as.matrix(dt_pred_dist)[order(km_tq$cluster, pm$tree_row$order),
+                                 order(km_tq$cluster, pm$tree_row$order)], 
+         show_colnames = F, show_rownames = F,
+         color = colorRampPalette(brewer.pal(n = 7, name = "RdYlBu"))(100),
+         annotation_row = km_tq, annotation_col = km_tq, legend = FALSE,
+         main = "Clustering of distance measurements on predicted data",
+         cluster_rows = F, cluster_cols = F)
 ```
 
-From the heatmap output we can assume the existence of 5 groups of compounds with different trends over time.  
-<span style="color:red">**We still have to discuss if we are happy with these 5 clusters or if we want to change the number of clusters.**</span>  
-In order to visualize these different prototypes, we overplot the log-scaled-data of each compound belonging to each cluster (each cluster is plotted separately). Points refer to measured data, whereas lines the generated GAM models.
+<span style="color:red">**We still have to discuss if we are happy with these clusters or if we want to change something (i.e. algorithm of distance matrix generation, clustering or number of clusters).**</span>  
+In order to visualize these different *prototypes*, we overplot the log-scaled-data of each compound belonging to each cluster (each cluster is plotted separately). Points refer to measured data, whereas lines the generated GAM models.
 
 ```{r clusters, fig.width = 14}
-pm_cl <- cutree(pm$tree_row, k = 5)
 data_st_log <- t(log10(data_st[padj < 0.05 & dev > 0.7,]))
 data_st_log_s <- scale(data_st_log)
 par(mfrow = c(1, 2), mar = c(0.5, 0.5, 2, 0.5))
-for(j in seq(5)){
-  idx <- which(pm_cl == j)
+for(j in seq(6)){
+  idx <- which(km_tq$cluster == paste0("c", j))
   if(length(idx) > 9){
     clrs <- colorRampPalette(brewer.pal(9, "Set1"))(length(idx))
   } else{
@@ -512,7 +515,8 @@ for(j in seq(5)){
 Next, visualize on a network the obtained results (linking only those compounds with a similarity > 0.7):
 
 ```{r network}
-links <- 1-as.matrix(dt_pred_dist)
+#links <- 1-as.matrix(dt_pred_dist)
+links <- cor(dt_pred_s)
 for(i in 1:ncol(links)){
   links[1:i,i] <- NA
 }
@@ -520,8 +524,8 @@ links <- cor_gather(links)
 links <- links[links$cor > 0.7, ]
 nodes <- cmps[cmps$ID %in% links$var1 |
                 cmps$ID %in% links$var2, c(2, 1)]
-all(rownames(pm_cl) == nodes$ID) # TRUE
-nodes$cluster <- pm_cl
+all(rownames(km_tq) == nodes$ID) # TRUE
+nodes$cluster <- km_tq$cluster
 net <- graph_from_data_frame(d = links, vertices = nodes, directed=T)
 net <- simplify(net, remove.multiple = F, remove.loops = T) 
 colrs <- colorRampPalette(brewer.pal(12, "Paired"))( length(unique(dt_class$class)))
@@ -531,7 +535,7 @@ E(net)$width <- E(net)$cor # Set edge width based on distances
 E(net)$arrow.mode <- 0
 plot(net, edge.arrow.size = .1, vertex.label = NA, vertex.size = 5, 
      layout = layout_with_graphopt(net), main = "Color according to compound class")
-colrs <- brewer.pal(5, "Set1")
+colrs <- brewer.pal(6, "Set1")
 names(colrs) <- unique(nodes$cluster)
 plot(net, edge.arrow.size = .1, vertex.label = NA, vertex.size = 5, 
      layout = layout_with_graphopt(net), vertex.color=colrs[V(net)$cluster], 
@@ -553,10 +557,10 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = class2[class2 != "QC"])
 
-all(cmps$ID[idx] == names(pm_cl)) # TRUE
+all(cmps$ID[idx] == names(km_tq$cluster)) # TRUE
 cmps$cluster <- "NS"
 cmps$cluster[padj < 0.05 & dev < 0.7] <- "high-dev"
-cmps$cluster[idx] <- paste0("cl", pm_cl)
+cmps$cluster[idx] <- km_tq$cluster
 
 tmp <- data.frame(pca_sig$rotation)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
@@ -565,7 +569,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
 )
 
 
-dt_cl <- data.frame(cluster = paste0("cl", pm_cl))
+dt_cl <- data.frame(cluster = km_tq$cluster)
 rownames(dt_cl) <- cmps$ID[idx]
 
 ann_color <- list(
@@ -580,7 +584,7 @@ pheatmap(dt, annotation_row = dt_pt2, annotation_col = dt_cl,
 ```
 
 
-```{r plots, eval = TRUE}
+```{r plots, eval = FALSE}
 cmps <- cmps[order(cmps$cluster), ]
 
 set.seed(123)
@@ -606,6 +610,89 @@ ggsave(
   width = 15, height = 12
 )
 ```
+
+# Classes of compounds
+
+```{r}
+idx <- rownames(data) %in% cmps$ID
+idx.names <- rownames(data)[idx]
+data <- data[idx, class!= "QC"]
+rownames(data) <- idx.names
+```
+
+Proportion of quantified lipids:
+
+```{r}
+slices <- c(mean(colSums(data, na.rm = T)), 1e6 - mean(colSums(data, na.rm = T)))
+lbls <- c("lipids", "others")
+lbls <- paste0(lbls, "\n(", round(slices/1000), ' mg/g)')
+pie(slices, lbls)
+
+y <- aggregate(colSums(data, na.rm = T), list(class[class != "QC"]), mean)[,"x"]
+sdx <- aggregate(colSums(data, na.rm = T), list(class[class != "QC"]), sd)[,"x"]
+
+plot(y, 
+     pch = 16, xlab = "time point", ylab = "total lipids (ug)", col = 2, 
+     ylim = c(min(colSums(data, na.rm = T)), max(colSums(data, na.rm = T))))
+points(as.numeric(as.factor(class[class!="QC"])), colSums(data, na.rm = T))
+segments(seq(13), y - sdx, 
+         seq(13), y + sdx, col = 2)
+epsilon <- 0.02
+segments(seq(13)-epsilon,y-sdx,seq(13)+epsilon,y-sdx, col = 2)
+segments(seq(13)-epsilon, y+sdx,seq(13)+epsilon, y+sdx, col = 2)
+```
+
+Lipid composition:
+
+```{r}
+all(rownames(data) == cmps$ID)
+col_class_cmps <- colorRampPalette(brewer.pal(9, "Set1"))(length(unique(cmps$class)))
+names(col_class_cmps) <- unique(cmps$class)
+quanti <- aggregate(rowSums(data), list(cmps$class), function(x){sum(x, na.rm=T)})
+slices <- quanti$x
+lbls <- quanti$Group.1
+pie(slices, lbls, col = col_class_cmps[lbls])
+```
+
+Proportion of discriminant compounds by class:
+
+```{r}
+tmp <- data.frame(table(cmps$class[cmps$cluster != "NS" & cmps$cluster != "high-dev"]))
+tmp$Var1 <- as.character(tmp$Var1)
+slices <- tmp$Freq
+lbls <- tmp$Var1
+pie(slices, lbls, col = col_class_cmps[lbls])
+```
+
+Proportion of discriminant compounds per compound class:
+
+```{r}
+x0 <- unique(cmps$class)[!unique(cmps$class) %in% tmp$Var1]
+tmp[nrow(tmp) + 1: nrow(tmp):(length(x0)), ] <- cbind(x0, 0)
+tmp <- tmp[order(tmp$Var1), ]
+tmp$Total <- data.frame(table(cmps$class))[,"Freq"]
+tmp$perc <- (as.numeric(tmp$Freq)/tmp$Total)*100
+barplot(tmp$perc, horiz = T, 
+        col = col_class_cmps[tmp$Var1], 
+        names = tmp$Var1, las = 1, cex.names = 0.9)
+```
+
+
+Proportion of discriminant compound classes by cluster:
+
+```{r}
+par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
+for(i in seq(6)){
+  tmp <- cmps[cmps$cluster == paste0("c", i), ]
+  tmp <- data.frame(table(tmp$class))
+  tmp$Var1 <- as.character(tmp$Var1)
+  slices <- tmp$Freq
+  lbls <- paste0(tmp$Var1, " (n=", tmp$Freq, ")")
+  pie(slices, lbls, main = paste0("c", i), 
+      col = col_class_cmps[tmp$Var1])
+}
+```
+
 
 
 # Session information
