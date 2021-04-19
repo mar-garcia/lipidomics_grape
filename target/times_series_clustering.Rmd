@@ -1,0 +1,214 @@
+---
+title: "Times series clustering"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: false
+    number_sections: false
+    toc_float: false
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(readxl)
+library(xcms)
+library(mgcv)
+library(TSdist)
+library(reshape2)
+
+# Data import
+brix <- readxl::read_excel("data/Grape_Brix_Datafile.xlsx")
+brix <- rbind(
+  brix, 
+  c(2019, "diradamento", "corno - az. Oliva", "2019-09-17", "C", 0, 
+    mean(brix$Brix[brix$data == "2019-09-17"])),
+  c(2019, "diradamento", "corno - az. Oliva", "2019-09-24", "C", 0, 
+    mean(brix$Brix[brix$data == "2019-09-24"])))
+brix <- brix[order(brix$data, brix$Replicate), ]
+xtime <- as.integer(as.Date(brix$data))
+
+data <- read_xlsx("data/data_maturation.xlsx", sheet = "trans_data")
+colnames(data)[1] <- "ID"
+fl <- "data/new_rt.xlsx"
+cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
+              read_xlsx(fl, sheet = "FORMULE")[, 1:2])
+cmps$ID <- gsub("_Na", "", cmps$ID)
+cmps <- cmps[cmps$ID %in% data$ID, ]
+cmps <- cmps[match(data$ID, cmps$ID), ]
+cmps$ID <- data$ID <- gsub("[^0-9A-Za-z///' ]", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub("/", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub(" ", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub("__", "_", cmps$ID)
+idx <- grep("_$", cmps$ID)
+cmps$ID[idx] <- data$ID[idx] <- substr(cmps$ID[idx], 1, 
+                                       nchar(cmps$ID[idx])-1)
+data <- data[,-1]
+data <- sapply(data, as.numeric)
+rownames(data) <- cmps$ID
+
+
+# GAM models
+data <- data[!rownames(data) %in% cmps$ID[cmps$class == "IS"], 
+             !grepl("QC", colnames(data))]
+set.seed(123)
+dt <- t(imputeRowMinRand(as.matrix(data), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
+
+stat.gam <- function(x){
+  as.numeric(unlist(summary(
+    gam(log10(x) ~ s(xtime), method = "REML", gamma = 1.4)
+  ))["s.table4"])
+}
+pval <- apply(FUN = stat.gam, MARGIN = 2, X = dt)
+padj <- p.adjust(pval, "BH")
+
+stat.dev <- function(x){
+  summary(gam(log10(x) ~ s(xtime), method = "REML", gamma = 1.4))$dev.expl 
+}
+dev <- apply(FUN = stat.dev, MARGIN = 2, X = dt)
+
+dt <- dt[, padj < 0.05 & dev > 0.7]
+
+ytimes <- seq(min(xtime), max(xtime))
+dt_pred <- matrix(NA, nrow = length(ytimes), ncol = ncol(dt))
+colnames(dt_pred) <- colnames(dt)
+
+for(i in seq(ncol(dt_pred))){
+  dt_pred[,i] <- predict.gam(
+    gam(log10(dt[,i]) ~ s(xtime), method = "REML", gamma = 1.4), 
+    data.frame(xtime = ytimes))  
+}
+
+# Distance + clusters
+dt_pred_sc <- scale(dt_pred)
+dt_pred_sc_t <- t(dt_pred_sc)
+dist_m <- c("euclidean", "manhattan", #"minkowski", 
+            "infnorm", 
+            "ccor", "sts", "dtw", #"lb.keogh", "edr", "erp", "lcss", 
+            "fourier", 
+            "tquest", #"dissim", 
+            "acf", "pacf", "ar.lpc.ceps", "ar.mah", 
+            "ar.mah.statistic", "ar.mah.pvalue", "ar.pic", "cdm", "cid", 
+            "cor", "cort", #"wav", 
+            "int.per", "per", #"mindist.sax", 
+            "ncd", #"pred", 
+            "spec.glk", "spec.isd", "spec.llr", #"pdc", "frechet", 
+            "tam"
+)
+dist_cl <- c("euclidean", "manhattan", #"minkowski", 
+             "infnorm", 
+             "ccor", "sts", "dtw", #"lb.keogh", "edr", "erp", "lcss", 
+             "fourier", 
+             "tquest", #"dissim", 
+             "acf", "pacf", "ar.lpc.ceps", #"ar.mah", 
+             "ar.mah.statistic", "ar.mah.pvalue", "ar.pic", "cdm", "cid", 
+             "cor", "cort", "int.per", "per", #"mindist.sax", 
+             "ncd", #"pred", 
+             "spec.glk", "spec.isd", "spec.llr", "pdc", #"frechet", 
+             "tam")
+
+tb <- data.frame(matrix(ncol = 8, nrow = 0))
+colnames(tb) <- c("distance_measurement", "cluster_algorithm", 
+                  "cluster_n", "cl_min_n", "cl_max_n", "dev_min", 
+                  "dev_max", "dev_mean")
+```
+
+
+```{r}
+for(l in seq(length(dist_m))){
+  if(dist_m[l] == "tquest"){
+    dt_pred_dist <- TSdist::TSDatabaseDistances(
+      dt_pred_sc_t, distance = "tquest", 
+      tau = mean(dt_pred_sc_t), diag = T, upper = T)
+  } else if(dist_m[l] %in% c("ar.lpc.ceps", "ar.pic", "cdm", "ncd", 
+                             "spec.glk", "spec.isd", "spec.llr", "frechet")){
+    dt_pred_dist <- TSdist::TSDatabaseDistances(
+      dt_pred_sc_t, distance = dist_m[l])
+  } else {
+    dt_pred_dist <- TSdist::TSDatabaseDistances(
+      dt_pred_sc_t, distance = dist_m[l], diag = T, upper = T)
+  }
+  for(k in seq(length(dist_cl))){
+    for(m in 2:6){
+      print(paste("Distance measurement:", dist_m[l], 
+                  "- Clustering algorithm:", dist_cl[k],
+                  " - n=", m, "clusters"))
+      if(dist_m[l] == "ar.mah"){
+        if(dist_cl[k] == "tquest"){
+          cl <- KMedoids(as.matrix(dt_pred_dist[[1]]), m, "tquest", tau = 0)
+        } else {
+          cl <- KMedoids(as.matrix(dt_pred_dist[[1]]), m, dist_cl[k])
+        }
+      } else{
+        if(dist_cl[k] == "tquest"){
+          cl <- KMedoids(as.matrix(dt_pred_dist), m, "tquest", tau = 0)
+        } else {
+          cl <- KMedoids(as.matrix(dt_pred_dist), m, dist_cl[k])
+        }
+      }
+      
+      j <- i <- 1
+      par(mfrow = c(1, 1))
+      plot(ytimes, dt_pred_sc[,which(cl == j)[i]], pch = 16, col = j, 
+           ylim = c(min(c(dt_pred_sc, dt_pred_sc)), 
+                    max(c(dt_pred_sc, dt_pred_sc))), type = "l")
+      for(i in 2:length(which(cl == j))){
+        points(ytimes, dt_pred_sc[,which(cl == j)[i]], col = j, pch = 16, 
+               type = "l")
+      }
+      for(j in 2:m){
+        for(i in 1:length(which(cl == j))){
+          points(ytimes, dt_pred_sc[,which(cl == j)[i]], col = j, pch = 16, 
+                 type = "l")
+        }
+      }
+      legend("topright", legend = paste0("c", seq(m)), pch = 16, 
+             col = seq(m), ncol = 2)
+      
+      dev_j <- c()
+      cl_n <- c()
+      par(mfrow = c(1, 2))
+      for(j in 1:m){
+        cl_n <- c(cl_n, length(which(cl == j)))
+        dt_j <- data.frame(dt_pred_sc[,which(cl == j)])
+        dt_j$time <- ytimes
+        dt_j <- melt(dt_j, id.vars = "time")
+        dev_j <- c(dev_j, summary(
+          gam(dt_j$value ~ s(dt_j$time), 
+              method = "REML", gamma = 1.4))$dev.expl)
+        
+        i <- 1
+        plot(ytimes, dt_pred_sc[,which(cl == j)[i]], pch = 16, col = j, 
+             ylim = c(min(c(dt_pred_sc, dt_pred_sc)), 
+                      max(c(dt_pred_sc, dt_pred_sc))), type = "l", 
+             main = paste0("c", j), xlab = "", ylab = "",
+             sub = paste("dev = ", round(dev_j[j] , 3)))
+        for(i in 2:length(which(cl == j))){
+          points(ytimes, dt_pred_sc[,which(cl == j)[i]], col = j, pch = 16, 
+                 type = "l")
+        }
+      }
+      
+      tb[nrow(tb)+1,] <- c(
+        dist_m[l], dist_cl[k], m, min(cl_n), max(cl_n),
+        round(min(dev_j), 3), round(max(dev_j), 3), round(mean(dev_j), 3))
+      write.csv(tb, "tsclust_tb_tmp.csv")
+    } # close "m" clusters
+  } # close clustering algorithm "k"
+} # close distance measurement "l"
+
+DT::datatable(tb, filter = 'top')
+```
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
