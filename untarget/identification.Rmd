@@ -1,0 +1,77 @@
+---
+title: "Identification"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: false
+    number_sections: false
+    toc_float: false
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+study <- "tissues" # specify "maturation" or "tissues"
+source("../../R/ft_group.R")
+
+feat <- read.csv(paste0(study, "/data/features.csv"))
+
+modes <- c("POS", "NEG")
+for(i in 1:2){
+  load(paste0(study, "/data/RData/data_XCMS_", modes[i], ".RData"))
+  my.data <- dt_preparation(xobj = xdata, class = "tissue", mznoise = c())
+  
+  load(paste0(study, "/data/RData/MS2_library_", modes[i], ".RData"))
+  my.ft <- feat$X[which(substr(feat$beh, 1, 4) == "pulp" & 
+                     substr(feat$X, 1, 1) == substr(modes[i], 1, 1))]
+  my.data <- ft_grouping(
+    datax = my.data, MS2x = ms2list, 
+    ft_idx = which(rownames(my.data[["features"]]) %in% my.ft), 
+    rt_d = 5)
+  assign(paste0("my.data_", tolower(modes[i])), my.data)
+}
+
+my.features <- isotopologues(
+  features = rbind(my.data_pos[["features"]], my.data_neg[["features"]]))
+
+for(i in 1:2){
+  my.data_x <- get(paste0("my.data_", tolower(modes[i])))
+  my.data_x <- my.data_x[["data"]]
+  if(study == "tissues"){
+    colnames(my.data_x) <- gsub(".*tissues_", "", colnames(my.data_x))
+  }
+  my.data_x <- my.data_x[, order(colnames(my.data_x))]
+  assign(paste0("data_", tolower(modes[i])), my.data_x)
+}
+
+
+my.features <- fg_grouping(data = rbind(data_pos, data_neg), 
+                           features = my.features)
+
+cmps <- read.csv("compounds_RT_formula.csv")
+cmps$RT <- cmps$RT*60
+cmps$mass <- NA
+for(i in seq(nrow(cmps))){
+  cmps$mass[i] <- getMolecule(cmps$formula[i])$exactmass
+}
+load(paste0(study, "/data/RData/MS2_library_POS.RData"))
+ms2list_pos <- ms2list
+load(paste0(study, "/data/RData/MS2_library_NEG.RData"))
+ms2list <- c(ms2list, ms2list_pos)
+my.dt_ids <- identification(features = my.features, cmps, MS2x = ms2list, rt_d = 120)
+dt_fg <- my.dt_ids[["dt_fg"]]
+DT::datatable(dt_fg, rownames = FALSE, options = list(pageLength = nrow(dt_fg)))
+save.image(paste0("ID_", study, ".RData"))
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
