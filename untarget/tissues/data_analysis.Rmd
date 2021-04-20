@@ -1,0 +1,488 @@
+---
+title: "Data analysis: tissue distribution"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+In this document we first import the data from both polarities processed with XCMS and then we filter the potential problematic features.  
+Following, we do an unsupervised exploratory analysis and later we select those features with significantly different abundances in their intensities measured in different grape tissues.
+
+# Libraries
+
+```{r}
+library(xcms)
+library(plotly)
+library(pheatmap)
+library(RColorBrewer)
+
+CV <- function(x){(sd(x, na.rm = T) / mean(x, na.rm = T))*100}
+scaling.pareto <- BioMark::scalefun(sc.p="pareto")
+```
+
+
+# Data import
+
+```{r}
+modes <- c("POS", "NEG")
+for(i in 1:2){
+  load(paste0("data/RData/data_XCMS_", modes[i], ".RData"))
+  #xdata_notfill <- dropFilledChromPeaks(xdata)
+  
+  dt <- featureValues(xdata, method = "sum", value = "into")
+  rownames(dt) <- gsub("FT", substr(modes[i], 1, 1), rownames(dt))
+  colnames(dt) <- gsub(paste0("_", modes[i], "_FS.mzData"), "", colnames(dt))
+  colnames(dt) <- gsub(".*tissues_", "", colnames(dt))
+  dt <- dt[, order(colnames(dt))]
+  assign(paste0("dt_", tolower(modes[i])), dt)
+  
+  #dt_notfill <- featureValues(xdata_notfill, method = "sum", value = "into")
+  #rownames(dt_notfill) <- gsub("FT", substr(modes[i], 1, 1), rownames(dt_notfill))
+  #colnames(dt_notfill) <- gsub(paste0("_", modes[i], "_FS.mzData"), "", colnames(dt_notfill))
+  #colnames(dt_notfill) <- gsub(".*tissues_", "", colnames(dt_notfill))
+  #dt_notfill <- dt_notfill[, order(colnames(dt_notfill))]
+  #assign(paste0("dt_notfill_", tolower(modes[i])), dt_notfill)
+  
+  ft <- data.frame(featureDefinitions(xdata))
+  rownames(ft) <- gsub("FT", substr(modes[i], 1, 1), rownames(ft))
+  assign(paste0("ft_", tolower(modes[i])), ft)
+}
+
+data <- rbind(dt_pos, dt_neg)
+feat <- rbind(ft_pos, ft_neg)
+class <- colnames(data)
+class <- gsub("pt11_", "", class)
+class <- gsub("_.*", "", class)
+rm(i, xdata, dt, ft, modes, dt_pos, dt_neg, ft_pos, ft_neg)
+```
+
+
+# Data filtering
+
+Before starting with any type of analysis we remove potentially problematic features keeping those with:  
+  
+  - Measurements in at least 2 out of 3 samples from any tissue of interest (i.e., skin, pulp or seeds)  
+  - A coefficient of variation (CV) <30% in QC samples  
+  - A correlation to dilution < 0.8
+
+```{r}
+sp_ts <- grep("skin|pulp|seeds", colnames(data))
+ts_n <- apply(feat[,c("skin", "pulp", "seeds")], 1, max)
+
+sp_QC <- grep("xx00_QC_rep", colnames(data))
+data_QC <- data[, sp_QC]
+CV_QC <- apply(data_QC, 1, CV)
+CV_QC[is.na(CV_QC)] <- 0
+int_QC <- apply(data_QC, 1, mean, na.rm=TRUE)
+int_QC[is.na(int_QC)] <- 0
+par(mfrow = c(1, 2))
+plot(int_QC, CV_QC)
+plot(int_QC, CV_QC, xlim = c(0, quantile(int_QC, 0.9)))
+
+
+sp_ln <- grep("QCdl_|QCrw_", colnames(data))
+data_ln <- data[, sp_ln]
+dil <- colnames(data_ln)
+dil <- gsub("_rep.*", "", dil)
+dil1 <- gsub("_.*", "", dil)
+dil1 <- gsub("QCrw", 1, dil1)
+dil1 <- gsub("QCdl", 10, dil1)
+dil1 <- as.numeric(dil1)
+dil2 <- gsub(".*_", "", dil)
+dil2 <- gsub("uL", "", dil2)
+dil2 <- gsub("02", "2.5", dil2)
+dil2 <- as.numeric(dil2)
+dil <- dil2 / dil1
+rm(dil1, dil2)
+data_ln[is.na(data_ln)] <- 0
+dil_ln <- c()
+for(i in seq(nrow(data_ln))){
+  dil_ln <- c(dil_ln, cor(dil, data_ln[i, ]))
+}
+dil_ln[is.na(dil_ln)] <- 0
+plot(int_QC, dil_ln)
+plot(int_QC, dil_ln, xlim = c(0, quantile(int_QC, 0.9)))
+
+grid::grid.newpage()
+VennDiagram::draw.triple.venn(
+  area1 = sum(ts_n > 1),
+  area2 = sum(CV_QC < 30),
+  area3 = sum(dil_ln > 0.8),
+  n12 = sum(ts_n > 1 & CV_QC < 30),
+  n13 = sum(ts_n > 1 & dil_ln > 0.8),
+  n23 = sum(CV_QC < 30 & dil_ln > 0.8),
+  n123= sum(ts_n > 1 & CV_QC < 30 & dil_ln > 0.8), 
+  category = c(">2 study samples", "CV(QC) < 30%", "Linearity > 0.8"), 
+  fill = c("#E69F00", "#56B4E9", "#009E73"))
+
+ft_ok <- which(ts_n > 1 & CV_QC < 30 & dil_ln > 0.8)
+feat <- feat[ft_ok,]
+rm(data_notfill, data_QC, data_ln, ts_n, CV_QC, dil_ln, int_QC)
+```
+
+# Exploratory data analysis
+
+As mentioned, we start with an exploratory analysis of the data.
+
+## PCA
+
+```{r}
+set.seed(123)
+dt <- t(imputeRowMinRand(as.matrix(data[ft_ok, sp_ts]), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
+dt <- log10(dt)
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class[sp_ts])
+```
+
+Injections from the same biological/technical replicates cluster together.  
+The PCA shows a separation of `seed` samples from `skin` and `pulp` samples on PC1 
+(explaining `r round(summary(pca)$importance[2,1]*100, 1)`% of the total variance), 
+whereas the PC2 (`r round(summary(pca)$importance[2,2]*100, 1)`% of total variance) 
+separates `skin` samples from `pulp` ones.  
+
+```{r}
+tmp <- data.frame(pca$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = substr(rownames(tmp), 1, 1))
+```
+
+
+## Heatmap
+
+```{r}
+dt_tissue <- data.frame(tissue = class[sp_ts])
+rownames(dt_tissue) <- rownames(dt)
+
+dt_mode <- data.frame(mode = substr(colnames(dt), 1, 1))
+rownames(dt_mode) <- colnames(dt)
+
+pheatmap(dt, show_colnames = F, 
+         annotation_row = dt_tissue, annotation_col = dt_mode,
+         cutree_cols = 5, cutree_rows = 3)
+```
+
+The heatmap suggests that there is a group of features mainly characteristic of `seeds` (first column) and another one particular from `skin` (last columns).  
+
+
+# Differential abundance analysis
+
+One-factor ANOVA is performed to identify compounds with significant differences 
+between the different tissues.    
+Source: [http://www.sthda.com/english/wiki/one-way-anova-test-in-r](http://www.sthda.com/english/wiki/one-way-anova-test-in-r)  
+
+```{r}
+set.seed(123)
+dt <- t(imputeRowMinRand(as.matrix(data[ft_ok, sp_ts]), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
+```
+
+## Assumptions
+
+The ANOVA test assumes that the data are normally distributed and the variance across groups is homogeneous.
+
+### Homogeneity of variance
+
+It is  possible to use **Levene’s test** to check the homogeneity of variances. 
+We apply the function `leveneTest()` from `car` package to the log-transformed data.  
+
+```{r}
+stat.levene <- function(x){
+  unlist(car::leveneTest(log10(x) ~ factor(class[sp_ts])))["Pr(>F)1"]
+}
+lev <- apply(FUN = stat.levene, MARGIN = 2, X = dt)
+hist(lev, breaks = 32, xlim = c(0, 1))
+summary(lev)
+```
+
+The compound with the minimum p-value got from Levene's test is `r min(lev)`. 
+Therefore, all p-values from all compounds are not less than the significance level of 0.05. 
+This means that there is no evidence to suggest that the variance across groups 
+is statistically significantly different. Therefore, we can assume the homogeneity 
+of variances in the different classes of tissues.
+
+### Normality
+
+The normality of the residuals is used to check the assumption that the residuals are normally distributed. The **Shapiro-Wilk test** on the ANOVA residuals is used to check if the normality assumption is violated.
+
+```{r}
+stat.shap <- function(x){
+  as.numeric(
+    unlist(shapiro.test(residuals(aov(log10(x) ~ class[sp_ts]))))["p.value"]
+  )}
+shap <- apply(FUN = stat.shap, MARGIN = 2, X = dt)
+hist(shap, breaks = 32, xlim = c(0, 1))
+summary(shap)
+```
+
+In this case, it can be seen that for a total of `r sum(shap < 0.05)` out of 
+`r ncol(dt)` (`r round((sum(shap < 0.05) / ncol(dt))*100, 1)`%) compounds, the normality assumption is violated.   
+Since for most of compounds (i.e., `r round(((ncol(dt) - sum(shap < 0.05)) / ncol(dt))*100, 1)`%) 
+the normality assumption is NOT violated, we will apply the one-way ANOVA test 
+for comparing the amount of quantified compounds among the different tissues.
+
+
+## Compute test
+
+Raw p-values for significant differences in abundances are estimated using the 
+function `aov()` on log-transformed data.  
+Raw p-values are adjusted for multiple hypothesis testing with the method from Benjamini and Hochberg.  
+Features will be considered significant if they have an adjusted p-value smaller than 0.05 (representing a 5% false discovery rate) and an Eta-squared ($\eta^{2}$) > 0.14 ([source](https://docs.google.com/spreadsheets/d/1dqbPqj3VfiHC3oZE4azLypiFOQaeoj9HQ8Z5yjOvybs/edit#gid=0)).  
+
+```{r}
+stat.pval <- function(x){unlist(summary(aov(log10(x) ~ class[sp_ts])))["Pr(>F)1"]}
+pval <- apply(FUN = stat.pval, MARGIN = 2, X = dt)
+padj <- p.adjust(pval, "BH")
+par(mfrow = c(1, 2))
+hist(pval, breaks = 32)
+hist(padj, breaks = 32)
+```
+
+There is a clear enrichment of small p-values. 
+
+Eta-squared measures in percentage how much of the variation in the compound 
+concentrations can be explained by the variation between the different tissues.  
+Eta-squared is calculated from the the sum of squares (the difference between 
+individual observations and the mean for the group, squared, and summed) of the 
+effect divided by the total sum of squares:
+\[
+\eta^{2}=
+\frac{\mathit{SS}_{\mathit{effect}}}
+{\mathit{SS}_{\mathit{total}}(\mathit{SS}_{\mathit{effect}}+\mathit{SS}_{\mathit{residuals)}}}
+\]
+
+```{r}
+stat.eta <- function(x){
+  m <- unlist(summary(aov(log10(x) ~ class[sp_ts])))
+  m["Sum Sq1"] / (m["Sum Sq1"] + m["Sum Sq2"])
+}
+eta <- apply(FUN = stat.eta, MARGIN = 2, X = dt)
+hist(eta)
+abline(v = 0.14, col = "grey", lty = 2)
+```
+
+Pairwise comparisons are estimated by calculating the Cohen's d effect size, 
+considering as benchmark value an absolute value > 0.8 to select relevant differences among tissues ([source](https://docs.google.com/spreadsheets/d/1dqbPqj3VfiHC3oZE4azLypiFOQaeoj9HQ8Z5yjOvybs/edit#gid=0)).   
+It is a measure of the distance between two means divided by the standard deviation 
+of the population from which the groups were sampled. 
+The formula used to calculate the Cohen’s d looks like this:
+\[
+Cohen's\ d=
+\frac{\mathit{M}_{\mathit{1}}-\mathit{M}_{\mathit{2}}}
+{\mathit{SD}_{\mathit{pooled}}}
+\]
+
+```{r}
+cohens_d <- function(x){
+  (mean(log10(x)[class[sp_ts] == a]) - mean(log10(x)[class[sp_ts] == b])) / sd(log10(x))
+}
+class_pair <- combn(c(unique(class[sp_ts])[1:2], unique(class[sp_ts])[3]), 2)
+for(i in seq(ncol(class_pair))){
+  a <- class_pair[1,i]
+  b <- class_pair[2,i]
+  cd <- apply(FUN = cohens_d, MARGIN = 2, X = dt)
+  assign(paste("cd", b, a, sep = "_"), cd)
+}
+par(mfrow = c(1, 3))
+hist(cd_seeds_pulp) 
+abline(v = c(-0.8, 0.8), col = "grey", lty = 2)
+hist(cd_skin_pulp)
+abline(v = c(-0.8, 0.8), col = "grey", lty = 2)
+hist(cd_skin_seeds)
+abline(v = c(-0.8, 0.8), col = "grey", lty = 2)
+```
+
+From the histograms it seems that most of compounds are characteristic of `seeds` class (as already outlined in the exploratory analyses), whereas the class `pulp` seems to be the one with the lower amount of characteristic compounds.   
+
+```{r}
+cd <- cbind(cd_seeds_pulp, cd_skin_pulp, cd_skin_seeds)
+pheatmap(cd, show_rownames = F, cutree_rows = 3)
+```
+
+
+## Discriminant compounds
+
+A total of n=`r sum(padj < 0.05 & eta > 0.14)` compounds (`r round((sum(padj < 0.05 & eta > 0.14)/ncol(dt))*100, 1)`%) are found to have significant differences between tissues.  
+Below there is plotted again the loadings plot of the PCA and the heatmap highlighting the significant compounds.
+
+```{r}
+tmp <- data.frame(pca$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = (padj < 0.05 & eta > 0.14), colors = c("#377EB8", "#E41A1C"))
+
+dt_sig <- data.frame(significant = (padj < 0.05 & eta > 0.14))
+dt_sig$significant <- as.factor(dt_sig$significant)
+rownames(dt_sig) <- colnames(dt)
+ann_color <- list(
+  "tissue" = brewer.pal(5, "Set1")[3:5],
+  "significant" = c("#377EB8", "#E41A1C")
+)
+names(ann_color[[1]]) <- unique(dt_tissue$tissue)
+names(ann_color[[2]]) <- c("FALSE", "TRUE")
+pheatmap(data.frame(scaling.pareto(log10(dt))), 
+         annotation_row = dt_tissue, annotation_col = dt_sig,
+         annotation_colors = ann_color, show_colnames = F)
+```
+
+The relationships between the different tissues for each metabolite are then automatically established:
+
+```{r}
+beh <- c()
+for(i in seq(length(padj))){
+  if(padj[i] > 0.05){
+    behx <- "NS"
+  } else if(abs(cd_seeds_pulp[i]) > 0.8 & abs(cd_skin_pulp[i]) > 0.8 & 
+            abs(cd_skin_seeds[i]) > 0.8){ # 3 significant
+    a <- 1
+    b <- 2
+    j <- 3
+    ax <- get(paste("cd", class_pair[2, a], class_pair[1, a], sep = "_"))[i]
+    bx <- get(paste("cd", class_pair[2, b], class_pair[1, b], sep = "_"))[i]
+    jx <- get(paste("cd", class_pair[2, j], class_pair[1, j], sep = "_"))[i]
+    
+    if(ax > 0){ay <- class_pair[1, a]} else {ay <- class_pair[2, a]}
+    if(bx > 0){by <- class_pair[1, b]} else {by <- class_pair[2, b]}
+    if(jx > 0){jy <- class_pair[1, j]} else {jy <- class_pair[2, j]}
+    
+    z1 <- c(ay, by, jy)[duplicated(c(ay, by, jy))]
+    z2 <- unique(c(ay, by, jy))[!unique(c(ay, by, jy)) %in% z1]
+    z3 <- unique(class[sp_ts][!class[sp_ts] %in% c(z1, z2)])
+    
+    behx <- paste(z1, ">", z2, ">", z3)
+  } else {
+    for(j in seq(3)){ # 2 significant (j NOT significant)
+      a <- seq(3)[!seq(3) %in% j][1]
+      b <- seq(3)[!seq(3) %in% j][2]
+      
+      ax <- get(paste("cd", class_pair[2, a], class_pair[1, a], sep = "_"))[i]
+      bx <- get(paste("cd", class_pair[2, b], class_pair[1, b], sep = "_"))[i]
+      jx <- get(paste("cd", class_pair[2, j], class_pair[1, j], sep = "_"))[i]
+      
+      if(abs(ax) > 0.8 & abs(bx) > 0.8 & abs(jx) < 0.8){ 
+        z1 <- class_pair[1, j]
+        z2 <- class_pair[2, j]
+        zz <- unique(class[sp_ts][!class[sp_ts] %in% c(z1, z2)])
+        if((ax < 0 & zz == class_pair[1, a]) |
+           (ax > 0 & zz == class_pair[2, a])){
+          behx <- paste0("(", z1, " & ", z2, ") > ", zz)
+        } else if((ax < 0 & zz == class_pair[2, a]) |
+                  (ax > 0 & zz == class_pair[1, a])){
+          behx <- paste0(zz, " > (", z1, " & ", z2, ")")
+        }
+      } 
+    }
+  }
+  if(exists("behx")){
+    beh <- c(beh, behx)
+    rm(behx)
+  } else{print(i)}
+}
+feat$beh <- NA
+feat$beh <- factor(beh, levels = c(
+  "(pulp & skin) > seeds",
+  "pulp > skin > seeds",
+  "pulp > (seeds & skin)",
+  "pulp > seeds > skin",
+  "skin > pulp > seeds",
+  "skin > (pulp & seeds)",
+  "skin > seeds > pulp",
+  "(seeds & skin) > pulp",
+  "seeds > skin > pulp",
+  "seeds > (pulp & skin)",
+  "seeds > pulp > skin",
+  "(pulp & seeds) > skin", 
+  "NS"))
+table(beh)
+data.frame(table(beh))[order(data.frame(table(beh))[,"Freq"], decreasing = T),]
+```
+
+Below, we compute again both the PCA and heatmap, but this time using only statistically significant compounds:
+
+```{r}
+idx <- which(padj < 0.05 & eta > 0.14)
+dt <- log10(dt[,idx])
+dt <- data.frame(scaling.pareto(dt))
+pca_sig <- prcomp(dt, center = FALSE, scale. = FALSE)
+tmp <- data.frame(pca_sig$x)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = class[sp_ts])
+
+tmp <- data.frame(pca_sig$rotation)
+plot_ly(x = tmp$PC1, y = tmp$PC2,
+        text = rownames(tmp),
+        color = beh[idx])
+
+
+dt_beh <- data.frame(behaviour = beh[idx])
+rownames(dt_beh) <- colnames(dt)
+n.beh <- length(unique(dt_beh$behaviour))
+ann_color <- list(
+  "tissue" = brewer.pal(3, "Set1"),
+  "behaviour" = colorRampPalette(brewer.pal(8, "Set2"))(n.beh)
+)
+names(ann_color[[1]]) <- unique(dt_tissue$tissue)
+names(ann_color[[2]]) <- unique(dt_beh$behaviour)
+pm <- pheatmap(dt, annotation_row = dt_tissue, annotation_col = dt_beh,
+               annotation_colors = ann_color, show_colnames = F)
+
+feat$hm_order <- NA
+feat$hm_order[idx] <- pm$tree_col$order
+featx <- feat[feat$beh != "NS", ]
+featx <- featx[order(featx$beh, featx$hm_order),]
+dtx <- dt[, rownames(featx)]
+dt_beh <- data.frame(behaviour = featx$beh)
+rownames(dt_beh) <- colnames(dtx)
+pheatmap(dtx, annotation_row = dt_tissue, annotation_col = dt_beh,
+         annotation_colors = ann_color, show_colnames = F, cluster_cols = F)
+```
+
+
+# Classes of compounds
+
+Proportion of distribution for discriminant compounds:
+
+```{r}
+featx$beh <- droplevels(featx$beh)
+tmp <- data.frame(table(featx$beh))
+slices <- tmp$Freq
+lbls <- tmp$Var1
+pie(slices, lbls, col = colorRampPalette(brewer.pal(8, "Set2"))(nrow(tmp)))
+```
+
+Proportion of distribution for discriminant compounds considering the tissue with the highest values (those compounds for which there where >1 category as the one with the highest values are excluded):
+
+```{r}
+tmp <- tmp[substr(tmp$Var1, 1, 1) != "(", ]
+tmp$class <- gsub(" .*", "", tmp$Var1)
+slices <- aggregate(tmp$Freq, list(tmp$class), sum)[, "x"]
+lbls <- aggregate(tmp$Freq, list(tmp$class), sum)[,"Group.1"]
+pie(slices, lbls, col = brewer.pal(3, "Set1"))
+```
+
+
+# Session information
+
+```{r session}
+write.csv(feat[,c(1:7, (which(colnames(feat) == "ms_level") + 1):ncol(feat))], 
+          "data/features.csv")
+Sys.time()-startpoint
+devtools::session_info()
+```
