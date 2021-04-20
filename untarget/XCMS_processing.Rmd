@@ -19,7 +19,7 @@ startpoint <- Sys.time()
 
 ```{r parameters}
 polarity <- "POS" # specify "POS" or "NEG"
-study <- "maturation" # specify "maturation" or "tissues"
+study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   int <- 1e5
@@ -45,7 +45,7 @@ library(plotly)
 ## Coloring factors
 
 ```{r colors}
-col_type <- RColorBrewer::brewer.pal(5, name = "Set1")
+col_type <- RColorBrewer::brewer.pal(9, name = "Set1")
 if(study == "maturation"){
   names(col_type) <- c("xQC",      # red
                        "slv",      # blue
@@ -65,17 +65,17 @@ if(study == "maturation"){
 } else if(study == "tissues"){
   names(col_type) <- c("QC",      # red
                        "solv",      # blue
-                       "study",    # green
+                       "entire",    # green
                        "QCrw_05uL",# viola
-                       "QCdl_05uL"#,# orange
-                       #"slveq",   # yellow
-                       #"QCeq",    # brown
-                       #"STDmix"   # pink
+                       "QCdl_05uL",# orange
+                       "pulp",   # yellow
+                       "seeds",    # brown
+                       "skin"   # pink
   )
-  col_type <- c(col_type[1:3],
+  col_type <- c(col_type[1:2], col_type[c(3,6:8)],
                 rep(col_type[4], 3),
                 rep(col_type[5], 3))
-  names(col_type) <- c("QC", "solv", "study", 
+  names(col_type) <- c("QC", "solv", "entire", "pulp", "seeds", "skin", 
                        "QCrw_02uL", "QCrw_05uL", "QCrw_10uL", 
                        "QCdl_02uL", "QCdl_05uL", "QCdl_10uL")
 }
@@ -117,8 +117,8 @@ if(study == "maturation"){
   tmp$tissue[grep("QC", tmp$pt)] <- paste(tmp$pt[grep("QC", tmp$pt)], 
                                           tmp$tissue[grep("QC", tmp$pt)], sep = "_")
   tmp$pt[grep("QC", tmp$pt)] <- "xx00"
-  tmp$tissue[tmp$tissue == "entire" | tmp$tissue == "skin" | 
-               tmp$tissue == "pulp" | tmp$tissue == "seeds"] <- "study"
+  #tmp$tissue[tmp$tissue == "entire" | tmp$tissue == "skin" | 
+  #             tmp$tissue == "pulp" | tmp$tissue == "seeds"] <- "study"
 }
 
 injections <- cbind(injections, tmp)
@@ -259,7 +259,11 @@ rownames(tmp) <- paste(sprintf("%.4f",round(features$mzmed, 4)),
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp))
 
-dt <- data[pData(xdata)[,v.class] == "study",]
+if(study == "maturation"){
+  dt <- data[pData(xdata)[,v.class] == "study",]
+} else if(study == "tissues"){
+  dt <- data[pData(xdata)[,v.class] %in% c("entire", "skin", "pulp", "seeds"),]
+}
 dt <- log10(dt)
 dt <- data.frame(scaling.pareto(dt))
 pca <- prcomp(dt, center = FALSE, scale. = FALSE)
