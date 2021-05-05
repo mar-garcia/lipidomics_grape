@@ -30,7 +30,7 @@ library(mgcv)
 library(beeswarm)
 library(ggplot2)
 library(gridExtra)
-library(TSdist)
+library(dtwclust)
 library(rstatix)
 library(igraph)
 ```
@@ -40,7 +40,7 @@ library(igraph)
 
 ```{r import-data}
 # Import compound quantification data:
-data <- read_xlsx("data/data_maturation.xlsx", sheet = "trans_data")
+data <- read_xlsx("data/data_maturation.xlsx", sheet = "loq_data")
 colnames(data)[1] <- "ID"
 
 # Create a vector specifying the sample classes:
@@ -85,6 +85,21 @@ The dataset contains information about the quantification of n=`r nrow(data)` co
 Missing values (n=`r sum(is.na(data))`) in the dataset will be replaced by a random value between the range obtained by dividing by 1000 and 100 of the smallest measured concentration for the corresponding compound.    
 Principal component analysis (PCA) and heatmaps will be performed on log-transformed and Pareto-scaled abundances, whereas generalized additive models (GAM) on log-transformed data.  
 
+## Massimo valore trovato per classe 
+
+```{r}
+tmp_dt <- data
+tmp_dt[is.na(tmp_dt)] <- 0
+rownames(tmp_dt) <- rownames(data)
+cmps.class <- unique(cmps$class)
+for(i in 2:(length(cmps.class))){
+  tmp <- apply(tmp_dt[cmps$ID[cmps$class == cmps.class[i]],], 1, max)
+  print(paste(cmps.class[i], 
+              cmps$ID[cmps$class == cmps.class[i]][which.max(tmp)], 
+              round(max(tmp), 1), 
+              sep = " - "))
+}
+```
 
 # Exploratory data analysis
 
@@ -105,6 +120,8 @@ dt <- t(imputeRowMinRand(as.matrix(data), method = "from_to",
 colnames(dt) <- rownames(data)
 dt <- log10(dt)
 dt <- data.frame(scaling.pareto(dt))
+idx <- (colSums(is.na(dt)) == 0)
+dt <- dt[, idx]
 pca <- prcomp(dt, center = FALSE, scale. = FALSE)
 tmp <- data.frame(pca$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
@@ -115,7 +132,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
 `QC` samples are clustered together close to the origin of the scores plot. They show a lower dispersion between them compared to that observed among the study samples and also among the samples from the same study group (i.e., time-point), indicating a good analytical reproducibility (i.e., the variability due to the analytical platform is smaller than the biological/technical variability between the samples, eiher the ones collected at the same moment).  
 
 Visual inspection of the PCA score shows a certain degree of separation between the first and second half of samples along the first two components (accounting for `r round(summary(pca)$importance[2,1]*100, 1)`% and `r round(summary(pca)$importance[2,2]*100, 1)`% of the total variance explained, respectively).  
-To visualise this more clearly, the samples below are coloured according to whether they belong to the first or the second half of sampling:
+To visualize this more clearly, the samples below are coloured according to whether they belong to the first or the second half of sampling:
 
 
 ```{r pca-all-2}
@@ -132,7 +149,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
 tmp <- data.frame(pca$rotation)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
-        color = cmps$class)
+        color = cmps$class[idx])
 ```
 
 The distribution of the compounds along the first 2 components in the loading plot does not match the same pattern observed in the samples: while in the case of samples a separation according to the sampling time is observed along a diagonal that goes from the upper-right corner to the lower-left corner, the compounds seem to be distributed along a diagonal that goes from the upper-left corner to the lower-right corner.   
@@ -145,8 +162,7 @@ However, it can be clearly observed how the `TAGs` are located outside this diag
 dt_pt <- data.frame(point = class)
 rownames(dt_pt) <- rownames(dt)
 
-all(cmps$ID == rownames(data)) # TRUE
-dt_class <- data.frame(class = cmps$class)
+dt_class <- data.frame(class = cmps$class[idx])
 rownames(dt_class) <- colnames(dt)
 
 n.pt <- length(unique(dt_pt$point))
@@ -238,17 +254,23 @@ rownames(data_st) <- cmps$ID
 na_n <- apply(data_st, 1, function(x) length(which(is.na(x))))
 table(na_n)
 
-idx <- which(na_n > 30)
-kable(t(data_st[idx,]))
+#idx <- which(na_n > 30)
+#kable(t(data_st[idx,]))
 
 na_n <- aggregate(t(data_st), by=list(class_st), function(x){sum(!is.na(x))})
 na_n <- apply(na_n[,-1], 2, max)
-head(na_n[order(na_n)])
+head(na_n[order(na_n)], 20)
 ```
 
-There is n=`r sum(na_n == 1)` compound (`r names(which(na_n == 1))`) that, although it has detected in >1 sample, it has only been detected at maximum in 1 sample sample within a same class.  
-In parallel, there are n=`r sum(na_n > 1 & na_n < 5)` other compounds (`r paste(names(which(na_n > 1 & na_n < 5)), collapse = " & ")`) that at maximum have been detected in 2 and 3 samples, respectively, within the sample class.  
+There are n=`r sum(na_n == 0)` compounds (`r names(which(na_n == 0))`) that have `NA` values for all study samples. These compounds are excluded from the dataset.  
+Additionally, there are n=`r sum(na_n == 1 | na_n == 2)` compounds (`r names(which(na_n == 1 | na_n == 2))`) that, although they were detected in >1 sample, they have only been detected at maximum in 1 or 2 samples sample within a same class. These compounds are excluded from the dataset.      
 <span style="color:red">**We still have to decide if to exclude some or all of these compounds.**</span>  
+
+```{r}
+cmps <- cmps[cmps$ID %in% rownames(data_st)[na_n > 2], ]
+data_st <- data_st[na_n > 2, ]
+rownames(data_st) <- cmps$ID
+```
 
 
 ### PCA
@@ -334,6 +356,7 @@ For n=`r sum(lev < 0.05)` out of `r ncol(dt)` (`r round((sum(lev < 0.05) / ncol(
 The **Shapiro-Wilk test** on the GAM residuals is used to check if the residuals satisfy the homoscedasticity assumption. 
 
 ```{r normality}
+brix$data <- as.character(brix$data)
 brix <- rbind(brix, 
               c(2019, "diradamento", "corno - az. Oliva", "2019-09-17", "C", 0, 
                 mean(brix$Brix[brix$data == "2019-09-17"])),
@@ -396,7 +419,7 @@ abline(h = -log10(0.05), v = 0.7, lty = 2, col = "grey")
 ```
 
 
-<span style="color:red">**Should we reduce the threshold on `dev` parameter to 0.6 or even 0.57?**</span>  
+<span style="color:red">**Should we reduce the threshold on `dev` parameter to 0.6 or even 0.51?**</span>  
 
 
 ## Discriminant compounds
@@ -439,8 +462,7 @@ pheatmap(data.frame(scaling.pareto(log10(dt))),
 
 Discriminant compounds are grouped according to their time-trends observed in GAM models. 
 For that, we first create a new matrix of predicted values over 50 time-points, starting and finishing from the first and last sample collection date, respectively.  
-Then, we compute a distance matrix for the generated data with the function `TSDatabaseDistances` of the R package `TSdist`. As a distance measure we use the algorithm `dtw` (i.e., *dynamic time warping*). In addition to use logarithmic data, for this estimation the values are also scaled.   
-Finally, clustering based on slope/shape/trend similarity over time is done using the algorithm `pacf` (i.e., *partial autocorrelation function*).
+Then, we do time-series clustering of discriminant compounds using the functions available in the package `dtwclust`. As a distance measure we use the algorithm `dtw_basic` (i.e., *dynamic time warping*). In addition to use logarithmic data to compute the distance matrix, for this estimation the values are also scaled. Clustering based on slope/shape/trend similarity over time is done using the algorithm `partitional` and cluster centroids are calculated with the `pam` (i.e., (*partition around medoids*) method.
 
 ```{r pred-cor}
 idx <- which(padj < 0.05 & dev > 0.7)
@@ -459,37 +481,39 @@ for(i in seq(ncol(dt_pred))){
 
 dt_pred_s <- scale(dt_pred)
 dt_pred_s_t <- t(dt_pred_s)
-dt_pred_dist <- TSdist::TSDatabaseDistances(
-  dt_pred_s_t, distance = "dtw", diag = T, upper = T)
+pc_k_pred <- tsclust(dt_pred_s_t, type = "partitional", k = 2, preproc = NULL,
+                     distance = "dtw_basic", centroid = "pam", seed = 202104)
+pc_k_pred@clusinfo
+plot(pc_k_pred)
 
-km_tq <- data.frame(cluster = KMedoids(as.matrix(dt_pred_dist), 6, "pacf"))
-km_tq$cluster <- paste0("c", km_tq$cluster)
-rownames(km_tq) <- rownames(dt_pred_s_t)
+cl_k <- data.frame(cluster = paste0("c", pc_k_pred@cluster))
+rownames(cl_k) <- rownames(dt_pred_s_t)
 
-pm <- pheatmap(dt_pred_dist, show_colnames = F, show_rownames = F,
-         color = colorRampPalette(brewer.pal(n = 7, name = "RdYlBu"))(100),
-         #cutree_rows = 5, cutree_cols = 5, 
-         annotation_row = km_tq, annotation_col = km_tq, legend = FALSE,
-         main = "Clustering of distance measurements on predicted data")
+pm <- pheatmap(pc_k_pred@distmat, show_colnames = F, show_rownames = F,
+               color = colorRampPalette(brewer.pal(n = 7, name = "RdYlBu"))(100),
+               #cutree_rows = 5, cutree_cols = 5, 
+               annotation_row = cl_k, annotation_col = cl_k, legend = FALSE,
+               main = "Clustering of distance measurements on predicted data")
 
-pheatmap(as.matrix(dt_pred_dist)[order(km_tq$cluster, pm$tree_row$order),
-                                 order(km_tq$cluster, pm$tree_row$order)], 
-         show_colnames = F, show_rownames = F,
-         color = colorRampPalette(brewer.pal(n = 7, name = "RdYlBu"))(100),
-         annotation_row = km_tq, annotation_col = km_tq, legend = FALSE,
-         main = "Clustering of distance measurements on predicted data",
-         cluster_rows = F, cluster_cols = F)
+#pheatmap(as.matrix(pc_k_pred@distmat)[order(cl_k$cluster, pm$tree_row$order),
+#                                 order(cl_k$cluster, pm$tree_row$order)], 
+#         show_colnames = F, show_rownames = F,
+#         color = colorRampPalette(brewer.pal(n = 7, name = "RdYlBu"))(100),
+#         annotation_row = cl_k, annotation_col = cl_k, legend = FALSE,
+#         main = "Clustering of distance measurements on predicted data",
+#         cluster_rows = F, cluster_cols = F)
 ```
 
 <span style="color:red">**We still have to discuss if we are happy with these clusters or if we want to change something (i.e. algorithm of distance matrix generation, clustering or number of clusters).**</span>  
 In order to visualize these different *prototypes*, we overplot the log-scaled-data of each compound belonging to each cluster (each cluster is plotted separately). Points refer to measured data, whereas lines the generated GAM models.
 
 ```{r clusters, fig.width = 14}
-data_st_log <- t(log10(data_st[padj < 0.05 & dev > 0.7,]))
+dt <- dt[,padj < 0.05 & dev > 0.7]
+data_st_log <- log10(dt)
 data_st_log_s <- scale(data_st_log)
 par(mfrow = c(1, 2), mar = c(0.5, 0.5, 2, 0.5))
-for(j in seq(6)){
-  idx <- which(km_tq$cluster == paste0("c", j))
+for(j in seq(2)){
+  idx <- which(pc_k_pred@cluster == j)
   if(length(idx) > 9){
     clrs <- colorRampPalette(brewer.pal(9, "Set1"))(length(idx))
   } else{
@@ -500,10 +524,12 @@ for(j in seq(6)){
        ylim = c(min(c(dt_pred_s_t[idx,], data_st_log_s[,idx])), 
                 max(c(dt_pred_s_t[idx,], data_st_log_s[,idx]))),
        main = paste("cluster", j))
-  points(ytimes, dt_pred_s_t[idx[i],], pch = 16, col = clrs[i], type = "l", lwd = 2)
+  points(ytimes, dt_pred_s_t[idx[i],], pch = 16, col = clrs[i], type = "l", 
+         lwd = 2)
   for(i in 2:length(idx)){
     points(xtime, data_st_log_s[,idx[i]], pch = 16, col = alpha(clrs[i], 0.6))
-    points(ytimes, dt_pred_s_t[idx[i],], col = clrs[i], pch = 16, type = "l", lwd = 2)
+    points(ytimes, dt_pred_s_t[idx[i],], col = clrs[i], pch = 16, type = "l", 
+           lwd = 2)
   }
   plot(0, 0, axes = FALSE, frame.plot = FALSE, xlab = "", ylab = "")
   legend("topleft", legend = colnames(data_st_log_s)[idx], pch = 16,
@@ -524,8 +550,8 @@ links <- cor_gather(links)
 links <- links[links$cor > 0.7, ]
 nodes <- cmps[cmps$ID %in% links$var1 |
                 cmps$ID %in% links$var2, c(2, 1)]
-all(rownames(km_tq) == nodes$ID) # TRUE
-nodes$cluster <- km_tq$cluster
+all(rownames(cl_k) == nodes$ID) # TRUE
+nodes$cluster <- cl_k$cluster
 net <- graph_from_data_frame(d = links, vertices = nodes, directed=T)
 net <- simplify(net, remove.multiple = F, remove.loops = T) 
 colrs <- colorRampPalette(brewer.pal(12, "Paired"))( length(unique(dt_class$class)))
@@ -547,20 +573,18 @@ plot(net, edge.arrow.size = .1, vertex.label = NA, vertex.size = 5,
 Finally, just for visualization purposes, we compute again both the PCA and heatmap, but this time using only statistically significant compounds:
 
 ```{r pca-sig}
-idx <- which(padj < 0.05 & dev > 0.7)
-
-dt <- log10(t(data_st[idx,]))
-dt <- data.frame(scaling.pareto(dt))
-pca_sig <- prcomp(dt, center = FALSE, scale. = FALSE)
+data_st_log_par <- data.frame(scaling.pareto(data_st_log))
+pca_sig <- prcomp(data_st_log_par, center = FALSE, scale. = FALSE)
 tmp <- data.frame(pca_sig$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = class2[class2 != "QC"])
 
-all(cmps$ID[idx] == names(km_tq$cluster)) # TRUE
+idx <- which(padj < 0.05 & dev > 0.7)
+all(cmps$ID[idx] == rownames(cl_k)) # TRUE
 cmps$cluster <- "NS"
 cmps$cluster[padj < 0.05 & dev < 0.7] <- "high-dev"
-cmps$cluster[idx] <- km_tq$cluster
+cmps$cluster[idx] <- cl_k$cluster
 
 tmp <- data.frame(pca_sig$rotation)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
@@ -569,7 +593,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
 )
 
 
-dt_cl <- data.frame(cluster = km_tq$cluster)
+dt_cl <- data.frame(cluster = cl_k$cluster)
 rownames(dt_cl) <- cmps$ID[idx]
 
 ann_color <- list(
@@ -579,13 +603,14 @@ ann_color <- list(
 names(ann_color[[1]]) <- unique(dt_pt2$point)
 names(ann_color[[2]]) <- unique(dt_cl$pm_cl)
 
-pheatmap(dt, annotation_row = dt_pt2, annotation_col = dt_cl,
+pheatmap(data_st_log_par, annotation_row = dt_pt2, annotation_col = dt_cl,
          annotation_colors = ann_color, show_colnames = F, show_rownames = F)
 ```
 
 
 ```{r plots, eval = FALSE}
-cmps <- cmps[order(cmps$cluster), ]
+cmpsx <- cmps
+cmpsx <- cmpsx[order(cmpsx$cluster), ]
 
 set.seed(123)
 dt <- t(imputeRowMinRand(as.matrix(data_st), method = "from_to",
@@ -593,19 +618,22 @@ dt <- t(imputeRowMinRand(as.matrix(data_st), method = "from_to",
                          min_fraction_from = 1/1000))
 
 p <- list()
-for(i in seq(nrow(cmps))){
+for(i in seq(nrow(cmpsx))){
   x <- as.integer(as.Date(brix$data))
-  y <- dt[,cmps$ID[i]]
-  Sample_data <- data.frame(y,x)
+  y <- dt[,cmpsx$ID[i]]
+  z <- is.na(data[cmpsx$ID[i], class != "QC"])
+  Sample_data <- data.frame(y,x, z)
   Sample_data$class <- class[class != "QC"]
   p[[i]] <- ggplot(Sample_data, aes(x, log10(y))) + 
-    geom_point(color = colorRampPalette(brewer.pal(9, "YlOrRd"))(13)[as.factor(Sample_data$class)]) + 
+    geom_point(
+      aes(pch = z), position = position_jitter(1), 
+      color = colorRampPalette(brewer.pal(9, "YlOrRd"))(13)[as.factor(Sample_data$class)]) + 
     geom_smooth(method = "gam", formula = y ~s(x), col = "grey", alpha = 0.1) +
-    xlab("") + ylab("") + theme_light() + 
-    ggtitle(ttl <- paste0(cmps$ID[i], " (", cmps$cluster[i], ")"))
+    xlab("") + ylab("") + theme_light() + theme(legend.position = "none") + 
+    ggtitle(ttl <- paste0(cmpsx$ID[i], " (", cmpsx$cluster[i], ")"))
 }
 ggsave(
-  filename = "data_analysis_maturation_curves.pdf",
+  filename = "stats_maturation_curves.pdf",
   plot = marrangeGrob(p, nrow = 4, ncol = 3),
   width = 15, height = 12
 )
@@ -681,8 +709,8 @@ barplot(tmp$perc, horiz = T,
 Proportion of discriminant compound classes by cluster:
 
 ```{r}
-par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
-for(i in seq(6)){
+par(mfrow = c(1, 2), mar = c(0, 5, 1, 4))
+for(i in seq(2)){
   tmp <- cmps[cmps$cluster == paste0("c", i), ]
   tmp <- data.frame(table(tmp$class))
   tmp$Var1 <- as.character(tmp$Var1)

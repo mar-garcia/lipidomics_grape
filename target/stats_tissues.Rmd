@@ -14,7 +14,16 @@ startpoint <- Sys.time()
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
-In this document we first do an unsupervised exploratory analysis and later we identify compounds with significantly different abundances in compound concentrations measured in different grape tissues.
+In this document we first do an unsupervised exploratory analysis and later we identify compounds with significantly different abundances in compound concentrations measured in different grape tissues.  
+
+# Preliminaries
+
+```{r}
+bygrgrape <- FALSE # specify "TRUE" or "FALSE"
+```
+
+`r if(bygrgrape){"Here we will consider the amount of each compound per gram of grape, instead of per gram of tissue."}`  
+`r if(bygrgrape){"Therefore, we will start with the tranformation of the data to follow with an unsupervised exploratory analysis and later to identify compounds with significantly different abundances in compound concentrations measured in the different grape tissues according to their proportions in a grape berry."}`  
 
 ## Libraries
 
@@ -36,13 +45,23 @@ library(gridExtra)
 
 ```{r}
 # Import compound quantification data:
-data <- read_xlsx("data/data_tissues.xlsx", sheet = "trans_data")
+data <- read_xlsx("data/data_tissues.xlsx", sheet = "loq_data")
 colnames(data)[1] <- "ID"
 
 # Create a vector specifying the sample classes:
 class <- colnames(data)[-1]
 class <- gsub("pt11_", "", class)
 class <- gsub("_.*", "", class)
+
+if(bygrgrape){
+  # Transform the data according to the proportion of each tissue in 1 gr of grape
+  class_prop <- c(1, 1, 0.02974026, 0.821298701, 0.148961039)
+  names(class_prop) <- c("QC", "entire", "seeds", "pulp", "skin")
+  data <- data.frame(cbind(data$ID, 
+                           mapply(FUN = `*`, data[,-1], class_prop[class])))
+  ID <- data$V1
+  data <- cbind(ID, data.frame(lapply(data[,-1], as.numeric)))
+}
 
 # Load compound annotations:
 fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
@@ -68,6 +87,22 @@ The dataset contains information about the quantification of n=`r nrow(data)` co
 
 Missing values (n=`r sum(is.na(data))`) in the dataset will be replaced by a random value between the range obtained by dividing by 1000 and 100 of the smallest measured concentration for the corresponding compound.  
 Principal component analysis (PCA) and heatmaps will be performed on log-transformed and Pareto-scaled abundances, whereas one-way analysis of variance (ANOVA) on log-transformed data.
+
+## Massimo valore trovato per classe 
+
+```{r}
+tmp_dt <- data
+tmp_dt[is.na(tmp_dt)] <- 0
+rownames(tmp_dt) <- rownames(data)
+cmps.class <- unique(cmps$class)
+for(i in 2:(length(cmps.class))){
+  tmp <- apply(tmp_dt[cmps$ID[cmps$class == cmps.class[i]],], 1, max)
+  print(paste(cmps.class[i], 
+              cmps$ID[cmps$class == cmps.class[i]][which.max(tmp)], 
+              round(max(tmp), 1), 
+              sep = " - "))
+}
+```
 
 
 # Exploratory data analysis
@@ -95,12 +130,17 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
         color = class)
 ```
 
-Injections from the same biological/technical replicates cluster together.  
-`QC` samples are tightly clustered at the origin of the scores plot. They show a lower dispersion between them compared to that observed for the different groups of samples, indicating a good analytical reproducibility (i.e., the variability due to the analytical platform is much smaller than the biological/technical variability between the samples).    
-The PCA shows a separation of `seed` samples from `skin` and `pulp` samples on PC1
-(explaining `r round(summary(pca)$importance[2,1]*100, 1)`% of the total variance), whereas the PC2 (`r round(summary(pca)$importance[2,2]*100, 1)`% of total variance) separates `skin` samples from `pulp` ones.   
-Within skin samples, the first replicate seems to present some differences compared to the other two.  
-Along the PC1, samples from the class `entire` are in the central part, which confirms that they are a representation of the three different tissues. However, within the PC2 they are closer to pulp samples, probably because this is the tissue with highest proportion in a grape berry.  
+`r if(!bygrgrape){"Injections from the same biological/technical replicates cluster together."}`
+`r if(!bygrgrape){"QC samples are tightly clustered at the origin of the scores plot. They show a lower dispersion between them compared to that observed for the different groups of samples, indicating a good analytical reproducibility (i.e., the variability due to the analytical platform is much smaller than the biological/technical variability between the samples)."}`  
+`r if(!bygrgrape){paste("The PCA shows a separation of seed samples from skin and pulp samples on PC1 (explaining", round(summary(pca)$importance[2,1]*100, 1), "% of the total variance), whereas the PC2 (", round(summary(pca)$importance[2,2]*100, 1), "% of total variance) separates skin samples from pulp ones.")}`
+`r if(!bygrgrape){"Within skin samples, the first replicate seems to present some differences compared to the other two."}`
+`r if(!bygrgrape){}`
+`r if(!bygrgrape){"Along the PC1, samples from the class entire are in the central part, which confirms that they are a representation of the three different tissues. However, within the PC2 they are closer to pulp samples, probably because this is the tissue with highest proportion in a grape berry."}`
+
+
+`r if(bygrgrape){paste("In this case, PC2 (", round(summary(pca)$importance[2,2]*100, 1), "% of total variance) is the component that separates seeds samples from the others, while PC1 (", round(summary(pca)$importance[2,1]*100, 1), "% of total variance) is the one that separates the skin samples from the pulp. However, this time the entire and QC samples are not located in the centre of the score plot, but at one of its extremes along PC1.")}`
+`r if(bygrgrape){}`
+`r if(bygrgrape){"Another difference with respect to the previous analyses is that this time the % of variability explained for each of the first 2 PCs is 'more balanced'."}`
 
 ```{r}
 tmp <- data.frame(pca$rotation)
@@ -109,7 +149,9 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
         color = cmps$class)
 ```
 
-The loadings plot suggest that the main compounds driving the separation along the PC1 probably are the ones from the class `TAG`.
+`r if(!bygrgrape){"The loadings plot suggest that the main compounds driving the separation along the PC1 probably are the ones from the class TAG."}`
+
+`r if(bygrgrape){"Again, the loadings plot suggests that TAG appear to be the main class of compounds associated with seeds."}`
 
 
 ### Heatmap
@@ -138,13 +180,18 @@ pheatmap(dt, show_colnames = F,
          cutree_cols = 2, cutree_rows = 2)
 ```
 
-In line with what has been observed in the PCA, `seed` samples clearly separate from all other samples, showing higher intensities for a considerable amount of compounds (a lot of them from the `TAG` class).   
-This plot also suggests that `skin` and `pulp` samples are the ones with lower concentrations, whereas `QC` and `entire` samples seems to have an intermediate situation.  
+`r if(!bygrgrape){"In line with what has been observed in the PCA, seed samples clearly separate from all other samples, showing higher intensities for a considerable amount of compounds (a lot of them from the TAG class)."}`
+`r if(!bygrgrape){"This plot also suggests that skin and pulp samples are the ones with lower concentrations, whereas QC and entire samples seems to have an intermediate situation."}`
+
+
+`r if(bygrgrape){"Again, the results observed with this heatmap are slightly different from those observed in the previous analyses"}`
+`r if(bygrgrape){"In this case, it is clearly observed that the samples QC and entire are the ones with the highest concentrations for all compounds."}`
+`r if(bygrgrape){"Then, it is observed that there are a number of compounds particular to the seeds and others mainly characteristic of the pulp, while the skin seems to 'share' some of its main compounds with the other tissues, especially the pulp."}`
 
 
 ## Quality control samples
 
-We check (and, if any, list) if there are compounds not detected in all QC samples:
+We check (and, if any, list) if there are compounds not detected >LOQ in all QC samples:
 
 ```{r}
 idx <- which(rowSums(is.na(data[, class == "QC"])) > 0)
@@ -161,7 +208,7 @@ CV_QC <- apply(data[, class == "QC"], 1, CV)
 plot(density(CV_QC, na.rm = TRUE), xlab = "CV (%)", main = "")
 ```
 
-The CV is arround or below 10% for most of the compounds, but some have a higher CV.  
+The CV is around or below 10% for most of the compounds, but some have a higher CV.  
 The following table shows the the amount of compounds with specific CV intervals:
 
 ```{r}
@@ -172,13 +219,13 @@ Below it is plotted the distribution within QC samples of the 4 compounds with t
 
 ```{r, fig.height = 7}
 par(mfrow = c(2, 2))
-idx <- which(CV_QC > 80)
+idx <- order(-CV_QC)[1:4]
 for(i in seq(4)){
   plot(t(data[idx[i], class == "QC"]), xlab = "", ylab = "", 
-       main = rownames(data)[idx][i], pch = 16)
+       main = rownames(data)[idx][i], pch = 16,
+       sub = paste("CV =", round(CV_QC[idx[i]]), "%"))
 }
 ```
-
 
 <span style="color:red">**We still have to decide if to exclude some compounds based what it has been observed within QC samples.**</span>    
 
@@ -201,16 +248,12 @@ rownames(data_n9) <- cmps$ID
 na_n <- apply(data_n9, 1, function(x) length(which(is.na(x))))
 ```
 
+There are n=`r sum(na_n == ncol(data_n9))` compounds (``r rownames(data_n9)[which(na_n == ncol(data_n9))]``) that have `NA` values for all selected samples. They were detected only in the samples from the classes ``r paste(names(table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9))],])])), collapse = " & ")``. These compounds are excluded from the dataset.  
+Additionally, there are n=`r sum(na_n == ncol(data_n9)-1)` compounds (``r rownames(data_n9)[which(na_n == ncol(data_n9)-1)]``) that were detected only in n=`r paste(table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9)-1)],])]), collapse = " & ")` samples from the class `r paste(names(table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9)-1)],])])), collapse = " & ")`. These compounds are also excluded from the dataset.  
 
 ```{r}
-cmps <- cmps[cmps$ID %in% rownames(data)[na_n < (ncol(data_n9)-1)], ]
-```
-
-There is n=`r sum(na_n == ncol(data_n9))` compound (``r rownames(data_n9)[which(na_n == ncol(data_n9))]``) that has `NA` values for all selected samples. It was detected only in the n=`r table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9))],])])` samples from the class ``r names(table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9))],])]))``. This compound is excluded from the dataset.  
-Additionally, there is n=`r sum(na_n == ncol(data_n9)-1)` compound (``r rownames(data_n9)[which(na_n == ncol(data_n9)-1)]``) that was detected only in n=`r paste(table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9)-1)],])]), collapse = " & ")` samples from the classes `r paste(names(table(class[!is.na(data[rownames(data_n9)[which(na_n == ncol(data_n9)-1)],])])), collapse = " & ")`, respecticely. This compound is also excluded from the dataset.  
-
-```{r}
-data_n9 <- data_n9[na_n < (ncol(data_n9)-1), ]
+cmps <- cmps[cmps$ID %in% rownames(data_n9)[na_n < 8], ]
+data_n9 <- data_n9[na_n < 8, ]
 rownames(data_n9) <- cmps$ID
 class_n9 <- class[class %in% c("seeds", "pulp", "skin")]
 ```
@@ -239,9 +282,15 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
         color = cmps$class)
 ```
 
-In concordance with what observed previously, the PC1 (`r round(summary(pca)$importance[2,1]*100, 1)`%) separates `seed` samples from the other ones, whereas the PC2 (`r round(summary(pca)$importance[2,2]*100, 1)`%) separates `skin` samples from `pulp` samples, being the first replicate of skin samples slightly different from its counterparts.  
-Also here, in the loadings plot the PC1 is dominated by `TAG` compounds.
+`r if(!bygrgrape){paste("In concordance with what observed previously, the PC1 (", round(summary(pca)$importance[2,1]*100, 1), "%) separates seed samples from the other ones, whereas the PC2 (", round(summary(pca)$importance[2,2]*100, 1), "%) separates skin samples from pulp samples, being the first replicate of skin samples slightly different from its counterparts.")}`
+`r if(!bygrgrape){"Also here, in the loadings plot the PC1 is dominated by TAG compounds."}`
 
+
+
+`r if(bygrgrape){"In contrast to what was observed in the previous PCA with all samples, this time the score plot is very similar to that obtained when using the ug/g tissue data."}`
+`r if(bygrgrape){paste("However, also here it appears that the % of variance explained by each of the first 2 PCs is more balanced than when using the ug/g tissue data (PC1:", round(summary(pca)$importance[2,1]*100, 1), "%; PC2:", round(summary(pca)$importance[2,2]*100, 1), "%).")}`
+`r if(bygrgrape){}`
+`r if(bygrgrape){"Although slight differences are observed in the loading plots with respect to that obtained with the u/g tissue data, it is still clear that TAGs seem to be those compounds that characterise the seeds."}`
 
 ### Heatmap
 
@@ -267,8 +316,11 @@ pheatmap(dt, annotation_row = dt_tissue, annotation_col = dt_class,
          cutree_rows = 3, cutree_cols = 3)
 ```
 
-Also this new heatmap is in concordance with what already observed: `seeds` samples are the most different ones, having very high amounts of a considerable number of compounds (most of them from the class `TAG`).   
-The next cluster of compounds seems to be characteristic for both `skin` and `seeds` samples.  
+`r if(!bygrgrape){"Also this new heatmap is in concordance with what already observed: seeds samples are the most different ones, having very high amounts of a considerable number of compounds (most of them from the class TAG)."}`
+`r if(!bygrgrape){"The next cluster of compounds seems to be characteristic for both skin and seeds samples."}`
+
+
+`r if(bygrgrape){"The heatmap shows that there are a number of compounds (mainly TAGs) characteristic of the seeds that do not seem to be present in the skin, while the pulp seems to have intermediate characteristics between the other two tissues."}`
 
 
 # Differential abundance analysis
@@ -446,7 +498,7 @@ for(i in seq(length(padj))){
     z2 <- unique(c(ay, by, jy))[!unique(c(ay, by, jy)) %in% z1]
     z3 <- unique(class_n9[!class_n9 %in% c(z1, z2)])
     
-    behx <- paste(z1, ">", z2, ">", z3)
+    behx <- paste(z1, ">>>", z2, ">>>", z3)
   } else {
     for(j in seq(3)){ # 2 significant (j NOT significant)
       a <- seq(3)[!seq(3) %in% j][1]
@@ -460,14 +512,31 @@ for(i in seq(length(padj))){
         z1 <- class_pair[1, j]
         z2 <- class_pair[2, j]
         zz <- unique(class_n9[!class_n9 %in% c(z1, z2)])
+        if(abs(jx) < 0.2){
+          smbl <- " & "
+        } else if(jx > 0.5 & jx < 0.8){
+          smbl <- " >> "
+        } else if(jx > 0.2 & jx < 0.5){
+          smbl <- " > "
+        } else if(jx < (-0.5) & jx > (-0.8)){
+          z3 <- z1
+          z1 <- z2
+          z2 <- z3
+          smbl <- " >> "
+        } else if(jx < (-0.2) & jx > (-0.5)){
+          z3 <- z1
+          z1 <- z2
+          z2 <- z3
+          smbl <- " > "
+        } else {print(i)}
         if((ax < 0 & zz == class_pair[1, a]) |
            (ax > 0 & zz == class_pair[2, a])){
-          behx <- paste0("(", z1, " & ", z2, ") > ", zz)
+          behx <- paste0("(", z1, smbl , z2, ") >>> ", zz)
         } else if((ax < 0 & zz == class_pair[2, a]) |
                   (ax > 0 & zz == class_pair[1, a])){
-          behx <- paste0(zz, " > (", z1, " & ", z2, ")")
+          behx <- paste0(zz, " >>> (", z1, smbl, z2, ")")
         }
-      } 
+      } # close (abs(ax) > 0.8 & abs(bx) > 0.8 & abs(jx) < 0.8) 
     }
   }
   if(exists("behx")){
@@ -476,18 +545,52 @@ for(i in seq(length(padj))){
   } else{print(i)}
 }
 cmps$beh <- factor(beh, levels = c(
-  "(pulp & skin) > seeds",
-  "pulp > skin > seeds",
-  "pulp > (seeds & skin)",
-  "pulp > seeds > skin",
-  "skin > pulp > seeds",
-  "skin > (pulp & seeds)",
-  "skin > seeds > pulp",
-  "(seeds & skin) > pulp",
-  "seeds > skin > pulp",
-  "seeds > (pulp & skin)",
-  "seeds > pulp > skin",
-  "(pulp & seeds) > skin", 
+  "skin >>> seeds >>> pulp",
+  
+  "skin >>> (pulp & seeds)",
+  "skin >>> (pulp >> seeds)",
+  "skin >>> (seeds > pulp)",
+  "skin >>> (seeds >> pulp)",
+  
+  "skin >>> pulp >>> seeds",
+  "(skin >> pulp) >>> seeds",
+  "(skin > pulp) >>> seeds",
+  "(pulp & skin) >>> seeds",
+  "(pulp > skin) >>> seeds",
+  "(pulp >> skin) >>> seeds",
+  "pulp >>> skin >>> seeds",
+  
+  "pulp >>> (skin >> seeds)",
+  "pulp >>> (skin > seeds)",
+  "pulp >>> (seeds & skin)",
+  "pulp >>> (seeds > skin)",
+  "pulp >>> (seeds >> skin)",
+  
+  "pulp >>> seeds >>> skin",
+  "(pulp >> seeds) >>> skin", 
+  "(pulp > seeds) >>> skin", 
+  "(pulp & seeds) >>> skin", 
+  "(seeds > pulp) >>> skin", 
+  "(seeds >> pulp) >>> skin", 
+  
+  "seeds >>> pulp >>> skin",
+  "seeds >>> (pulp >> skin)",
+  "seeds >>> (pulp > skin)",
+  "seeds >>> (pulp & skin)",
+  
+  "seeds >>> (skin > pulp)",
+  "seeds >>> (skin >> pulp)",
+  "seeds >>> skin >>> pulp",
+  
+  
+  "(seeds & skin) >>> pulp",
+  "(seeds > skin) >>> pulp",
+  "(seeds >> skin) >>> pulp",
+  
+  "skin >>> (pulp > seeds)",
+  "(skin > seeds) >>> pulp",
+  "(skin >> seeds) >>> pulp",
+  
   "NS"))
 table(beh)
 data.frame(table(beh))[order(data.frame(table(beh))[,"Freq"], decreasing = T),]
@@ -510,8 +613,6 @@ tmp <- data.frame(pca_sig$rotation)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = cmps$beh[idx])
-
-
 
 
 dt_beh <- data.frame(behaviour = cmps$beh[idx])
@@ -540,15 +641,17 @@ pheatmap(dtx, annotation_row = dt_tissue, annotation_col = dt_beh,
 
 
 
-```{r, eval=FALSE}
-cmps <- cmps[order(cmps$beh), ]
+```{r boxplots, eval=FALSE}
+cmpsx <- cmps
+cmpsx <- cmpsx[order(cmpsx$beh), ]
 # Plot individual analyte concentrations for all compounds.
 p <- list()
-for(i in seq(nrow(cmps))){
+for(i in seq(nrow(cmpsx))){
   tmp_dt <- data.frame(
-    value = t(data_n9[rownames(data_n9) == cmps$ID[i],]),
+    value = t(data_n9[rownames(data_n9) == cmpsx$ID[i],]),
     class = class_n9
   )
+  colnames(tmp_dt) <- c("value", "class")
   tmp_dt$na <- is.na(tmp_dt$value)
   tmp_dt$value[is.na(tmp_dt$value)] <- 0
   p1 <- ggplot(
@@ -557,7 +660,7 @@ for(i in seq(nrow(cmps))){
         label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
     geom_point(aes(color = class, pch = na), 
                position = position_jitter(0.1), size = 2) +
-    ggtitle(cmps$ID[i]) +
+    ggtitle(cmpsx$ID[i]) +
     xlab("") + ylab("") + theme(legend.position = "none")
   p2 <- ggplot(
     data = tmp_dt, 
@@ -565,13 +668,18 @@ for(i in seq(nrow(cmps))){
         label = substring(rownames(tmp_dt), nchar(rownames(tmp_dt))))) + 
     geom_point(aes(color = class, pch = na), 
                position = position_jitter(0.1), size = 2) +
-    ggtitle(cmps$beh[i]) +
+    ggtitle(cmpsx$beh[i]) +
     xlab("") + ylab("") + theme(legend.position = "none")
   p[[i]] <- gtable::gtable_add_grob(arrangeGrob(p1, p2, ncol=2),
                                     rectGrob(gp=gpar(lwd=5, fill=NA)), 1, 1, 1, 2)
 }
+if(bygrgrape){
+  fl <- "stats_tissues_boxplots_gr_grape.pdf"
+} else{
+  fl <- "stats_tissues_boxplots.pdf"
+}
 ggsave(
-  filename = "data_analysis_tissues_boxplots.pdf",
+  filename = fl,
   plot = marrangeGrob(p, nrow = 4, ncol = 3),
   width = 15, height = 12
 )
@@ -580,6 +688,8 @@ ggsave(
 
 # Classes of compounds
 
+## All compounds
+
 ```{r}
 idx <- rownames(data) %in% cmps$ID
 idx.names <- rownames(data)[idx]
@@ -587,7 +697,9 @@ data <- data[idx,]
 rownames(data) <- idx.names
 ```
 
-Proportion of quantified lipids by gr of tissue.
+`r if(!bygrgrape){"Proportion of quantified lipids by gr of tissue."}`
+
+`r if(bygrgrape){"Proportion of quantified lipids by gr of grape:"}`
 
 ```{r}
 quanti <- aggregate(colSums(data[class != "QC"], na.rm = T), list(class[class != "QC"]), mean)
@@ -600,13 +712,21 @@ for(i in seq(nrow(quanti))){
 }
 ```
 
-Total of quantified lipids by 30 mg of tissue (it is not proportional!!! It indicates the total amount of quantified lipids and the amount of "other" compounds is obtained by extrating the calculated lipid value from 30 mg).
+`r if(!bygrgrape){"Total of quantified lipids by 30 mg of tissue (it is not proportional!!! It indicates the total amount of quantified lipids and the amount of 'other' compounds is obtained by extracting the calculated lipid value from 30 mg)."}`
+
+
+`r if(bygrgrape){"Total of quantified lipids by 2 mg of grape (it is not proportional!!! It indicates the total amount of quantified lipids and the amount of 'other' compounds is obtained by extracting the calculated lipid value from 2 mg)."}`
 
 ```{r}
+if(!bygrgrape){
+  tmp <- 3e4
+} else{
+  tmp <- 2e3
+}
 quanti <- aggregate(colSums(data[class != "QC"], na.rm = T), list(class[class != "QC"]), mean)
 par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
 for(i in seq(nrow(quanti))){
-  slices <- c(quanti$x[i], 3e4 - quanti$x[i]) 
+  slices <- c(quanti$x[i], tmp - quanti$x[i]) 
   lbls <- c("lipids", "others")
   lbls <- paste0(lbls, "\n(", round(slices/1000), 'mg/30mg)')
   pie(slices, lbls, main = quanti$Group.1[i])
@@ -631,6 +751,25 @@ for(j in seq(length(classx))){
 }
 ```
 
+Source distribution for each type of compounds:
+
+```{r}
+all(cmps$ID == rownames(data_n9)) # TRUE
+cmps.type <- unique(cmps$class)
+par(mfrow = c(2, 3))
+for(i in seq(length(cmps.type))){
+  data.type <- data_n9[cmps$class == cmps.type[i], ]
+  quanti <- aggregate(colSums(data.type, na.rm = TRUE), list(class_n9), mean)
+  slices <- quanti$x
+  lbls <- quanti$Group.1
+  pie(slices, lbls, main = cmps.type[i], col = brewer.pal(3, "Set1"))
+}
+```
+
+
+
+## Discriminant compounds
+
 Proportion of distribution for discriminant compounds:
 
 ```{r}
@@ -644,8 +783,10 @@ pie(slices, lbls, col = colorRampPalette(brewer.pal(8, "Set2"))(nrow(tmp)))
 Proportion of distribution for discriminant compounds considering the tissue with the highest values (those compounds for which there where >1 category as the one with the highest values are excluded):
 
 ```{r}
-tmp <- tmp[substr(tmp$Var1, 1, 1) != "(", ]
-tmp$class <- gsub(" .*", "", tmp$Var1)
+tmp$Var2 <- gsub("\\(", "", tmp$Var1)
+tmp$Var2 <- gsub("seeds", "seed", tmp$Var2)
+tmp <- tmp[substr(tmp$Var2, 6, 6) != "&", ]
+tmp$class <- gsub(" .*", "", tmp$Var2)
 slices <- aggregate(tmp$Freq, list(tmp$class), sum)[, "x"]
 lbls <- aggregate(tmp$Freq, list(tmp$class), sum)[,"Group.1"]
 pie(slices, lbls, col = brewer.pal(3, "Set1"))
@@ -664,7 +805,10 @@ pie(slices, lbls, col = col_class_cmps[lbls])
 Proportion of discriminant compounds per compound class:
 
 ```{r}
-tmp$Total <- data.frame(table(cmps$class))[,"Freq"]
+tmp2 <- data.frame(table(cmps$class))
+colnames(tmp2)[2] <- "Total"
+tmp <- merge(tmp, tmp2, by = "Var1", all = TRUE)
+tmp[is.na(tmp)] <- 0
 tmp$perc <- (tmp$Freq/tmp$Total)*100
 barplot(tmp$perc, horiz = T, 
         col = col_class_cmps[tmp$Var1], 
@@ -677,10 +821,12 @@ Proportion of discriminant compound classes by tissue:
 ```{r}
 tmp <- data.frame(table(cmps$beh))
 tmp <- tmp[tmp$Var1 != "NS",]
-tmp <- tmp[substr(tmp$Var1, 1, 1) != "(", ]
-tmp$class <- gsub(" .*", "", tmp$Var1)
+tmp$Var2 <- gsub("\\(", "", tmp$Var1)
+tmp$Var2 <- gsub("seeds", "seed", tmp$Var2)
+tmp <- tmp[substr(tmp$Var2, 6, 6) != "&", ]
+tmp$class <- gsub(" .*", "", tmp$Var2)
 
-tissues <- c("skin", "pulp", "seeds")
+tissues <- c("skin", "pulp", "seed")
 par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
 for(i in seq(3)){
   tmp2 <- cmps[cmps$beh %in% tmp$Var1[tmp$class == tissues[i]], ]

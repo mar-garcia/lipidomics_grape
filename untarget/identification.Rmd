@@ -64,7 +64,30 @@ load(paste0(study, "/data/RData/MS2_library_NEG.RData"))
 ms2list <- c(ms2list, ms2list_pos)
 my.dt_ids <- identification(features = my.features, cmps, MS2x = ms2list, rt_d = 120)
 dt_fg <- my.dt_ids[["dt_fg"]]
-DT::datatable(dt_fg, rownames = FALSE, options = list(pageLength = nrow(dt_fg)))
+
+dt_fg$beh <- NA
+ft <- my.dt_ids[["features"]]
+ft <- ft[!is.na(ft$FGx),]
+for(i in seq(nrow(dt_fg))){
+  tmp <- data.frame(table(feat$beh[feat$X %in% rownames(ft)[ft$FGx == dt_fg$FG[i]]]))
+  dt_fg$beh[i] <- paste(tmp$Var1[tmp$Freq == tmp$Freq[which.max(tmp$Freq)]], collapse = "; ")
+}
+
+dt_fg$check <- 0
+check <- read.csv("identifications_checked.csv")
+for(i in seq(nrow(check))){
+  i.idx <- unlist(matchWithPpm(getMolecule(check$formula[i])$exactmass, dt_fg$mass, ppm = 10))
+  dt_fg$check[i.idx] <- 1
+}
+
+
+dt_fg <- dt_fg[order(dt_fg$beh, as.numeric(dt_fg$RT)), ]
+library(DT)
+datatable(dt_fg[,-which(colnames(dt_fg) == "mass")], rownames = FALSE, 
+              options = list(pageLength = nrow(dt_fg), dom = 't')) %>% 
+  formatStyle("check", target = "row", 
+              backgroundColor = styleEqual(
+                c(0, 1), c('', 'lightblue')))
 save.image(paste0("ID_", study, ".RData"))
 ```
 

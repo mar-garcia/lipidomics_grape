@@ -18,7 +18,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
 study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
@@ -130,6 +130,8 @@ if(study == "maturation"){
   injections <- injections[grep("solv_rep1", injections$filename):nrow(injections),]
 }
 
+injections <- injections[grepl("skin|pulp|seeds", injections$tissue),]
+
 # Read the data
 data_raw <- readMSData(
   paste0(study, "/data/", polarity, "_FS_fixed/" , injections$filename),
@@ -187,9 +189,9 @@ pdp <- PeakDensityParam(sampleGroups = pData(xdata)[,v.class],
 xdata <- groupChromPeaks(xdata, param = pdp)
 # Perform the aligment
 pgp <- PeakGroupsParam(span = 0.3,
-                       subset = which(pData(xdata)[,v.class] == "QC" | 
-                                        pData(xdata)[,v.class] == "xQC"),
-                       subsetAdjust = "average",
+                       #subset = which(pData(xdata)[,v.class] == "QC" | 
+                       #                pData(xdata)[,v.class] == "xQC"),
+                       #subsetAdjust = "average",
                        minFraction = 1)
 xdata <- adjustRtime(xdata, param = pgp)
 ```
@@ -235,7 +237,7 @@ xdata <- fillChromPeaks(xdata, param = fcp)
 
 # PCA
 
-```{r pca, eval=TRUE}
+```{r pca, eval=FALSE}
 data <- featureValues(xdata, method = "sum", value = "into")
 set.seed(123)
 data <- t(imputeRowMinRand(data, method = "from_to",
@@ -276,7 +278,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
 # Save data
 
 ```{r save}
-save(xdata, file = paste0(study, "/data/RData/data_XCMS_", polarity, ".RData"))
+save(xdata, file = paste0(study, "/data/RData/data_XCMS_3ts_", polarity, ".RData"))
 ```
 
 

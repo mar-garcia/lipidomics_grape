@@ -16,7 +16,8 @@ startpoint <- Sys.time()
 # Preliminaries
 
 ```{r}
-study <- "tissues" # specify "maturation" or "tissues"
+study <- "ripetibilita" # specify "maturation" or "tissues" or 
+                     # "interday" or "ripetibilita"
 ```
 
 ## Libraries
@@ -31,25 +32,36 @@ library(openxlsx)
 # Read data
 
 ```{r}
-files <- list.files("data/")
+pth <- "//femsrv220.intra.ismaa.it/WATERS/experiments/AB6500_domenico2019/Grape_lipidomics_2019/2019_10_30/Results/SAMPLES_GRAPE_VAL/"
+files <- list.files(pth)
+files <- files[grep("txt", files)]
+files <- files[!grepl("RT|_IS_", files)]
 files <- files[grep(toupper(study), files)]
 
 data <- list()
 for(i in 1:length(files)){
   tmp_dt <- read.table(
-    paste0("data/", files[i]), 
+    paste0(pth, files[i]), 
     sep = "\t", na.strings = "N/A", skip = 3, row.names = 1, 
-    col.names = colnames(read.table(paste0("data/", files[i]),
+    col.names = colnames(read.table(paste0(pth, files[i]),
                                     sep = "\t", header = T)))
-  
-  colnames(tmp_dt) <- substring(colnames(tmp_dt), 6, nchar(colnames(tmp_dt))-4)
+  if(study %in% c("tissues", "maturation")){
+    colnames(tmp_dt) <- substring(colnames(tmp_dt), 6, nchar(colnames(tmp_dt))-4)
+  } else{
+    colnames(tmp_dt) <- gsub("POS_", "", colnames(tmp_dt))
+    colnames(tmp_dt) <- gsub("NEG_", "", colnames(tmp_dt))
+    if(any(grepl("grape_t24_01_B", colnames(tmp_dt)))){
+      tmp_dt <- tmp_dt[, colnames(tmp_dt) != "grape_t24_01"]
+      colnames(tmp_dt) <- gsub("grape_t24_01_B", "grape_t24_01", colnames(tmp_dt))
+    }
+  }
   tmp_dt <- tmp_dt[, order(colnames(tmp_dt))]
   data[[i]] <- tmp_dt
   
 }
 all(colnames(data[[1]]) == colnames(data[[2]])) # TRUE
 data <- do.call("rbind", data)
-rm(i, tmp_dt, files)
+rm(i, tmp_dt, files, pth)
 
 class <- rep("sample", ncol(data))
 class[grep("blank", colnames(data))] <- "blank"
@@ -111,15 +123,18 @@ for(i in seq(nrow(data_norm))){
     print(i)
   }
 }
-rm(i, j, fl, class_IS, cmps, tmp_class, tmp_IS)
+rm(i, j, fl, tmp_class, tmp_IS)
 ```
 
 
 # Trasformazione
 
+µg/ml ottenuti x 0.3/ peso campione(g) (così otteniamo µg/g)
+
 ```{r}
+pth <- c("//femsrv220.intra.ismaa.it/WATERS/experiments/AB6500_domenico2019/Lipidomics/TARGETED METHOD/TARGET METHOD_SAMPLES/INFO SAMPLES/")
 if(study == "tissues"){
-  smpl_name <- read_ods("data/samples distribution lipids.ods")
+  smpl_name <- read_ods(paste0(pth, "samples distribution lipids.ods"))
   smpl_name$ID <- gsub("pt-11", "pt11", tolower(smpl_name$name))
   smpl_name$ID <- paste0(smpl_name$ID, "_rep", smpl_name$rep)
   smpl_name[nrow(smpl_name) + 1, ] <- NA
@@ -127,16 +142,23 @@ if(study == "tissues"){
   smpl_name$weight[nrow(smpl_name)] <- 100
   smpl_name$gr <- smpl_name$weight / 1000
 } else if(study == "maturation"){
-  smpl_name <- read_xlsx("data/maturation curve lipids.xlsx", skip = 1)
+  smpl_name <- read_xlsx(paste0(pth, "maturation curve lipids.xlsx"), skip = 1)
   smpl_name$ID <- smpl_name$Code
   smpl_name[nrow(smpl_name) + 1, ] <- NA
   smpl_name$ID[nrow(smpl_name)] <- "QC"
   smpl_name$mg[nrow(smpl_name)] <- 100
   smpl_name$gr <- smpl_name$mg / 1000
+} else if(study == "ripetibilita"){
+  smpl_name <- read_xlsx(paste0(substr(pth, 1, 93), "TARGET METHOD_VALIDATION/Pesate_ripetibilita.xlsx"))
+  smpl_name$ID <- smpl_name$campione
+  smpl_name$gr <- smpl_name$mg / 1000
 }
 
 data_tras <- data_norm[, class %in% c("sample", "QC")]
-for(i in seq(ncol(data_tras))){
+if(study == "interday"){
+  data_tras <- data_tras * 0.3 / 0.100
+} else {
+  for(i in seq(ncol(data_tras))){
   if(!grepl("QC", colnames(data_tras)[i])){
     j <- which(smpl_name$ID == colnames(data_tras)[i])
     data_tras[,i] <- data_tras[,i] * 0.3 / smpl_name$gr[j]
@@ -144,15 +166,56 @@ for(i in seq(ncol(data_tras))){
     j <- which(smpl_name$ID == "QC")
     data_tras[,i] <- data_tras[,i] * 0.3 / smpl_name$gr[j]
   }
+  }
+  rm(i, j, pth)
 }
-rm(i, j)
 ```
+
+
+# LOQ
+
+Delete values <LOQ (considering the corresponding IS) and flag values >LOQ (which will be listed below).
+
+```{r}
+linearity <- read_excel("//femsrv220.intra.ismaa.it/WATERS/experiments/AB6500_domenico2019/Lipidomics/TARGETED METHOD/TARGET METHOD_VALIDATION/LOD_LINEARITY.xlsx")
+linearity <- linearity[!is.na(linearity$COMPOUND), ]
+linearity$COMPOUND <- gsub("_Na", "", linearity$COMPOUND)
+data_loq <- data_tras
+loq_up <- list()
+for(i in seq(nrow(data_loq))){
+  # to which IS correspond the compound "i"?
+  if(cmps$class[
+    cmps$ID == rownames(data_loq)[i]] == "IS"){
+    i.IS <- rownames(data_loq)[i]
+  } else {
+    i.IS <- class_IS$IS[class_IS$class == cmps$class[
+      cmps$ID == rownames(data_loq)[i]]]
+  }
+  
+  loq_up[[i]] <- which(data_loq[i,] > linearity$`max linearity (µg/g)`[linearity$COMPOUND == i.IS])
+  
+  data_loq[i, which(data_loq[i,] < 
+                      linearity$`LOQ (µg/g)`[linearity$COMPOUND == i.IS])] <- NA
+}
+names(loq_up) <- rownames(data_loq)
+loq_up <- loq_up[lapply(loq_up, length) > 0] 
+for(i in seq(length(loq_up))){
+  dt <- data.frame(data_loq[names(loq_up)[[i]],loq_up[[i]]])
+  if(ncol(dt) == 1){
+    rownames(dt) <- names(loq_up)[[i]]
+    colnames(dt) <- colnames(data_loq)[loq_up[[i]]]
+  }
+  print(knitr::kable(t(dt)))
+}
+```
+
 
 # Save data
 
 ```{r}
 list_of_datasets <- list(
-  "raw_data" = data, "norm_data" = data_norm, "trans_data" = data_tras)
+  "raw_data" = data, "norm_data" = data_norm, "trans_data" = data_tras,
+  "loq_data" = data_loq)
 write.xlsx(list_of_datasets, file = paste0("data/data_", study, ".xlsx"), 
            rowNames = TRUE)
 ```
