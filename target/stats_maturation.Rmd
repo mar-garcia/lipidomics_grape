@@ -674,8 +674,15 @@ Lipid composition:
 
 ```{r}
 all(rownames(data) == cmps$ID)
-col_class_cmps <- colorRampPalette(brewer.pal(9, "Set1"))(length(unique(cmps$class)))
-names(col_class_cmps) <- unique(cmps$class)
+#col_class_cmps <- colorRampPalette(brewer.pal(9, "Set1"))(length(unique(cmps$class)))
+#names(col_class_cmps) <- unique(cmps$class)
+col_class_cmps <- c("#E41A1C", "#974661", "#4A72A6", "#3E8E93", "#48A462", "#5D995D",
+                    "#7E6E85", "#A35390", "#D16948", "#FF7F00", "#FFB716", "#FFF02D",
+                    "#E1C62F", "#B97B2A", "#B75F49", "#DB728C", "#EC83BA", "#C28EA9", 
+                    "#999999" )
+names(col_class_cmps) <- c("FFA", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", "PA",
+                           "PC", "PE", "PG", "PI", "PS", "CAR", "MAG", "CER", "DAG", 
+                           "DGDG", "Lyso_PC", "MGDG", "TAG")
 quanti <- aggregate(rowSums(data), list(cmps$class), function(x){sum(x, na.rm=T)})
 slices <- quanti$x
 lbls <- quanti$Group.1
