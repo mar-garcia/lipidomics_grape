@@ -1,0 +1,69 @@
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(readxl)
+library(Rdisop)
+library(OrgMassSpecR)
+library(CompoundDb)
+
+fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+
+
+IS <- read_xlsx(fl, sheet = "IS")
+IS <- subset(IS, select = c("ID", "formula"))
+IS$mass <- NA
+for(i in seq(nrow(IS))){
+  IS$mass[i] <- getMolecule(IS$formula[i])$exactmass
+}
+data <- read_xlsx(fl, sheet = "FORMULE")
+data <- subset(data, select = c("ID", "formula"))
+data$mass <- NA
+for(i in seq(nrow(data))){
+  data$mass[i] <- MonoisotopicMass(formula = ListFormula(data$formula[i]))
+}
+data <- rbind(IS, data)
+data$`[M+H]+` <- unlist(mass2mz(data$mass, "[M+H]+"))
+data$`[M+NH4]+` <- unlist(mass2mz(data$mass, "[M+NH4]+"))
+data$`[M+Na]+` <- unlist(mass2mz(data$mass, "[M+Na]+"))
+data$`[M-H]-` <- unlist(mass2mz(data$mass, "[M-H]-"))
+data$`[M-H+HCOOH]-` <- unlist(mass2mz(data$mass, "[M-H+HCOOH]-"))
+
+
+RT <- rbind(read_xlsx(fl, sheet = "POS"), 
+            read_xlsx(fl, sheet = "NEG"))
+colnames(RT) <- c("RT_target", "ID")
+data <- merge(data, RT, by = "ID", all = TRUE)
+
+RT <- read_xlsx("C:/Users/garciaalom/Google Drive/laboratory/db_compounds.xlsx")
+RT <- RT[RT$compound %in% data$ID, ]
+RT$RT <- rowMeans(RT[,c("lipidgrape_min", "lipidgrape_max")])
+RT <- subset(RT, select = c("compound", "RT"))
+colnames(RT) <- c("ID", "RT_untarget")
+data <- merge(data, RT, by = "ID", all = TRUE)
+
+DT::datatable(data[,c(1:2, 9:10, 4:6)], rownames = FALSE)
+DT::datatable(data[,c(1:2, 9:10, 7:8)], rownames = FALSE)
+
+
+data <- data.frame(rbind(
+  c("16:0", "C16H32O2"),
+  c("16:1", "C16H30O2"),
+  c("16:2", "C16H28O2"),
+  c("16:3", "C16H26O2"),
+  c("18:0", "C18H36O2"),
+  c("18:1", "C18H34O2"),
+  c("18:2", "C18H32O2"),
+  c("18:3", "C18H30O2")
+))
+colnames(data) <- c("ID", "formula")
+data$mass <- NA
+data$H <- NA
+data$OH <- NA
+for(i in seq(nrow(data))){
+  data$mass[i] <- getMolecule(data$formula[i])$exactmass
+  data$H[i] <- unlist(mass2mz(data$mass[i], "[M-H]-"))
+  data$OH[i] <- data$mass[i] - getMolecule("H2O")$exactmass
+}
+colnames(data) <- c("ID", "formula", "[M]", "[M-H]-", "[M-H2O]")
+DT::datatable(data, rownames = FALSE)
+```
+

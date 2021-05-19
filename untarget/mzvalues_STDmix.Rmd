@@ -1,0 +1,68 @@
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(readxl)
+library(Rdisop)
+library(OrgMassSpecR)
+library(CompoundDb)
+library(DT)
+
+fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+
+
+IS <- read_xlsx(fl, sheet = "IS")
+IS <- subset(IS, select = c("ID", "formula"))
+IS$mass <- NA
+for(i in seq(nrow(IS))){
+  IS$mass[i] <- getMolecule(IS$formula[i])$exactmass
+}
+data <- read_xlsx(fl, sheet = "FORMULE")
+data <- subset(data, select = c("ID", "formula"))
+data$mass <- NA
+for(i in seq(nrow(data))){
+  data$mass[i] <- MonoisotopicMass(formula = ListFormula(data$formula[i]))
+}
+data <- rbind(IS, data)
+data$`[M+H]+` <- unlist(mass2mz(data$mass, "[M+H]+"))
+data$`[M+NH4]+` <- unlist(mass2mz(data$mass, "[M+NH4]+"))
+data$`[M+Na]+` <- unlist(mass2mz(data$mass, "[M+Na]+"))
+data$`[M-H]-` <- unlist(mass2mz(data$mass, "[M-H]-"))
+data$`[M-H+HCOOH]-` <- unlist(mass2mz(data$mass, "[M-H+HCOOH]-"))
+
+
+RT <- rbind(read_xlsx(fl, sheet = "POS"), 
+            read_xlsx(fl, sheet = "NEG"))
+RT$NAME <- gsub("-CH3", "", RT$NAME)
+RT$NAME <- gsub("-COO", "", RT$NAME)
+RT$NAME <- gsub("-H2O", "", RT$NAME)
+RT$NAME <- gsub("_Na", "", RT$NAME)
+colnames(RT) <- c("RT_target", "ID")
+data <- merge(data, RT, by = "ID", all = TRUE)
+
+RT <- read_xlsx("C:/Users/garciaalom/Google Drive/laboratory/db_compounds.xlsx")
+RT <- RT[RT$compound %in% data$ID, ]
+RT$RT <- rowMeans(RT[,c("lipidgrape_min", "lipidgrape_max")])
+RT <- subset(RT, select = c("compound", "RT"))
+colnames(RT) <- c("ID", "RT_untarget")
+data <- merge(data, RT, by = "ID", all = TRUE)
+
+cmps <- read_xlsx("//femsrv220.intra.ismaa.it/WATERS/experiments/AB6500_domenico2019/Lipidomics/20210211_Composti_STD_MIX_nativi.xlsx", sheet = "massa esatta")
+cmps$Formula[cmps$ID == "PE(18:1/18:1)"] <- "C41H78NO8P"
+cmps$ID <- gsub("-CH3", "", cmps$ID)
+cmps$ID <- gsub("-COO", "", cmps$ID)
+cmps$ID <- gsub("-H2O", "", cmps$ID)
+cmps$ID <- gsub("_Na", "", cmps$ID)
+for(i in seq(nrow(cmps))){
+  if(is.na(cmps$classe[i])){
+    cmps$classe[i] <- cmps$classe[i-1]
+  }
+}
+cmps <- subset(cmps, select = c("ID", "classe"))
+data <- data[data$ID %in% cmps$ID, ]
+data <- merge(cmps, data, by = "ID", all = TRUE)
+
+data <- data[order(data$classe, data$RT_untarget, data$RT_target),]
+datatable(data[,c(2, 1, 3, 10:11, 4:9)], rownames = FALSE)  %>% 
+  formatStyle('[M+H]+', backgroundColor = "gray") %>% 
+  formatStyle('[M-H]-', backgroundColor = "gray")
+```
+
