@@ -52,7 +52,7 @@ colnames(target)[1] <- "ID"
 
 
 # Compound ----
-x <- "P0002"
+x <- "P0005"
 idx <- which(my.features$FGx == x)
 if(length(idx == 2)){
   par(mfrow = c(1, 2))
@@ -73,7 +73,8 @@ for(i in seq(length(idx))){
 
 # plot integrated areas ------
 load("tissues/data/RData/data_XCMS_POS.RData")
-chrs <- featureChromatograms(xdata, features = c("FT0116", "FT0118"))
+chrs <- featureChromatograms(xdata, 
+                             features = c("FT1408", "FT1410", "FT1413"))
 sample_colors <- col_type[xdata$tissue]
 sample_colors[!names(sample_colors) %in% c("seeds", "pulp", "skin")] <- "#999999"
 plot(chrs, peakBg = paste0(sample_colors[chromPeaks(chrs)[, "sample"]], "60"))
@@ -125,33 +126,82 @@ for(i in 2:length(idx)){
   points(rtime(y.chr2[[1]]), intensity(y.chr2[[1]])/max(intensity(y.chr2[[1]]), na.rm = T), 
          col = i, type = "l")
 }
-legend("topright", pch = 16, col = seq(length(idx)), legend = round(my.features$mzmed[rownames(my.features) == 
-                                                                                        rownames(my.features)[idx]],4))
+legend("topright", pch = 16, col = seq(length(idx)), legend = round(my.features$mzmed[idx],4))
+
 
 # Correlation with target data ----
-tg <- target[target$ID == "18:1(d7) Lyso PC",grep("pt11", colnames(target))]
-ut <- data["P0116", grep("pt11", colnames(data))]
+target$ID[grep("TAG58:5", target$ID)]
+tg <- target[target$ID == "TAG58:5_FA18:2",grep("pt11", colnames(target))]
+ut <- data["P1408", grep("pt11", colnames(data))]
 plot(t(tg), ut, col = col_class_ts[class[!grepl("QC|xx00", class)]], pch = 16,
      main = paste("corr", round(cor(t(tg), ut), 3)), xlab = "target", ylab = "untarget")
 
-# MS2
-mz <- 573.3903
-rt <- 8.27*60
-ms2sub <- getSpectrum(ms2list, "precursor", mz, mz.tol = 0.001)
-ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 10)
+# MS2 ---------------
+mz <- 954.8474
+rt <- 21.94*60
+#ms2sub <- getSpectrum(ms2list, "precursor", mz, mz.tol = 0.001)
+ms2sub <- filterPrecursorMz(ms2, mz + 0.01 * c(-1, 1))
+#ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 10)
+ms2sub <- filterRt(ms2sub, rt + 10 * c(-1, 1))
 if(length(ms2sub) > 1){
   intensitats <- c()
-  for(i in seq(ms2sub)){
-    idx <- which(accessSpectrum(ms2sub[[i]])[,1] > 283.2 & accessSpectrum(ms2sub[[i]])[,1] < 283.9)
-    if(length(idx) == 0){
-      idx <- substring(gsub(".*\\.","", accessSpectrum(ms2sub[[i]])[,1]), 1, 1)>1 
-    }
-    int.noise <- accessSpectrum(ms2sub[[i]])[idx,2][which.max(accessSpectrum(ms2sub[[i]])[idx,2])]
-    int.good <- accessSpectrum(ms2sub[[i]])[-idx,2][which.max(accessSpectrum(ms2sub[[i]])[-idx,2])]
+  for(i in seq(length(ms2sub))){
+    idx <- c(which(unlist(mz(ms2sub[i])) > 283.2 & unlist(mz(ms2sub[i])) < 283.9),
+             which(unlist(mz(ms2sub[i])) > 341.1 & unlist(mz(ms2sub[i])) < 341.3)
+    )
+    int.noise <- max(unlist(intensity(ms2sub[i]))[idx])
+    int.good <- max(unlist(intensity(ms2sub[i]))[-idx])
     intensitats <- c(intensitats, int.good / int.noise)
   }
 }
+rm(tmp)
+length(intensitats)
+#tmp <- order(intensitats)[(length(intensitats)-10):length(intensitats)]
 dev.off()
+if(exists("tmp")){
+  i.seq <- tmp
+} else {
+  i.seq <- seq(length(ms2sub))
+}
+par(mfrow = c(1, 2))
+for(i in i.seq){
+  if(exists("tmp")){
+    j <- i
+  } else {
+    j <- order(intensitats)[i]
+  }
+  
+  xdata <- readMSData(ms2sub[j]@backend@spectraData$dataOrigin, mode = "onDisk")
+  chr <- chromatogram(
+    xdata, mz = ms2sub[j]@backend@spectraData$precursorMz + 0.01 * c(-1, 1),
+    rt = ms2sub[j]@backend@spectraData$rtime + 30 * c(-1, 1)
+  )
+  plot(chr, xaxt="n",
+       main = gsub("_DDA.mzML", "", 
+                   basename(ms2sub[j]@backend@spectraData$dataOrigin)))
+  axis(1, at = seq(0, 60*30, 6), labels = sprintf("%.2f", seq(0, 30, 6/60))) 
+  points(ms2sub[j]@backend@spectraData$rtime, 
+         intensity(chr[[1]])[closest(ms2sub[j]@backend@spectraData$rtime, 
+                                     rtime(chr[[1]]))], pch = 8)
+  
+  plot(unlist(mz(ms2sub[j])), 
+       unlist(intensity(ms2sub[j])) / max(unlist(intensity(ms2sub[j]))), 
+       type = "h", 
+       xlab = "mz", ylab = "rel. intensity",
+       main = paste(sprintf("%.4f", ms2sub[j]@backend@spectraData$precursorMz), 
+                    "@", 
+                    sprintf("%.2f", ms2sub[j]@backend@spectraData$rtime/60)),
+       #sub = paste0("MS", ms2sub[j]@backend@spectraData$msLevel)
+  )
+  idx <- which(unlist(intensity(ms2sub[j])) / max(unlist(intensity(ms2sub[j]))) > 0.1)
+  text(unlist(mz(ms2sub[j]))[idx], 
+       (unlist(intensity(ms2sub[j])) / max(unlist(intensity(ms2sub[j]))))[idx],
+       round(unlist(mz(ms2sub[j]))[idx], 4))
+}
+
+
+
+### delete:
 par(mfrow=c(1,2))
 if(length(ms2sub) > 30){
   for(i in (length(ms2sub)-30):length(ms2sub)){
