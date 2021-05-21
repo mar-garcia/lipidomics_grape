@@ -17,7 +17,16 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 In this document we first import the data from both polarities processed with XCMS and then we filter the potential problematic features.  
 Following, we do an unsupervised exploratory analysis and later we select those features with significantly different abundances in their intensities measured in different grape tissues.
 
-# Libraries
+# Preliminaries
+
+```{r}
+bygrgrape <- FALSE # specify "TRUE" or "FALSE"
+```
+
+`r if(bygrgrape){"Here we will consider the amount of each compound per gram of grape, instead of per gram of tissue."}`  
+`r if(bygrgrape){"Therefore, we will start with the tranformation of the data to follow with an unsupervised exploratory analysis and later to identify compounds with significantly different abundances in compound concentrations measured in the different grape tissues according to their proportions in a grape berry."}`  
+
+## Libraries
 
 ```{r}
 library(xcms)
@@ -62,7 +71,17 @@ feat <- rbind(ft_pos, ft_neg)
 class <- colnames(data)
 class <- gsub("pt11_", "", class)
 class <- gsub("_.*", "", class)
+class[grep("QC", colnames(data))] <- "QC"
+class[grep("solv", colnames(data))] <- "solv"
 rm(i, xdata, dt, ft, modes, dt_pos, dt_neg, ft_pos, ft_neg)
+
+if(bygrgrape){
+  # Transform the data according to the proportion of each tissue in 1 gr of grape
+  class_prop <- c(1, 1, 1, 0.02974026, 0.821298701, 0.148961039)
+  names(class_prop) <- c("solv", "QC", "entire", "seeds", "pulp", "skin")
+  data <- t(t(data) * class_prop[class])
+}
+
 ```
 
 
@@ -365,7 +384,7 @@ for(i in seq(length(padj))){
     z2 <- unique(c(ay, by, jy))[!unique(c(ay, by, jy)) %in% z1]
     z3 <- unique(class[sp_ts][!class[sp_ts] %in% c(z1, z2)])
     
-    behx <- paste(z1, ">", z2, ">", z3)
+    behx <- paste(z1, ">>>", z2, ">>>", z3)
   } else {
     for(j in seq(3)){ # 2 significant (j NOT significant)
       a <- seq(3)[!seq(3) %in% j][1]
@@ -379,14 +398,31 @@ for(i in seq(length(padj))){
         z1 <- class_pair[1, j]
         z2 <- class_pair[2, j]
         zz <- unique(class[sp_ts][!class[sp_ts] %in% c(z1, z2)])
+        if(abs(jx) < 0.2){
+          smbl <- " & "
+        } else if(jx > 0.5 & jx < 0.8){
+          smbl <- " >> "
+        } else if(jx > 0.2 & jx < 0.5){
+          smbl <- " > "
+        } else if(jx < (-0.5) & jx > (-0.8)){
+          z3 <- z1
+          z1 <- z2
+          z2 <- z3
+          smbl <- " >> "
+        } else if(jx < (-0.2) & jx > (-0.5)){
+          z3 <- z1
+          z1 <- z2
+          z2 <- z3
+          smbl <- " > "
+        } else {print(i)}
         if((ax < 0 & zz == class_pair[1, a]) |
            (ax > 0 & zz == class_pair[2, a])){
-          behx <- paste0("(", z1, " & ", z2, ") > ", zz)
+          behx <- paste0("(", z1, smbl , z2, ") >>> ", zz)
         } else if((ax < 0 & zz == class_pair[2, a]) |
                   (ax > 0 & zz == class_pair[1, a])){
-          behx <- paste0(zz, " > (", z1, " & ", z2, ")")
+          behx <- paste0(zz, " >>> (", z1, smbl, z2, ")")
         }
-      } 
+      } # close (abs(ax) > 0.8 & abs(bx) > 0.8 & abs(jx) < 0.8) 
     }
   }
   if(exists("behx")){
@@ -394,20 +430,53 @@ for(i in seq(length(padj))){
     rm(behx)
   } else{print(i)}
 }
-feat$beh <- NA
 feat$beh <- factor(beh, levels = c(
-  "(pulp & skin) > seeds",
-  "pulp > skin > seeds",
-  "pulp > (seeds & skin)",
-  "pulp > seeds > skin",
-  "skin > pulp > seeds",
-  "skin > (pulp & seeds)",
-  "skin > seeds > pulp",
-  "(seeds & skin) > pulp",
-  "seeds > skin > pulp",
-  "seeds > (pulp & skin)",
-  "seeds > pulp > skin",
-  "(pulp & seeds) > skin", 
+  "skin >>> seeds >>> pulp",
+  
+  "skin >>> (pulp & seeds)",
+  "skin >>> (pulp >> seeds)",
+  "skin >>> (seeds > pulp)",
+  "skin >>> (seeds >> pulp)",
+  
+  "skin >>> pulp >>> seeds",
+  "(skin >> pulp) >>> seeds",
+  "(skin > pulp) >>> seeds",
+  "(pulp & skin) >>> seeds",
+  "(pulp > skin) >>> seeds",
+  "(pulp >> skin) >>> seeds",
+  "pulp >>> skin >>> seeds",
+  
+  "pulp >>> (skin >> seeds)",
+  "pulp >>> (skin > seeds)",
+  "pulp >>> (seeds & skin)",
+  "pulp >>> (seeds > skin)",
+  "pulp >>> (seeds >> skin)",
+  
+  "pulp >>> seeds >>> skin",
+  "(pulp >> seeds) >>> skin", 
+  "(pulp > seeds) >>> skin", 
+  "(pulp & seeds) >>> skin", 
+  "(seeds > pulp) >>> skin", 
+  "(seeds >> pulp) >>> skin", 
+  
+  "seeds >>> pulp >>> skin",
+  "seeds >>> (pulp >> skin)",
+  "seeds >>> (pulp > skin)",
+  "seeds >>> (pulp & skin)",
+  
+  "seeds >>> (skin > pulp)",
+  "seeds >>> (skin >> pulp)",
+  "seeds >>> skin >>> pulp",
+  
+  
+  "(seeds & skin) >>> pulp",
+  "(seeds > skin) >>> pulp",
+  "(seeds >> skin) >>> pulp",
+  
+  "skin >>> (pulp > seeds)",
+  "(skin > seeds) >>> pulp",
+  "(skin >> seeds) >>> pulp",
+  
   "NS"))
 table(beh)
 data.frame(table(beh))[order(data.frame(table(beh))[,"Freq"], decreasing = T),]
@@ -470,8 +539,10 @@ pie(slices, lbls, col = colorRampPalette(brewer.pal(8, "Set2"))(nrow(tmp)))
 Proportion of distribution for discriminant compounds considering the tissue with the highest values (those compounds for which there where >1 category as the one with the highest values are excluded):
 
 ```{r}
-tmp <- tmp[substr(tmp$Var1, 1, 1) != "(", ]
-tmp$class <- gsub(" .*", "", tmp$Var1)
+tmp$Var2 <- gsub("\\(", "", tmp$Var1)
+tmp$Var2 <- gsub("seeds", "seed", tmp$Var2)
+tmp <- tmp[substr(tmp$Var2, 6, 6) != "&", ]
+tmp$class <- gsub(" .*", "", tmp$Var2)
 slices <- aggregate(tmp$Freq, list(tmp$class), sum)[, "x"]
 lbls <- aggregate(tmp$Freq, list(tmp$class), sum)[,"Group.1"]
 pie(slices, lbls, col = brewer.pal(3, "Set1"))
@@ -481,8 +552,14 @@ pie(slices, lbls, col = brewer.pal(3, "Set1"))
 # Session information
 
 ```{r session}
-write.csv(feat[,c(1:7, (which(colnames(feat) == "ms_level") + 1):ncol(feat))], 
-          "data/features.csv")
+if(bygrgrape){
+  write.csv(feat[,c(1:7, (which(colnames(feat) == "ms_level") + 1):ncol(feat))], 
+          "data/features_grgrape.csv")
+} else {
+  write.csv(feat[,c(1:7, (which(colnames(feat) == "ms_level") + 1):ncol(feat))], 
+          "data/features_grtissue.csv")
+}
+
 Sys.time()-startpoint
 devtools::session_info()
 ```
