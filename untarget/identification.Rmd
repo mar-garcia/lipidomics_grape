@@ -18,7 +18,21 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 study <- "tissues" # specify "maturation" or "tissues"
 source("../../R/ft_group.R")
 
-feat <- read.csv(paste0(study, "/data/features.csv"))
+feat_prep <- function(flname){
+  feat <- read.csv(flname)
+  feat$tissue <- NA
+  feat$tissue <- gsub(").*", "", feat$beh)
+  feat$tissue <- gsub("\\(", "", feat$tissue)
+  feat$tissue <- gsub(" >.*", "", feat$tissue)
+  feat$tissue[feat$beh == "NS"] <- "NS"
+  return(feat)
+}
+
+feat_tissu <- feat_prep(paste0(study, "/data/features_grtissue.csv"))
+feat_grape <- feat_prep(paste0(study, "/data/features_grgrape.csv"))
+
+table(feat_grape$tissue, feat_tissu$tissue)
+my.ft <- feat_tissu$X[feat_grape$tissue == "pulp" & feat_tissu$tissue == "pulp"]
 
 modes <- c("POS", "NEG")
 for(i in 1:2){
@@ -26,10 +40,8 @@ for(i in 1:2){
   my.data <- dt_preparation(xobj = xdata, class = "tissue", mznoise = c())
   
   load(paste0(study, "/data/RData/MS2_library_", modes[i], ".RData"))
-  my.ft <- feat$X[which(substr(feat$beh, 1, 4) == "pulp" & 
-                     substr(feat$X, 1, 1) == substr(modes[i], 1, 1))]
   my.data <- ft_grouping(
-    datax = my.data, MS2x = ms2list, 
+    datax = my.data, MS2x = ms2, 
     ft_idx = which(rownames(my.data[["features"]]) %in% my.ft), 
     rt_d = 5)
   assign(paste0("my.data_", tolower(modes[i])), my.data)
@@ -59,18 +71,21 @@ for(i in seq(nrow(cmps))){
   cmps$mass[i] <- getMolecule(cmps$formula[i])$exactmass
 }
 load(paste0(study, "/data/RData/MS2_library_POS.RData"))
-ms2list_pos <- ms2list
+ms2_pos <- ms2
 load(paste0(study, "/data/RData/MS2_library_NEG.RData"))
-ms2list <- c(ms2list, ms2list_pos)
-my.dt_ids <- identification(features = my.features, cmps, MS2x = ms2list, rt_d = 120)
+ms2 <- c(ms2, ms2_pos)
+my.dt_ids <- identification(features = my.features, cmps, MS2x = ms2, rt_d = 120)
 dt_fg <- my.dt_ids[["dt_fg"]]
 
-dt_fg$beh <- NA
+dt_fg$beh_grape <- NA
+dt_fg$beh_tissue <- NA
 ft <- my.dt_ids[["features"]]
 ft <- ft[!is.na(ft$FGx),]
 for(i in seq(nrow(dt_fg))){
-  tmp <- data.frame(table(feat$beh[feat$X %in% rownames(ft)[ft$FGx == dt_fg$FG[i]]]))
-  dt_fg$beh[i] <- paste(tmp$Var1[tmp$Freq == tmp$Freq[which.max(tmp$Freq)]], collapse = "; ")
+  tmp_grape <- data.frame(table(feat_grape$beh[feat_grape$X %in% rownames(ft)[ft$FGx == dt_fg$FG[i]]]))
+  tmp_tissu <- data.frame(table(feat_tissu$beh[feat_tissu$X %in% rownames(ft)[ft$FGx == dt_fg$FG[i]]]))
+  dt_fg$beh_grape[i] <- paste(tmp_grape$Var1[tmp_grape$Freq == tmp_grape$Freq[which.max(tmp_grape$Freq)]], collapse = "; ")
+  dt_fg$beh_tissue[i] <- paste(tmp_tissu$Var1[tmp_tissu$Freq == tmp_tissu$Freq[which.max(tmp_tissu$Freq)]], collapse = "; ")
 }
 
 dt_fg$check <- 0
@@ -81,10 +96,10 @@ for(i in seq(nrow(check))){
 }
 
 
-dt_fg <- dt_fg[order(dt_fg$beh, as.numeric(dt_fg$RT)), ]
+dt_fg <- dt_fg[order(dt_fg$beh_grape, dt_fg$beh_tissue, as.numeric(dt_fg$RT)), ]
 library(DT)
 datatable(dt_fg[,-which(colnames(dt_fg) == "mass")], rownames = FALSE, 
-              options = list(pageLength = nrow(dt_fg), dom = 't')) %>% 
+          options = list(pageLength = nrow(dt_fg), dom = 't')) %>% 
   formatStyle("check", target = "row", 
               backgroundColor = styleEqual(
                 c(0, 1), c('', 'lightblue')))
