@@ -51,12 +51,12 @@ cmps$RT <- rowMeans(cmps[,c("lipidgrape_min", "lipidgrape_max")])
 cmps <- subset(cmps, select = c("ID_cmp", "compound", "formula", "RT"))
 
 # select Lyso-PC
-cmpsx <- cmps[grep("PE", cmps$compound),]
+cmpsx <- cmps[grep("TAG", cmps$compound),]
 
-p <- "[M-H]-"
+p <- "[M+NH4]+"
 d <- 0
-i.pol <- "NEG"
-j <- 2
+i.pol <- "POS"
+j <- 9
 i.inj <- inj[grep(paste(cmpsx$ID_cmp, collapse = "|"), inj$ID_cmp),]
 i.inj <- i.inj[i.inj$polarity == i.pol, ]
 i.inj <- i.inj[grep(cmpsx$ID_cmp[j], i.inj$ID_cmp),]
@@ -93,7 +93,7 @@ res <- Spectra::compareSpectra(sps.ms2, ppm = 20)
 hm <- pheatmap(res)
 par(mfrow = c(3, 2))
 for(i in hm$tree_row$order){plotms2(sps.ms2[i])}
-idx <- seq(18)
+idx <- seq(9)
 #for(i in idx){
 #  k <- hm$tree_row$order[i]
 #  plotms2(sps.ms2[k])
@@ -129,6 +129,12 @@ ms2lib <- read_xlsx("MS2_library.xlsx")
 #i.inj <- inj[inj$polarity == i.pol, ]
 #cmpsx <- cmps[grep("Lyso PC|Lyso_PC", cmps$compound),]
 i.inj <- inj[inj$ID_file %in% ms2lib$ID_file, ]
+
+
+cmps <- cmps[grep("PE\\(", cmps$compound), ]
+cmps <- cmps[cmps$compound != "PE(16:0/18:3)",]
+ms2lib <- ms2lib[ms2lib$ID_cmp %in% cmps$ID_cmp, ]
+ms2lib <- ms2lib[grep("\\-", ms2lib$adduct),]
 
 tmp <- unique(paste(ms2lib$ID_cmp, ms2lib$adduct))
 rm(sps.ms2)
