@@ -22,7 +22,12 @@ class_IS <- read_xlsx("C:/Users/garciaalom/Google Drive/projectes/lipidomics_sha
 colnames(class_IS) <- c("class", "ID")
 class <- rbind(class, class_IS)
 colnames(class) <- c("class", "compound")
-
+class_TAG <- data.frame(cbind(
+  rep("TAG", 3),
+  cmps$compound[100:102]
+))
+colnames(class_TAG) <- c("class", "compound")
+class <- rbind(class, class_TAG)
 
 data <- merge(cmps, class, by = "compound")
 data <- data[order(data$class),]
@@ -37,8 +42,19 @@ plot(data$RT, data$mass, xlab = "RT", ylab = "mass",
      pch = 16, col = mycols[data$class], cex = 1.2)
 abline(v = seq(0, 30, 2.5), h = seq(100, 1000, 100), lty = 3, col = "grey")
 legend("topright", pch = 16, legend = names(mycols), col = mycols, ncol = 1, bty = "n", cex = 0.8)
-idx <- which(data$class == "PE")
+idx <- which(data$class == "TAG")
 points(data$RT[idx], data$mass[idx], pch = 8)
+
+
+db <- read.csv("std_db.csv")
+data <- merge(data, db, by = "compound")
+
+plot(data$RT, as.numeric(substr(data$formula, 2, 3)), xlab = "RT", ylab = "Carbons", 
+     xlim = c(1, 30), #ylim = c(100, 1100),
+     pch = 16, col = "white", cex = 1.2)
+text(data$RT, as.numeric(substr(data$formula, 2, 3)), data$db, 
+     col = mycols[data$class])
+legend("topright", pch = 16, legend = names(mycols), col = mycols, ncol = 1, bty = "n", cex = 0.8)
 
 
 
@@ -70,6 +86,12 @@ class_IS <- read_xlsx("C:/Users/garciaalom/Google Drive/projectes/lipidomics_sha
 colnames(class_IS) <- c("class", "ID")
 class <- rbind(class, class_IS)
 colnames(class) <- c("class", "compound")
+class_TAG <- data.frame(cbind(
+  rep("TAG", 3),
+  cmps$compound[100:102]
+))
+colnames(class_TAG) <- c("class", "compound")
+class <- rbind(class, class_TAG)
 cmps <- merge(cmps, class, by = "compound")
 
 
@@ -92,7 +114,7 @@ rm(p, pth, fls, xdata, ms2spec)
 #xdata_POS2 <- filterFile(xdata_POS, 2)
 #xdata_NEG2 <- filterFile(xdata_NEG, 2)
 
-cmpsx <- cmps[cmps$class == "PE", ]
+cmpsx <- cmps[cmps$class == "TAG", ]
 #cmpsx$POS <- NA
 #cmpsx$NEG <- NA
 #for(i in seq(nrow(cmpsx))){
@@ -118,17 +140,34 @@ cmpsx <- cmps[cmps$class == "PE", ]
 #}
 
 cmpsx$RT[cmpsx$compound == "17:1 Lyso PI"] <- 5.84+0.33
-cmpsx$compound[cmpsx$compound == "15:0-18:1(d7) PE"] <- "PE(15:0/18:1)_d7"
+cmpsx$compound[cmpsx$compound == "15:0-18:1(d7)-15:0 TAG_Na"] <- "TAG48:1_FA18:1_d7"
 
 plot(cmpsx$RT, as.numeric(substr(cmpsx$formula, 2, 3)), 
-     col = "white", xlab = "RT", ylab = "nº C", xlim = c(15.5, 17.5), ylim = c(37,42))
+     col = "white", xlab = "RT", ylab = "nº C", xlim = c(14.3, 22), ylim = c(26,58))
 text(cmpsx$RT, as.numeric(substr(cmpsx$formula, 2, 3)),
-     paste(substr(cmpsx$compound, 4, 12), "\n", 
-           (as.numeric(substr(cmpsx$compound, 7, 7))) +
-             (as.numeric(substr(cmpsx$compound, 12, 12)))
+     paste(substr(cmpsx$compound, 4, 14), "\n", 
+           (substr(cmpsx$compound, 7, 7))
            ))
 abline(h = seq(16,18, 2), lty = 3, col = "grey")
 
+C <- as.numeric(substr(cmpsx$formula, 2, 3))
+db <- as.numeric(substr(cmpsx$compound, 7, 7))
+rt <- cmpsx$RT
+
+md <- lm(rt~C+db)
+summary(md)
 
 
+rt_pred <- md$coefficients["(Intercept)"] + C*md$coefficients["C"] + db*md$coefficients["db"]
+plot(rt, rt_pred)
+
+xC <- 61
+xdb <- 7
+xrt <- 21.94
+(md$coefficients["(Intercept)"] + xC*md$coefficients["C"] + xdb*md$coefficients["db"]) - abs(min(md$residuals))
+(md$coefficients["(Intercept)"] + xC*md$coefficients["C"] + xdb*md$coefficients["db"]) + abs(max(md$residuals))
+
+
+
+((md$coefficients["(Intercept)"] + (xC*md$coefficients["C"]) - xrt) / -md$coefficients["db"])
 

@@ -34,11 +34,19 @@ library(MsCoreUtils)
 ```{r cmps}
 cmps <- read_xlsx("//femsrv220.intra.ismaa.it/WATERS/experiments/AB6500_domenico2019/Lipidomics/20210211_Composti_STD_MIX_nativi.xlsx", sheet = "massa esatta")
 cmps$Formula[cmps$ID == "PE(18:1/18:1)"] <- "C41H78NO8P"
+cmps$Formula[cmps$ID == "PG(18:1/18:2)"] <- "C42H77O10P"
 for(i in seq(nrow(cmps))){
   if(is.na(cmps$classe[i])){
     cmps$classe[i] <- cmps$classe[i-1]
   }
 }
+TAG <- data.frame(cbind(
+  rep("TAG", 3),
+  c("TAG30:0_FA10:0", "TAG36:0_FA12:0", "TAG24:0_FA08:0"),
+  c("C33H62O6", "C39H74O6", "C27H50O6")
+))
+colnames(TAG) <- colnames(cmps)
+cmps <- rbind(cmps, TAG)
 cmps$mass <- NA
 for(i in seq(nrow(cmps))){
   cmps$mass[i] <- getMolecule(cmps$Formula[i])$exactmass
@@ -46,7 +54,7 @@ for(i in seq(nrow(cmps))){
 
 
 cmpsx <- read_xlsx("C:/Users/garciaalom/Google Drive/laboratory/db_compounds.xlsx")
-cmpsx <- cmpsx[which(cmpsx$ID_cmp == "C0612"):which(cmpsx$ID_cmp == "C0710"),]
+cmpsx <- cmpsx[which(cmpsx$ID_cmp == "C0612"):which(cmpsx$ID_cmp == "C0713"),]
 cmpsx <- subset(cmpsx, select = c("ID_cmp", "compound", "formula", "lipidgrape_min", "lipidgrape_max"))
 cmpsx$RT <- rowMeans(cmpsx[,c("lipidgrape_min", "lipidgrape_max")])
 cmpsx <- cmpsx[order(cmpsx$RT), ]
@@ -94,7 +102,7 @@ rm(p, pth, fls, xdata, ms2spec)
 # Output
 
 ```{r output, fig.width=10}
-for(i in 55#seq(nrow(cmps)) until 55
+for(i in 80#seq(nrow(cmps)) until 80
 ){
   print(cmps$ID[i])
   print(cmps$Formula[i])
@@ -139,11 +147,7 @@ for(i in 55#seq(nrow(cmps)) until 55
       sps <- as.data.frame(xdata2[[closest(i.rt2, rtime(xdata2))]])
     } else {
       i.mz <- unlist(mass2mz(cmps$mass[i], adduct = i.add))
-      if(p == "NEG"){
-        par(mfrow = c(1, 2), mar = c(4, 2, 3, 0.5))
-      } else if(p == "POS"){
-        par(mfrow = c(1, 3), mar = c(4, 2, 3, 0.5))
-      }
+      par(mfrow = c(1, 3), mar = c(4, 2, 3, 0.5))
       for(j in seq(length(i.mz))){
         chr <- chromatogram(xdata, mz = i.mz[j] + 0.10 * c(-1, 1))
         i.int <- max(intensity(chr[[2]])[closest(i.rt*60-10, rtime(chr[[2]])):
@@ -161,10 +165,12 @@ for(i in 55#seq(nrow(cmps)) until 55
     plot(sps$mz, sps$irel, type = "h", xlab = "mz", ylab = "relative intensity",
          main = paste0(
            "FS at ", 
-           sprintf("%.2f", rtime(xdata2[[closest(i.rt*60, rtime(xdata2))]])/60), "min"))
+           sprintf("%.2f", rtime(xdata2[[closest(i.rt*60, rtime(xdata2))]])/60),
+           "min"))
     tmp <- c()
     for(k in seq(0, 3)){
-      i.ion <- matchWithPpm(unlist(mass2mz(i.mass, i.add))+1.003355*k, sps$mz, ppm = 10)
+      i.ion <- matchWithPpm(unlist(mass2mz(i.mass, i.add))+1.003355*k, 
+                            sps$mz, ppm = 10)
       tmp <- c(tmp, unlist(i.ion))
       for(j in seq(length(i.ion))){
         if(length(i.ion[[j]]) > 0){
@@ -197,8 +203,10 @@ for(i in 55#seq(nrow(cmps)) until 55
     if(length(ms2sub) > 0){
       intensitats <- c()
       for(j in seq(length(ms2sub))){
-        idx <- c(which(unlist(mz(ms2sub[j])) > 283.2 & unlist(mz(ms2sub[j])) < 283.9),
-                 which(unlist(mz(ms2sub[j])) > 340.7 & unlist(mz(ms2sub[j])) < 341.8))
+        idx <- c(which(unlist(mz(ms2sub[j])) > 283.2 & 
+                         unlist(mz(ms2sub[j])) < 283.9),
+                 which(unlist(mz(ms2sub[j])) > 340.7 & 
+                         unlist(mz(ms2sub[j])) < 341.8))
         if(length(idx) == 0){
           int.noise <- 1
           int.good <- max(unlist(intensity(ms2sub[j])))
