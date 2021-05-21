@@ -1,6 +1,9 @@
 library(Spectra)
 library(xcms)
 library(MsCoreUtils)
+inj <- readxl::read_xlsx("C:/Users/garciaalom/Google Drive/laboratory/standards_injections.xlsx")
+inj <- inj[!is.na(inj$ID_cmp),]
+
 load("maturation/data/RData/MS2_library_POS.RData")
 ms2_POS <- ms2
 load("tissues/data/RData/MS2_library_POS.RData")
@@ -12,8 +15,8 @@ ms2_NEG <- c(ms2_NEG, ms2)
 rm(ms2)
 
 
-ms2sub <- filterPrecursorMz(ms2_NEG, 736.4923 + 0.01 * c(-1, 1))
-ms2sub <- filterRt(ms2sub, 15.57*60 + 10 * c(-1, 1))
+ms2sub <- filterPrecursorMz(ms2_POS, 824.7711 + 0.01 * c(-1, 1))
+ms2sub <- filterRt(ms2sub, 21.75*60 + 10 * c(-1, 1))
 #ms2sub <- ms2sub[containsMz(ms2sub,c(570.5049), tolerance = 0.005)]
 #ms2sub <- ms2sub[containsMz(ms2sub, c(491.3220), tolerance = 0.005)]
 length(ms2sub)
@@ -49,7 +52,8 @@ for(i in i.seq){
     rt = ms2sub[j]@backend@spectraData$rtime + 30 * c(-1, 1)
   )
   plot(chr, xaxt="n",
-       main = gsub("_DDA.mzML", "", basename(ms2sub[j]@backend@spectraData$dataOrigin)))
+       main = gsub("_DDA.mzML", "", 
+                   basename(ms2sub[j]@backend@spectraData$dataOrigin)))
   axis(1, at = seq(0, 60*30, 6), labels = sprintf("%.2f", seq(0, 30, 6/60))) 
   points(ms2sub[j]@backend@spectraData$rtime, 
          intensity(chr[[1]])[closest(ms2sub[j]@backend@spectraData$rtime, 
