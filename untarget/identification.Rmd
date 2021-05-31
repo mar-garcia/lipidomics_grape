@@ -15,6 +15,15 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 ```
 
 ```{r}
+.ppm <- function(x, ppm = 10) {
+  ppm * x / 1e6
+}
+matchWithPpm <- function(x, y, ppm = 0) {
+  lapply(x, function(z, ppm) {
+    which(abs(z - y) <= (.ppm(z, ppm)) + 1e-9)
+  }, ppm = force(ppm))
+}
+
 study <- "tissues" # specify "maturation" or "tissues"
 source("../../R/ft_group.R")
 
@@ -32,7 +41,12 @@ feat_tissu <- feat_prep(paste0(study, "/data/features_grtissue.csv"))
 feat_grape <- feat_prep(paste0(study, "/data/features_grgrape.csv"))
 
 table(feat_grape$tissue, feat_tissu$tissue)
-my.ft <- feat_tissu$X[feat_grape$tissue == "pulp" & feat_tissu$tissue == "pulp"]
+#my.ft <- feat_tissu$X[(feat_grape$tissue == "seeds" & feat_tissu$tissue == "seeds") |
+#                        feat_grape$tissue == "pulp" & feat_tissu$tissue == "pulp" |
+#                        feat_grape$tissue == "skin" & feat_tissu$tissue == "skin"]
+library(CompoundDb)
+feat_grape$rtmed[unlist(matchWithPpm(c(636.5562, 663.5205), feat_grape$mzmed, ppm = 5))]/60
+my.ft <- feat_grape$X[unlist(matchWithPpm(c(636.5562, 663.5205), feat_grape$mzmed, ppm = 5))][2]
 
 modes <- c("POS", "NEG")
 for(i in 1:2){
@@ -40,15 +54,25 @@ for(i in 1:2){
   my.data <- dt_preparation(xobj = xdata, class = "tissue", mznoise = c())
   
   load(paste0(study, "/data/RData/MS2_library_", modes[i], ".RData"))
-  my.data <- ft_grouping(
+  idx <- which(rownames(my.data[["features"]]) %in% my.ft)
+  if(length(idx) > 0){
+    my.data <- ft_grouping(
     datax = my.data, MS2x = ms2, 
-    ft_idx = which(rownames(my.data[["features"]]) %in% my.ft), 
-    rt_d = 5)
+    ft_idx = idx, 
+    rt_d = 5, icor = 0.9)
+  } else{
+    tmp <- my.data[["features"]]
+    tmp$FG <- NA
+    tmp$MS2 <- NA
+    my.data[["features"]] <- tmp
+  }
   assign(paste0("my.data_", tolower(modes[i])), my.data)
 }
 
 my.features <- isotopologues(
-  features = rbind(my.data_pos[["features"]], my.data_neg[["features"]]))
+  features = rbind(
+    my.data_pos[["features"]], my.data_neg[["features"]])
+  )
 
 for(i in 1:2){
   my.data_x <- get(paste0("my.data_", tolower(modes[i])))
@@ -63,7 +87,29 @@ for(i in 1:2){
 
 my.features <- fg_grouping(data = rbind(data_pos, data_neg), 
                            features = my.features)
+my.features <- my.features[!is.na(my.features$FGx), ]
+idx <- which(my.features$rtmed > 22.21*60 & my.features$rtmed < 22.23*60)
+idx2 <- unlist(matchWithPpm(918.8482, my.features$mzmed, ppm = 10))
+if(length(idx2) > 0 & length(idx) > 0){
+  if(idx2 %in% idx){
+    my.features$FGx[idx2] <- paste0(my.features$FGx[idx2], "b")
+  }
+}
+```
 
+```{r}
+my.features$rtmed <- my.features$rtmed/60
+my.features <- my.features[order(my.features$mzmed),]
+my.features$rtmed <- sprintf("%.2f", my.features$rtmed)
+my.features$mzmed <- sprintf("%.4f", my.features$mzmed)
+
+my.features <- my.features[order(my.features$polarity, decreasing = T),]
+DT::datatable(my.features[,c("mzmed", "rtmed", "FG", "isotopes", "annotation", "MS2")])
+save.image(paste0("ID_", study, ".RData"))
+```
+
+
+```{r, eval=FALSE}
 cmps <- read.csv("compounds_RT_formula.csv")
 cmps$RT <- cmps$RT*60
 cmps$mass <- NA
@@ -82,21 +128,27 @@ dt_fg$beh_tissue <- NA
 ft <- my.dt_ids[["features"]]
 ft <- ft[!is.na(ft$FGx),]
 for(i in seq(nrow(dt_fg))){
-  tmp_grape <- data.frame(table(feat_grape$beh[feat_grape$X %in% rownames(ft)[ft$FGx == dt_fg$FG[i]]]))
-  tmp_tissu <- data.frame(table(feat_tissu$beh[feat_tissu$X %in% rownames(ft)[ft$FGx == dt_fg$FG[i]]]))
-  dt_fg$beh_grape[i] <- paste(tmp_grape$Var1[tmp_grape$Freq == tmp_grape$Freq[which.max(tmp_grape$Freq)]], collapse = "; ")
-  dt_fg$beh_tissue[i] <- paste(tmp_tissu$Var1[tmp_tissu$Freq == tmp_tissu$Freq[which.max(tmp_tissu$Freq)]], collapse = "; ")
+  tmp_grape <- data.frame(table(feat_grape$beh[
+    feat_grape$X %in% rownames(ft)[ft$FGx == dt_fg$FG[i]]]))
+  tmp_tissu <- data.frame(table(feat_tissu$beh[
+    feat_tissu$X %in% rownames(ft)[ft$FGx == dt_fg$FG[i]]]))
+  dt_fg$beh_grape[i] <- paste(tmp_grape$Var1[
+    tmp_grape$Freq == tmp_grape$Freq[which.max(tmp_grape$Freq)]], collapse = "; ")
+  dt_fg$beh_tissue[i] <- paste(tmp_tissu$Var1[
+    tmp_tissu$Freq == tmp_tissu$Freq[which.max(tmp_tissu$Freq)]], collapse = "; ")
 }
 
 dt_fg$check <- 0
 check <- read.csv("identifications_checked.csv")
 for(i in seq(nrow(check))){
-  i.idx <- unlist(matchWithPpm(getMolecule(check$formula[i])$exactmass, dt_fg$mass, ppm = 10))
+  i.idx <- unlist(matchWithPpm(getMolecule(check$formula[i])$exactmass, 
+                               dt_fg$mass, ppm = 10))
   dt_fg$check[i.idx] <- 1
 }
 
 
-dt_fg <- dt_fg[order(dt_fg$beh_grape, dt_fg$beh_tissue, as.numeric(dt_fg$RT)), ]
+dt_fg <- dt_fg[order(#dt_fg$beh_grape, dt_fg$beh_tissue, 
+  as.numeric(dt_fg$RT)), ]
 library(DT)
 datatable(dt_fg[,-which(colnames(dt_fg) == "mass")], rownames = FALSE, 
           options = list(pageLength = nrow(dt_fg), dom = 't')) %>% 
