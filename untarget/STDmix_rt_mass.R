@@ -27,6 +27,8 @@ class_TAG <- data.frame(cbind(
   cmps$compound[100:102]
 ))
 colnames(class_TAG) <- c("class", "compound")
+#class_TAG$Cn <- c(33, 39, 27)
+#class_tAG$DB <- rep(0, 3)
 class <- rbind(class, class_TAG)
 
 data <- merge(cmps, class, by = "compound")
@@ -42,8 +44,39 @@ plot(data$RT, data$mass, xlab = "RT", ylab = "mass",
      pch = 16, col = mycols[data$class], cex = 1.2)
 abline(v = seq(0, 30, 2.5), h = seq(100, 1000, 100), lty = 3, col = "grey")
 legend("topright", pch = 16, legend = names(mycols), col = mycols, ncol = 1, bty = "n", cex = 0.8)
-idx <- which(data$class == "TAG")
+idx <- which(data$class == "PS")
 points(data$RT[idx], data$mass[idx], pch = 8)
+
+
+
+class <- read_xlsx("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx", sheet = "FORMULE")
+class <- subset(class, select = c("class", "ID", "Cn", "DB"))
+IS <- read_xlsx("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx", sheet = "IS")
+IS <- subset(IS, select = c("class", "ID", "Cn", "DB"))
+for(i in seq(nrow(IS))){
+  IS$class[i] <- class_IS$class[class_IS$ID == IS$ID[i]]
+}
+class <- rbind(IS, class)
+class$ID <- gsub("_Na", "", class$ID)
+maturation <- rbind(
+  
+)
+
+RT <- rbind(read_xlsx("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx", sheet = "POS"),
+                read_xlsx("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx", sheet = "NEG")) 
+colnames(RT) <- c("RT", "ID")
+RT$ID <- gsub("_Na", "", RT$ID)
+RT$ID <- gsub("-H2O", "", RT$ID)
+RT$ID <- gsub("-COO", "", RT$ID)
+data <- merge(class, RT, by = "ID")
+
+plot(data$RT, data$Cn, xlab = "RT", ylab = "n.C", 
+     xlim = c(1, 30), #ylim = c(100, 1100),
+     pch = 16, cex = 1.2, col = "white")
+text(data$RT, data$Cn, data$DB, col = mycols[data$class])
+abline(v = seq(0, 30, 2.5), h = seq(0, 60, 10), lty = 3, col = "grey")
+legend("topright", pch = 16, legend = names(mycols), col = mycols, ncol = 1, bty = "n", cex = 0.8)
+
 
 
 db <- read.csv("std_db.csv")
@@ -86,12 +119,12 @@ class_IS <- read_xlsx("C:/Users/garciaalom/Google Drive/projectes/lipidomics_sha
 colnames(class_IS) <- c("class", "ID")
 class <- rbind(class, class_IS)
 colnames(class) <- c("class", "compound")
-class_TAG <- data.frame(cbind(
-  rep("TAG", 3),
-  cmps$compound[100:102]
-))
-colnames(class_TAG) <- c("class", "compound")
-class <- rbind(class, class_TAG)
+#class_TAG <- data.frame(cbind(
+#  rep("TAG", 3),
+#  cmps$compound[100:102]
+#))
+#colnames(class_TAG) <- c("class", "compound")
+#class <- rbind(class, class_TAG)
 cmps <- merge(cmps, class, by = "compound")
 
 
@@ -114,7 +147,7 @@ rm(p, pth, fls, xdata, ms2spec)
 #xdata_POS2 <- filterFile(xdata_POS, 2)
 #xdata_NEG2 <- filterFile(xdata_NEG, 2)
 
-cmpsx <- cmps[cmps$class == "TAG", ]
+cmpsx <- cmps[cmps$class == "PS", ]
 #cmpsx$POS <- NA
 #cmpsx$NEG <- NA
 #for(i in seq(nrow(cmpsx))){
@@ -140,13 +173,14 @@ cmpsx <- cmps[cmps$class == "TAG", ]
 #}
 
 cmpsx$RT[cmpsx$compound == "17:1 Lyso PI"] <- 5.84+0.33
-cmpsx$compound[cmpsx$compound == "15:0-18:1(d7)-15:0 TAG_Na"] <- "TAG48:1_FA18:1_d7"
+cmpsx$compound[cmpsx$compound == "15:0-18:1(d7) PS"] <- "PS(15:0/18:1)_d7"
 
 plot(cmpsx$RT, as.numeric(substr(cmpsx$formula, 2, 3)), 
-     col = "white", xlab = "RT", ylab = "nº C", xlim = c(14.3, 22), ylim = c(26,58))
+     col = "white", xlab = "RT", ylab = "nº C", xlim = c(15, 16), ylim = c(38.5, 42.5))
 text(cmpsx$RT, as.numeric(substr(cmpsx$formula, 2, 3)),
-     paste(substr(cmpsx$compound, 4, 14), "\n", 
-           (substr(cmpsx$compound, 7, 7))
+     paste(substr(cmpsx$compound, 4, 12), "\n", 
+           (as.numeric(substr(cmpsx$compound, 7, 7)) + 
+             as.numeric(substr(cmpsx$compound, 12, 12)))
            ))
 abline(h = seq(16,18, 2), lty = 3, col = "grey")
 
@@ -157,17 +191,21 @@ rt <- cmpsx$RT
 md <- lm(rt~C+db)
 summary(md)
 
+md2 <- lm(rt[rt>20]~C[rt>20]+db[rt>20])
+summary(md2)
+
 
 rt_pred <- md$coefficients["(Intercept)"] + C*md$coefficients["C"] + db*md$coefficients["db"]
 plot(rt, rt_pred)
 
-xC <- 61
-xdb <- 7
-xrt <- 21.94
-(md$coefficients["(Intercept)"] + xC*md$coefficients["C"] + xdb*md$coefficients["db"]) - abs(min(md$residuals))
-(md$coefficients["(Intercept)"] + xC*md$coefficients["C"] + xdb*md$coefficients["db"]) + abs(max(md$residuals))
+xC <- 58
+#xdb <- 7
+xrt <- 21.10
+#(md$coefficients["(Intercept)"] + xC*md$coefficients["C"] + xdb*md$coefficients["db"]) - abs(min(md$residuals))
+#(md$coefficients["(Intercept)"] + xC*md$coefficients["C"] + xdb*md$coefficients["db"]) + abs(max(md$residuals))
 
 
 
 ((md$coefficients["(Intercept)"] + (xC*md$coefficients["C"]) - xrt) / -md$coefficients["db"])
+((md2$coefficients["(Intercept)"] + (xC*md2$coefficients["C[rt > 20]"]) - xrt) / -md2$coefficients["db[rt > 20]"])
 

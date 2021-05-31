@@ -102,7 +102,7 @@ rm(p, pth, fls, xdata, ms2spec)
 # Output
 
 ```{r output, fig.width=10}
-for(i in 80#seq(nrow(cmps)) until 80
+for(i in 68#seq(nrow(cmps)) until 68
 ){
   print(cmps$ID[i])
   print(cmps$Formula[i])

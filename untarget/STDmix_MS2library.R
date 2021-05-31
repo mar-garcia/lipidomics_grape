@@ -51,12 +51,12 @@ cmps$RT <- rowMeans(cmps[,c("lipidgrape_min", "lipidgrape_max")])
 cmps <- subset(cmps, select = c("ID_cmp", "compound", "formula", "RT"))
 
 # select Lyso-PC
-cmpsx <- cmps[grep("TAG", cmps$compound),]
+cmpsx <- cmps[grep("PS", cmps$compound),]
 
-p <- "[M+NH4]+"
+p <- "[M+H]+"
 d <- 0
 i.pol <- "POS"
-j <- 9
+j <- 6
 i.inj <- inj[grep(paste(cmpsx$ID_cmp, collapse = "|"), inj$ID_cmp),]
 i.inj <- i.inj[i.inj$polarity == i.pol, ]
 i.inj <- i.inj[grep(cmpsx$ID_cmp[j], i.inj$ID_cmp),]
@@ -93,7 +93,7 @@ res <- Spectra::compareSpectra(sps.ms2, ppm = 20)
 hm <- pheatmap(res)
 par(mfrow = c(3, 2))
 for(i in hm$tree_row$order){plotms2(sps.ms2[i])}
-idx <- seq(9)
+idx <- 1:4
 #for(i in idx){
 #  k <- hm$tree_row$order[i]
 #  plotms2(sps.ms2[k])

@@ -5,33 +5,94 @@ library(Rdisop)
 library(OrgMassSpecR)
 library(CompoundDb)
 
-fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+myfolder <- c("//femsrv220.intra.ismaa.it/WATERS/experiments/AB6500_domenico2019/Grape_lipidomics_2019/2019_10_30/Results/SAMPLES_GRAPE_VAL/")
+
+data <- read.table(paste0(myfolder, "20210331_GRAPE_MATURATION_NEG_RT.txt"), 
+                   sep = "\t", header = T, na.strings = "N/A", skip = 2)
+cmps_maturation_NEG <- data.frame(
+  compound = data$Sample.Type,
+  RT_min = apply(data[,-1], 1, min, na.rm = TRUE),
+  RT_max = apply(data[,-1], 1, max, na.rm = TRUE))
+
+data <- read.table(paste0(myfolder, "20210331_GRAPE_MATURATION_POS_RT.txt"), 
+                   sep = "\t", header = T, na.strings = "N/A", skip = 2)
+cmps_maturation_POS <- data.frame(
+  compound = data$Sample.Type,
+  RT_min = apply(data[,-1], 1, min, na.rm = TRUE),
+  RT_max = apply(data[,-1], 1, max, na.rm = TRUE))
 
 
-IS <- read_xlsx(fl, sheet = "IS")
-IS <- subset(IS, select = c("ID", "formula"))
-IS$mass <- NA
-for(i in seq(nrow(IS))){
-  IS$mass[i] <- getMolecule(IS$formula[i])$exactmass
-}
-data <- read_xlsx(fl, sheet = "FORMULE")
-data <- subset(data, select = c("ID", "formula"))
+data <- read.table(paste0(myfolder, "20210331_GRAPE_TISSUES_NEG_RT.txt"), 
+                   sep = "\t", header = T, na.strings = "N/A", skip = 2)
+cmps_tissues_NEG <- data.frame(
+  compound = data$Sample.Type,
+  RT_min = apply(data[,-1], 1, min, na.rm = TRUE),
+  RT_max = apply(data[,-1], 1, max, na.rm = TRUE))
+
+data <- read.table(paste0(myfolder, "20210331_GRAPE_TISSUES_POS_RT.txt"), 
+                   sep = "\t", header = T, na.strings = "N/A", skip = 2)
+cmps_tissues_POS <- data.frame(
+  compound = data$Sample.Type,
+  RT_min = apply(data[,-1], 1, min, na.rm = TRUE),
+  RT_max = apply(data[,-1], 1, max, na.rm = TRUE))
+
+cmps_maturation <- rbind(cmps_maturation_NEG, cmps_maturation_POS)
+cmps_tissues    <- rbind(cmps_tissues_NEG, cmps_tissues_POS)
+all(cmps_maturation$compound == cmps_tissues$compound)
+cmps_maturation[mapply(is.infinite, cmps_maturation)] <- NA
+cmps_tissues[mapply(is.infinite, cmps_tissues)] <- NA
+
+cmps <- data.frame(
+  ID = cmps_maturation$compound,
+  RT_min = apply(cbind(cmps_maturation[,-1], cmps_tissues[,-1]), 1, min, na.rm = TRUE),
+  RT_max = apply(cbind(cmps_maturation[,-1], cmps_tissues[,-1]), 1, max, na.rm = TRUE)
+)
+cmps[mapply(is.infinite, cmps)] <- NA
+cmps <- cmps[!is.na(cmps$RT_min), ]
+cmps$ID <- gsub("_Na", "", cmps$ID)
+cmps$ID <- gsub("-H2O", "", cmps$ID)
+cmps$ID <- gsub("-COO", "", cmps$ID)
+rm(myfolder, cmps_maturation_NEG, cmps_maturation_POS, cmps_tissues_NEG, cmps_tissues_POS, cmps_maturation, cmps_tissues, data)
+
+
+fmls <- readxl::read_xlsx("//femsrv220.intra.ismaa.it/WATERS/experiments/AB6500_domenico2019/Lipidomics/possibile lunghezza catene_14_22_massa esatta.xlsx", sheet = "total")
+IS <- data.frame(
+  class = c("PC", "PE", "PG", "PI", "PS", "PA", "Lyso_PA", "Lyso_PG", "Lyso_PI",
+            "Lyso_PS", "Lyso_PE", "FFA", "DAG", "TAG", "Lyso_PC", "MAG", "CAR",
+            "CER", "SM", "DGDG", "MGDG", "CER", "CER"),
+  ID = c("15:0-18:1(d7) PC", "15:0-18:1(d7) PE", "15:0-18:1(d7) PG", 
+         "15:0-18:1(d7) PI", "15:0-18:1(d7) PS", "15:0-18:1-D7-PA",
+         "17:0 Lyso PA", "17:1 Lyso PG", "17:1 Lyso PI",           
+         "17:1 Lyso PS", "18:1(d7) Lyso PE", "stearic_acid_D3",        
+         "15:0-18:1(d7) DAG", "15:0-18:1(d7)-15:0 TAG", "18:1(d7) Lyso PC",       
+         "18:1(d7) MAG", "24:0 (d4) carnitine", "C15 Ceramide-d7",        
+         "d18:1-18:1(d9) SM", "Hydrog DGDG (18:0-18:0)", "Hydrog MGDG (18:0-16:0)",
+         "lactCER_24:0", "lact_dihydroCER_24:0"),
+  formula = c("C41H73D7NO8P", "C38H67D7NO8P", "C39H68D7O10P",
+              "C42H72D7O13P", "C39H67D7NO10P", "C36H62D7O8P",
+              "C20H41O7P", "C23H45O9P", "C26H48O12P", 
+              "C23H44NO9P", "C23H39D7NO7P", "C18H33D3O2",
+              "C36H61D7O5", "C51H89D7O6", "C26H45D7NO7P",
+              "C21H33D7O2", "C31H57D4NO4", "C33H58D7NO3", 
+              "C41H72D9N2O6P", "C51H96O15", "C43H82O10",
+              "C54H103NO13", "C54H105NO13")
+)
+fmls <- rbind(fmls, IS)
+data <- merge(cmps, fmls, by = "ID")
+cmps$ID[!cmps$ID %in% fmls$ID]
+rm(cmps, fmls, IS)
+
+data$RT_target <- rowMeans(data[,2:3])
+
 data$mass <- NA
 for(i in seq(nrow(data))){
   data$mass[i] <- MonoisotopicMass(formula = ListFormula(data$formula[i]))
 }
-data <- rbind(IS, data)
 data$`[M+H]+` <- unlist(mass2mz(data$mass, "[M+H]+"))
 data$`[M+NH4]+` <- unlist(mass2mz(data$mass, "[M+NH4]+"))
 data$`[M+Na]+` <- unlist(mass2mz(data$mass, "[M+Na]+"))
 data$`[M-H]-` <- unlist(mass2mz(data$mass, "[M-H]-"))
 data$`[M-H+HCOOH]-` <- unlist(mass2mz(data$mass, "[M-H+HCOOH]-"))
-
-
-RT <- rbind(read_xlsx(fl, sheet = "POS"), 
-            read_xlsx(fl, sheet = "NEG"))
-colnames(RT) <- c("RT_target", "ID")
-data <- merge(data, RT, by = "ID", all = TRUE)
 
 RT <- read_xlsx("C:/Users/garciaalom/Google Drive/laboratory/db_compounds.xlsx")
 RT <- RT[RT$compound %in% data$ID, ]
@@ -40,26 +101,51 @@ RT <- subset(RT, select = c("compound", "RT"))
 colnames(RT) <- c("ID", "RT_untarget")
 data <- merge(data, RT, by = "ID", all = TRUE)
 
-DT::datatable(data[,c(1:2, 9:10, 4:6)], rownames = FALSE)
-DT::datatable(data[,c(1:2, 9:10, 7:8)], rownames = FALSE)
+DT::datatable(data[,c("ID", "formula", "RT_target", 
+                      "[M+H]+", "[M+NH4]+", "[M+Na]+")], rownames = FALSE)
+DT::datatable(data[,c("ID", "formula", "RT_target", 
+                      "[M-H]-", "[M-H+HCOOH]-")], rownames = FALSE)
 
 
 data <- data.frame(rbind(
+  c("10:0", "C10H20O2"),
+  c("12:0", "C12H24O2"),
+  c("12:1", "C12H22O2"),
   c("14:0", "C14H28O2"),
   c("14:1", "C14H26O2"),
   c("14:2", "C14H24O2"),
+  c("15:0", "C15H30O2"),
+  c("15:1", "C15H28O2"),
   c("16:0", "C16H32O2"),
   c("16:1", "C16H30O2"),
   c("16:2", "C16H28O2"),
   c("16:3", "C16H26O2"),
   c("16:4", "C16H24O2"),
   c("16:5", "C16H22O2"),
+  c("17:0", "C17H34O2"),
+  c("17:1", "C17H32O2"),
+  c("17:2", "C17H30O2"),
   c("18:0", "C18H36O2"),
   c("18:1", "C18H34O2"),
   c("18:2", "C18H32O2"),
   c("18:3", "C18H30O2"),
+  c("18:4", "C18H28O2"),
+  c("18:5", "C18H26O2"),
+  c("18:6", "C18H24O2"),
+  c("19:0", "C19H38O2"),
+  c("19:1", "C19H36O2"),
+  c("19:2", "C19H34O2"),
   c("20:0", "C20H40O2"),
-  c("22:0", "C22H44O2")
+  c("21:0", "C21H42O2"),
+  c("22:0", "C22H44O2"),
+  c("23:0", "C23H46O2"),
+  c("24:0", "C24H48O2"),
+  c("25:0", "C25H50O2"),
+  c("26:0", "C26H52O2"),
+  c("27:0", "C27H54O2"),
+  c("28:0", "C28H56O2"),
+  c("29:0", "C29H58O2"),
+  c("30:0", "C30H60O2")
 ))
 colnames(data) <- c("ID", "formula")
 data$mass <- NA
