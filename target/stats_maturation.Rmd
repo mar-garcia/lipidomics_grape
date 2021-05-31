@@ -50,12 +50,9 @@ class <- gsub("_MIX.*", "", class)
 class[grep("QC", class)] <- "QC"
 
 # Load compound annotations:
-fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
-#fl <- "data/new_rt.xlsx"
-cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
-              read_xlsx(fl, sheet = "FORMULE")[, 1:2])
-cmps$ID <- gsub("_Na", "", cmps$ID)
+cmps <- read.csv("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/compounds_target.csv")
 cmps <- cmps[cmps$ID %in% data$ID, ]
+nrow(data) == nrow(cmps) #TRUE
 cmps <- cmps[match(data$ID, cmps$ID), ]
 
 # Replace R problematic symbols in compound names:
@@ -92,12 +89,20 @@ tmp_dt <- data
 tmp_dt[is.na(tmp_dt)] <- 0
 rownames(tmp_dt) <- rownames(data)
 cmps.class <- unique(cmps$class)
-for(i in 2:(length(cmps.class))){
-  tmp <- apply(tmp_dt[cmps$ID[cmps$class == cmps.class[i]],], 1, max)
-  print(paste(cmps.class[i], 
-              cmps$ID[cmps$class == cmps.class[i]][which.max(tmp)], 
-              round(max(tmp), 1), 
-              sep = " - "))
+for(i in 1:(length(cmps.class))){
+  idx <- which(cmps$class == cmps.class[i])
+  if(length(idx) == 1){
+    print(paste(cmps.class[i], 
+                cmps$ID[idx], 
+                round(max(tmp_dt[idx]), 1), 
+                sep = " - "))
+  } else {
+    tmp <- apply(tmp_dt[cmps$ID[idx],], 1, max)
+    print(paste(cmps.class[i], 
+                cmps$ID[idx][which.max(tmp)], 
+                round(max(tmp), 1), 
+                sep = " - "))
+  }
 }
 ```
 
@@ -180,19 +185,19 @@ pheatmap(dt, show_colnames = F, show_rownames = F,
          annotation_colors = ann_color)
 
 
-dt_pt2 <- data.frame(point = class2)
-rownames(dt_pt2) <- rownames(dt)
+#dt_pt2 <- data.frame(point = class2)
+#rownames(dt_pt2) <- rownames(dt)
 
-ann_color <- list(
-  "time-point" = brewer.pal(3, "Set2"),
-  "class" = colorRampPalette(brewer.pal(12, "Paired"))(n.class)
-)
-names(ann_color[[1]]) <- unique(dt_pt2$point)
-names(ann_color[[2]]) <- unique(dt_class$class)
+#ann_color <- list(
+#  "time-point" = brewer.pal(3, "Set2"),
+#  "class" = colorRampPalette(brewer.pal(12, "Paired"))(n.class)
+#)
+#names(ann_color[[1]]) <- unique(dt_pt2$point)
+#names(ann_color[[2]]) <- unique(dt_class$class)
 
-pheatmap(dt, show_colnames = F, show_rownames = F, 
-         annotation_row = dt_pt2, annotation_col = dt_class,
-         annotation_colors = ann_color)
+#pheatmap(dt, show_colnames = F, show_rownames = F, 
+#         annotation_row = dt_pt2, annotation_col = dt_class,
+#         annotation_colors = ann_color)
 ```
 
 
@@ -242,14 +247,30 @@ for(i in seq(4)){
 Below, we will repeat the unsupervised exploratory data anlyses, but this time excluding the `QC` samples, and `IS` compounds and potentially problematic analytes.
 
 ```{r filter-data}
-class_st <- class[class != "QC"]
+class_st <- class[class != "QC" & !grepl("MIX", colnames(data))]
 
-data_st <- data[, class != "QC"]
+data_st <- data[, (class != "QC" & !grepl("MIX", colnames(data)))]
 rownames(data_st) <- rownames(data)
 
-data_st <- data_st[cmps$class != "IS", ]
-cmps <- cmps[cmps$class != "IS",]
-rownames(data_st) <- cmps$ID
+
+IS <- c("15:0-18:1-D7-PA", "15:0-18:1(d7) DAG_Na", "15:0-18:1(d7) PC", 
+        "15:0-18:1(d7) PE", "15:0-18:1(d7) PG", "15:0-18:1(d7) PI", 
+        "15:0-18:1(d7) PS", "15:0-18:1(d7)-15:0 TAG_Na", "17:0 Lyso PA",
+        "17:1 Lyso PG", "17:1 Lyso PI", "17:1 Lyso PS", "18:1(d7) Chol Ester",
+        "18:1(d7) Lyso PC", "18:1(d7) Lyso PE", "18:1(d7) MAG", "24:0 (d4) carnitine",
+        "C15 Ceramide-d7", "d18:1-18:1(d9) SM", "Hydrog DGDG (18:0-18:0)",
+        "Hydrog MGDG (18:0-16:0)", "stearic_acid_D3")
+IS <- gsub("[^0-9A-Za-z///' ]", "_", IS)
+IS <- gsub("/", "_", IS)
+IS <- gsub(" ", "_", IS)
+IS <- gsub("__", "_", IS)
+idx <- grep("_$", IS)
+IS[idx] <- substr(IS[idx], 1, nchar(IS[idx])-1)
+IS <- gsub("_Na", "", IS)
+data_st <- data_st[!rownames(data_st) %in% IS,]
+
+cmps <- cmps[!cmps$ID %in% IS,]
+#rownames(data_st) <- cmps$ID
 
 na_n <- apply(data_st, 1, function(x) length(which(is.na(x))))
 table(na_n)
@@ -298,7 +319,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
 
 ### Heatmap
 
-```{r heatmap-st}
+```{r heatmap-st, eval=FALSE}
 dt_pt2 <- data.frame(point = class2[class != "QC"])
 rownames(dt_pt2) <- rownames(dt)
 
@@ -357,17 +378,17 @@ The **Shapiro-Wilk test** on the GAM residuals is used to check if the residuals
 
 ```{r normality}
 brix$data <- as.character(brix$data)
-brix <- rbind(brix, 
-              c(2019, "diradamento", "corno - az. Oliva", "2019-09-17", "C", 0, 
-                mean(brix$Brix[brix$data == "2019-09-17"])),
-              c(2019, "diradamento", "corno - az. Oliva", "2019-09-24", "C", 0, 
-                mean(brix$Brix[brix$data == "2019-09-24"])))
+#brix <- rbind(brix, 
+#              c(2019, "diradamento", "corno - az. Oliva", "2019-09-17", "C", 0, 
+#                mean(brix$Brix[brix$data == "2019-09-17"])),
+#              c(2019, "diradamento", "corno - az. Oliva", "2019-09-24", "C", 0, 
+#                mean(brix$Brix[brix$data == "2019-09-24"])))
 brix <- brix[order(brix$data, brix$Replicate), ]
 xtime <- as.integer(as.Date(brix$data))
 
 stat.shap <- function(x){
   as.numeric(unlist(shapiro.test(residuals.gam(
-    gam(log10(x) ~ s(xtime), method = "REML", gamma = 1.4)
+    gam(x ~ s(xtime), method = "REML", gamma = 1.4, family = Gamma(link = "log"))
   )))["p.value"])
 }
 shap <- apply(FUN = stat.shap, MARGIN = 2, X = dt)
@@ -386,13 +407,18 @@ GAMs are fitted by using the restricted maximum likelihood (REML) algorithm beca
 Raw p-values are adjusted for multiple hypothesis testing with the method from Benjamini and Hochberg.  
 Analytes will be considered significant if they have an adjusted p-value smaller than 0.05 (representing a 5% false discovery rate) and if the proportion of the null deviance explained by the corresponding model is higher than 0.7 (in order to focus on those compounds for which, in addition to show statistical significance,  the model is also able to correctly predict the observed values).
 
-```{r gam}
+```{r gam, warning = TRUE, message = TRUE}
 stat.gam <- function(x){
   as.numeric(unlist(summary(
-    gam(log10(x) ~ s(xtime), method = "REML", gamma = 1.4)
+    gam(x ~ s(xtime), method = "REML", gamma = 1.4, family = Gamma(link = "log"))
   ))["s.table4"])
 }
 pval <- apply(FUN = stat.gam, MARGIN = 2, X = dt)
+```
+
+<span style="color:red">**To do**: check the warning message with Pietro `In newton(lsp = lsp, X = G$X, y = G$y, Eb = G$Eb, UrS = G$UrS, L = G$L: Fitting terminated with step failure - check results carefully`.</span>    
+
+```{r gam2, warning = TRUE, message = TRUE}
 padj <- p.adjust(pval, "BH")
 par(mfrow = c(1, 2))
 hist(pval, breaks = 32)
@@ -401,9 +427,11 @@ hist(padj, breaks = 32)
 
 There is a clear enrichment of small p-values.  
 
-```{r gam-cor-pred}
+```{r gam-cor-pred, warning = TRUE, message = TRUE}
 stat.dev <- function(x){
-  summary(gam(log10(x) ~ s(xtime), method = "REML", gamma = 1.4))$dev.expl 
+  summary(
+    gam(x ~ s(xtime), method = "REML", gamma = 1.4, family = Gamma(link = "log")
+        ))$dev.expl 
 }
 dev <- apply(FUN = stat.dev, MARGIN = 2, X = dt)
 hist(dev)
@@ -419,7 +447,7 @@ abline(h = -log10(0.05), v = 0.7, lty = 2, col = "grey")
 ```
 
 
-<span style="color:red">**Should we reduce the threshold on `dev` parameter to 0.6 or even 0.51?**</span>  
+<span style="color:red">**Should we modify the threshold on `dev` parameter?**</span>  
 
 
 ## Discriminant compounds
@@ -432,7 +460,7 @@ Below there is plotted again the loadings plot of the PCA and the heatmap highli
 tmp <- data.frame(pca$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
-        color = class2[class != "QC"])
+        color = class2[class != "QC" & !grepl("MIX", colnames(data))])
 
 tmp_col <- rep("NS", ncol(dt))
 tmp_col[padj < 0.05] <- "padj < 0.05"
@@ -442,7 +470,10 @@ tmp <- data.frame(pca$rotation)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = tmp_col, colors = c("#377EB8", "#4DAF4A", "#E41A1C"))
+```
 
+
+```{r discriminants2, eval=FALSE}
 dt_sig <- data.frame(significe = tmp_col)
 dt_sig$significe <- as.factor(dt_sig$significe)
 rownames(dt_sig) <- colnames(dt)
@@ -474,7 +505,8 @@ dt_pred <- dt_pred[,idx]
 
 for(i in seq(ncol(dt_pred))){
   dt_pred[,i] <- predict.gam(
-    gam(log10(dt[,idx[i]]) ~ s(xtime), method = "REML", gamma = 1.4), 
+    gam(dt[,idx[i]] ~ s(xtime), method = "REML", gamma = 1.4, 
+        family = Gamma(link = "log")), 
     data.frame(xtime = ytimes))  
 }
 
@@ -568,6 +600,109 @@ plot(net, edge.arrow.size = .1, vertex.label = NA, vertex.size = 5,
      main = "Color according to cluster")
 ```
 
+
+## Multidimensional scaling
+
+```{r}
+col_class_cmps <- c("#E41A1C", "#974661", "#4A72A6", "#3E8E93", "#48A462", "#5D995D",
+                    "#7E6E85", "#A35390", "#D16948", "#FF7F00", "#FFB716", "#FFF02D",
+                    "#E1C62F", "#B97B2A", "#B75F49", "#DB728C", "#EC83BA", "#C28EA9", 
+                    "#999999" )
+names(col_class_cmps) <- c("FFA", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", "PA",
+                           "PC", "PE", "PG", "PI", "PS", "CAR", "MAG", "CER", "DAG", 
+                           "DGDG", "Lyso_PC", "MGDG", "TAG")
+all(names(padj) == cmps$ID) # TRUE
+
+idx <- which(padj < 0.05 & dev > 0.7)
+
+dt <- data_st[idx,]
+set.seed(123)
+dt <- t(imputeRowMinRand(as.matrix(dt), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
+
+# Calculate predicted values according to significant models
+dt_pred <- matrix(NA, nrow = length(xtime), ncol = ncol(dt))
+colnames(dt_pred) <- colnames(dt)
+for(i in seq(ncol(dt_pred))){
+  x <- dt[,i]
+  dt_pred[,i] <- predict.gam(
+    gam(x ~ s(xtime), method = "REML", gamma = 1.4, family = Gamma(link = "log")), 
+    data.frame(xtime = xtime))  
+}
+
+# Calculate the distance matrix of compounds time-trends
+distmat <- as.matrix(TSclust::diss(t(scale(dt_pred)), METHOD = "COR"))
+
+# Multidimensional scaling on distance matrix: https://www.statmethods.net/advstats/mds.html
+fit <- cmdscale(distmat, eig = TRUE, k = 2)
+
+plot(fit$points[,1], fit$points[,2], xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main="Metric MDS", type="n")
+text(fit$points[,1], fit$points[,2], labels = row.names(distmat), cex=.7,
+     col = col_class_cmps[cmps$class[idx]])
+abline(v = 0, h = 0, lty = 2, col = "grey")
+```
+
+This plot is a bidimensional representation of the distances on mean(time-trends). 
+It shows the variability in the time evolution of measured compounds during ripening.   
+
+In the graph we can clearly see 2 groups, one being more homogeneous than the other.  
+Below we plot 3 examples of compounds from the homogeneous group (i.e., the one with the highest value in 2n dimension, the one with the closes value to 0 on the 2n dimension, and the one with the smallest value on the 2n dimension):
+
+
+```{r}
+mycmps <- c(names(which.max(fit$points[,2][fit$points[,1] > 0])),
+            names(which.min(fit$points[,2][fit$points[,1] > 0])),
+            names(which.min(abs(median(fit$points[,2][fit$points[,1] > 0]) - fit$points[,2][fit$points[,1] > 0]))))
+p <- list()
+x <- as.integer(as.Date(brix$data))
+for(i in seq(length(mycmps))){
+  y <- dt[,mycmps[i]]
+  z <- is.na(data[mycmps[i], class != "QC" & !grepl("MIX", colnames(data))])
+  Sample_data <- data.frame(y,x, z)
+  Sample_data$class <- class[class != "QC" & !grepl("MIX", colnames(data))]
+  p[[i]] <- ggplot(Sample_data, aes(x, log10(y))) + 
+    geom_point(
+      aes(pch = z), position = position_jitter(1), 
+      color = colorRampPalette(brewer.pal(9, "YlOrRd"))(13)[
+        as.factor(Sample_data$class)]) + 
+    geom_smooth(method = "gam", formula = y ~s(x), col = "grey", alpha = 0.1) +
+    xlab("") + ylab("") + theme_light() + theme(legend.position = "none") + 
+    ggtitle(ttl <- mycmps[i])
+}
+grid.arrange(p[[1]], p[[2]], p[[3]], nrow = 1)
+```
+
+We see that the homogeneous group is characterised by increasing concentrations of the compounds over time. This may indicate that the accumulation processes tend to present a more homogeneous trend.  
+
+Now we will plot 3 examples of compounds from the other "cluster" (i.e., the one with the highest "intra-group" variability):   
+
+```{r}
+mycmps <- c(names(which.max(fit$points[,2][fit$points[,1] < 0])),
+            names(which.min(fit$points[,2][fit$points[,1] < 0])),
+            names(which.min(abs(median(fit$points[,2][fit$points[,1] < 0]) -
+                                  fit$points[,2][fit$points[,1] < 0]))))
+p <- list()
+x <- as.integer(as.Date(brix$data))
+for(i in seq(length(mycmps))){
+  y <- dt[,mycmps[i]]
+  z <- is.na(data[mycmps[i], class != "QC" & !grepl("MIX", colnames(data))])
+  Sample_data <- data.frame(y,x, z)
+  Sample_data$class <- class[class != "QC" & !grepl("MIX", colnames(data))]
+  p[[i]] <- ggplot(Sample_data, aes(x, log10(y))) + 
+    geom_point(
+      aes(pch = z), position = position_jitter(1), 
+      color = colorRampPalette(brewer.pal(9, "YlOrRd"))(13)[
+        as.factor(Sample_data$class)]) + 
+    geom_smooth(method = "gam", formula = y ~s(x), col = "grey", alpha = 0.1) +
+    xlab("") + ylab("") + theme_light() + theme(legend.position = "none") + 
+    ggtitle(ttl <- mycmps[i])
+}
+grid.arrange(p[[1]], p[[2]], p[[3]], nrow = 1)
+```
+
+
 ## Other plots
 
 Finally, just for visualization purposes, we compute again both the PCA and heatmap, but this time using only statistically significant compounds:
@@ -578,7 +713,7 @@ pca_sig <- prcomp(data_st_log_par, center = FALSE, scale. = FALSE)
 tmp <- data.frame(pca_sig$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
-        color = class2[class2 != "QC"])
+        color = class2[class2 != "QC" & !grepl("MIX", colnames(data))])
 
 idx <- which(padj < 0.05 & dev > 0.7)
 all(cmps$ID[idx] == rownames(cl_k)) # TRUE
@@ -600,11 +735,11 @@ ann_color <- list(
   "time-point" = brewer.pal(3, "Set2"),
   "behaviour" = brewer.pal(5, "Set2")
 )
-names(ann_color[[1]]) <- unique(dt_pt2$point)
-names(ann_color[[2]]) <- unique(dt_cl$pm_cl)
+#names(ann_color[[1]]) <- unique(dt_pt2$point)
+#names(ann_color[[2]]) <- unique(dt_cl$pm_cl)
 
-pheatmap(data_st_log_par, annotation_row = dt_pt2, annotation_col = dt_cl,
-         annotation_colors = ann_color, show_colnames = F, show_rownames = F)
+#pheatmap(data_st_log_par, annotation_row = dt_pt2, annotation_col = dt_cl,
+#         annotation_colors = ann_color, show_colnames = F, show_rownames = F)
 ```
 
 
@@ -674,19 +809,15 @@ Lipid composition:
 
 ```{r}
 all(rownames(data) == cmps$ID)
-#col_class_cmps <- colorRampPalette(brewer.pal(9, "Set1"))(length(unique(cmps$class)))
-#names(col_class_cmps) <- unique(cmps$class)
-col_class_cmps <- c("#E41A1C", "#974661", "#4A72A6", "#3E8E93", "#48A462", "#5D995D",
-                    "#7E6E85", "#A35390", "#D16948", "#FF7F00", "#FFB716", "#FFF02D",
-                    "#E1C62F", "#B97B2A", "#B75F49", "#DB728C", "#EC83BA", "#C28EA9", 
-                    "#999999" )
-names(col_class_cmps) <- c("FFA", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", "PA",
-                           "PC", "PE", "PG", "PI", "PS", "CAR", "MAG", "CER", "DAG", 
-                           "DGDG", "Lyso_PC", "MGDG", "TAG")
-quanti <- aggregate(rowSums(data), list(cmps$class), function(x){sum(x, na.rm=T)})
+tmp <- rowMeans(data)
+quanti <- aggregate(tmp, list(cmps$class), function(x){sum(x, na.rm=T)})
 slices <- quanti$x
 lbls <- quanti$Group.1
 pie(slices, lbls, col = col_class_cmps[lbls])
+
+barplot(quanti$x, horiz = T, 
+          col = col_class_cmps[quanti$Group.1],
+          names = quanti$Group.1, las = 1, cex.names = 0.6)
 ```
 
 Proportion of discriminant compounds by class:
