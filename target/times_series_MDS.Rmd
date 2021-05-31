@@ -1,0 +1,322 @@
+---
+title: "Times series multidimensional scaling"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+In this document we do multidensional scaling on time-series data of discriminant compounds from `maturation study`.  
+
+# Preliminaries
+
+First of all, we load the necessary libraries and import the study data.  
+
+```{r preliminaries}
+# Load the packages
+library(readxl)
+library(xcms)
+library(mgcv)
+library(plotrix)
+library(ggplot2)
+library(gridExtra)
+library(RColorBrewer)
+
+
+# Data import
+brix <- read_excel("data/Grape_Brix_Datafile.xlsx")
+brix$data <- as.character(brix$data)
+#brix <- rbind(
+#  brix, 
+#  c(2019, "diradamento", "corno - az. Oliva", "2019-09-17", "C", 0, 
+#    mean(brix$Brix[brix$data == "2019-09-17"])),
+#  c(2019, "diradamento", "corno - az. Oliva", "2019-09-24", "C", 0, 
+#    mean(brix$Brix[brix$data == "2019-09-24"])))
+brix <- brix[order(brix$data, brix$Replicate), ]
+xtime <- as.integer(as.Date(brix$data))
+
+data <- read_xlsx("data/data_maturation.xlsx", sheet = "loq_data")
+colnames(data)[1] <- "ID"
+
+cmps <- read.csv("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/compounds_target.csv")
+cmps <- cmps[cmps$ID %in% data$ID, ]
+nrow(data) == nrow(cmps) #TRUE
+cmps <- cmps[match(data$ID, cmps$ID), ]
+all(cmps$ID == data$ID) # TRUE
+cmps$ID <- data$ID <- gsub("[^0-9A-Za-z///' ]", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub("/", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub(" ", "_", cmps$ID)
+cmps$ID <- data$ID <- gsub("__", "_", cmps$ID)
+idx <- grep("_$", cmps$ID)
+cmps$ID[idx] <- data$ID[idx] <- substr(cmps$ID[idx], 1, nchar(cmps$ID[idx])-1)
+
+data <- data[,-1]
+data <- sapply(data, as.numeric)
+rownames(data) <- cmps$ID
+
+# Delete QCs & MIX samples:
+data <- data[,!grepl("QC|MIX", colnames(data))]
+
+class <- colnames(data)
+class <- gsub("_Rep.*", "", class)
+#class <- gsub("_MIX.*", "", class)
+#class[grep("QC", class)] <- "QC"
+#data <- data[, class != "QC"]
+#class <- class[class != "QC"]
+na_n <- aggregate(t(data), by=list(class), function(x){sum(!is.na(x))})
+na_n <- apply(na_n[,-1], 2, max)
+cmps <- cmps[cmps$ID %in% rownames(data)[na_n > 2], ]
+data <- data[na_n > 2, ]
+rownames(data) <- cmps$ID
+
+
+# Delete internal standards:
+IS <- c("15:0-18:1-D7-PA", "15:0-18:1(d7) DAG_Na", "15:0-18:1(d7) PC", 
+        "15:0-18:1(d7) PE", "15:0-18:1(d7) PG", "15:0-18:1(d7) PI", 
+        "15:0-18:1(d7) PS", "15:0-18:1(d7)-15:0 TAG_Na", "17:0 Lyso PA",
+        "17:1 Lyso PG", "17:1 Lyso PI", "17:1 Lyso PS", "18:1(d7) Chol Ester",
+        "18:1(d7) Lyso PC", "18:1(d7) Lyso PE", "18:1(d7) MAG", "24:0 (d4) carnitine",
+        "C15 Ceramide-d7", "d18:1-18:1(d9) SM", "Hydrog DGDG (18:0-18:0)",
+        "Hydrog MGDG (18:0-16:0)", "stearic_acid_D3")
+IS <- gsub("[^0-9A-Za-z///' ]", "_", IS)
+IS <- gsub("/", "_", IS)
+IS <- gsub(" ", "_", IS)
+IS <- gsub("__", "_", IS)
+idx <- grep("_$", IS)
+IS[idx] <- substr(IS[idx], 1, nchar(IS[idx])-1)
+IS <- gsub("_Na", "", IS)
+
+data <- data[!rownames(data) %in% IS, 
+             !grepl("QC", colnames(data))]
+cmps <- cmps[!cmps$ID %in% IS, ]
+
+# Compound colors
+#col_class_cmps <- c("#E41A1C", "#974661", "#4A72A6", "#3E8E93", "#48A462", "#5D995D",
+#                    "#7E6E85", "#A35390", "#D16948", "#FF7F00", "#FFB716", "#FFF02D",
+#                    "#E1C62F", "#B97B2A", "#B75F49", "#DB728C", "#EC83BA", "#C28EA9", 
+#                    "#999999" )
+set.seed(1234)
+col_class_cmps <- randomcoloR::distinctColorPalette(19)
+names(col_class_cmps) <- c("FFA", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", "PA",
+                           "PC", "PE", "PG", "PI", "PS", "CAR", "MAG", "CER", "DAG", 
+                           "DGDG", "Lyso_PC", "MGDG", "TAG")
+```
+
+# GAM
+
+```{r gam-new, warning = TRUE, message = TRUE}
+set.seed(123)
+dt <- t(imputeRowMinRand(as.matrix(data), method = "from_to",
+                         min_fraction = 1/100,
+                         min_fraction_from = 1/1000))
+
+stat.gam <- function(x){
+  as.numeric(unlist(summary(
+    gam(x ~ s(xtime), method = "REML", gamma = 1.4, family = Gamma(link = "log"))
+  ))["s.table4"])
+}
+pval <- apply(FUN = stat.gam, MARGIN = 2, X = dt)
+```
+
+<span style="color:red">**To do**: check the warning message with Pietro `In newton(lsp = lsp, X = G$X, y = G$y, Eb = G$Eb, UrS = G$UrS, L = G$L: Fitting terminated with step failure - check results carefully`.</span>    
+
+```{r}
+padj <- p.adjust(pval, "BH")
+
+stat.dev <- function(x){
+  summary(
+    gam(x ~ s(xtime), method = "REML", gamma = 1.4, family = Gamma(link = "log"))
+  )$dev.expl 
+}
+dev <- apply(FUN = stat.dev, MARGIN = 2, X = dt)
+
+dt <- dt[, padj < 0.05 & dev > 0.7]
+idx <- which(padj < 0.05 & dev > 0.7)
+```
+
+
+## Predicted values
+
+```{r predicted}
+dt_pred <- matrix(NA, nrow = length(xtime), ncol = ncol(dt))
+colnames(dt_pred) <- colnames(dt)
+for(i in seq(ncol(dt_pred))){
+  x <- dt[,i]
+  dt_pred[,i] <- predict.gam(
+    gam(x ~ s(xtime), method = "REML", gamma = 1.4, family = Gamma(link = "log")), 
+    data.frame(xtime = xtime))  
+}
+```
+
+
+## MDS
+
+```{r mds}
+distmat <- as.matrix(TSclust::diss(t(scale(dt_pred)), METHOD = "COR"))
+
+fit <- cmdscale(distmat, eig = TRUE, k = 2)
+
+plot(fit$points[,1], fit$points[,2], xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main="Metric MDS", #type="n"
+     col = paste0(col_class_cmps[cmps$class[idx]], ""), pch = 16, cex = 1.1)
+#text(fit$points[,1], fit$points[,2], labels = row.names(distmat), cex=.7,
+#     col = col_class_cmps[cmps$class[idx]])
+abline(v = 0, h = 0, lty = 2, col = "grey")
+```
+
+We can see cleary 2 groups. In order to see if there is some grouping factor within these groups, we will do new MDS subsetting the data.
+
+### MDS left
+
+```{r left}
+plot(fit$points[,1], fit$points[,2], xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main="Metric MDS", col = paste0(col_class_cmps[cmps$class[idx]], ""), 
+     pch = 16, cex = 1.1)
+abline(v = 0, h = 0, lty = 2, col = "grey")
+draw.circle(min(fit$points[,1]), 0, 0.3)
+
+
+idx2 <- which(fit$points[,1] < (-0.5))
+distmat2 <- as.matrix(TSclust::diss(t(scale(dt_pred[,idx2])), METHOD = "COR"))
+fit2 <- cmdscale(distmat2, eig = TRUE, k = 2)
+plot(fit2$points[,1], fit2$points[,2], xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main="Metric MDS", 
+     col = paste0(col_class_cmps[cmps$class[cmps$ID %in% names(idx2)]], ""), 
+     pch = 16, cex = 1.1)
+abline(v = 0, h = 0, lty = 2, col = "grey")
+```
+
+### MDS right
+
+```{r right}
+plot(fit$points[,1], fit$points[,2], xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main="Metric MDS", col = paste0(col_class_cmps[cmps$class[idx]], ""), 
+     pch = 16, cex = 1.1)
+abline(v = 0, h = 0, lty = 2, col = "grey")
+draw.circle(max(fit$points[,1]), 0, 0.35)
+
+
+idx2 <- which(fit$points[,1] > 1 & fit$points[,2] < 0.5)
+distmat2 <- as.matrix(TSclust::diss(t(scale(dt_pred[,idx2])), METHOD = "COR"))
+fit2 <- cmdscale(distmat2, eig = TRUE, k = 2)
+plot(fit2$points[,1], fit2$points[,2], xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main="Metric MDS", 
+     col = paste0(col_class_cmps[cmps$class[cmps$ID %in% names(idx2)]], ""), 
+     pch = 16, cex = 1.1)
+abline(v = 0, h = 0, lty = 2, col = "grey")
+```
+
+
+# Other ways to plot
+
+```{r others}
+tmp <- unique(cmps$class[idx])
+par(mfrow=c(3,3), mar = c(2, 2, 1.5, 0.5))
+for(i in seq(length(tmp))){
+  plot(fit$points[,1], fit$points[,2], col = "grey", pch = 16, cex = 1.1, 
+       xlab = "", ylab = "", main = tmp[i])
+  abline(v = 0, h = 0, lty = 2, col = "grey")
+  idx3 <- which(cmps$class[idx] == tmp[i])
+  points(fit$points[idx3,1], fit$points[idx3,2], 
+         col = col_class_cmps[cmps$class[cmps$ID %in% names(idx[idx3])]],
+         pch = 16, cex = 1.2)
+}
+```
+
+```{r}
+tmp <- unique(cmps$db[idx])
+tmp[order(as.numeric(tmp))]
+set.seed(27052021)
+col_db <- randomcoloR::distinctColorPalette(4)
+cmps$db_col[cmps$db < 3] <- col_db[1]
+cmps$db_col[cmps$db > 2 & cmps$db < 6] <- col_db[2]
+cmps$db_col[cmps$db > 5 & cmps$db < 9] <- col_db[3]
+cmps$db_col[cmps$db > 8] <- col_db[4]
+plot(fit$points[,1], fit$points[,2], xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main = "color by insaturations", pch = 16, col = cmps$db_col[idx], cex = 1.1)
+legend("top", legend = c("0-2", "3-5", "6-8", "9-11"), col = col_db, pch = 16)
+abline(v = 0, h = 0, lty = 2, col = "grey")
+
+tmp <- unique(cmps$C[idx])
+tmp[order(as.numeric(tmp))]
+set.seed(20210527)
+col_C <- randomcoloR::distinctColorPalette(4)
+cmps$C_col[cmps$db < 38] <- col_C[1]
+cmps$C_col[cmps$db > 37 & cmps$db < 46] <- col_C[2]
+cmps$C_col[cmps$db > 45 & cmps$db < 53] <- col_C[3]
+cmps$C_col[cmps$db > 52] <- col_C[4]
+plot(fit$points[,1], fit$points[,2], xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main = "color by n.Carbons", pch = 16, col = cmps$C_col[idx], cex = 1.1)
+legend("top", legend = c("<37", "38-45", "46-52", ">52"), col = col_C, pch = 16)
+abline(v = 0, h = 0, lty = 2, col = "grey")
+
+
+plot(fit$points[,1], fit$points[,2], xlab = "Coordinate 1", ylab = "Coordinate 2",
+     main="Metric MDS", type="n")
+text(fit$points[,1], fit$points[,2], labels = row.names(distmat), cex=.7,
+     col = col_class_cmps[cmps$class[idx]])
+abline(v = 0, h = 0, lty = 2, col = "grey")
+
+idx2 <- which(fit$points[,1] < (-0.5) & fit$points[,2] < 0.5)
+mycmps <- c(names(which.max(fit$points[,2][idx2])),
+            names(which.min(abs(median(fit$points[,2][idx2]) - fit$points[,2][idx2]))),
+            names(which.min(fit$points[,2][idx2]))
+)
+p <- list()
+x <- as.integer(as.Date(brix$data))
+for(i in seq(length(mycmps))){
+  y <- dt[,mycmps[i]]
+  z <- is.na(data[mycmps[i], class != "QC"])
+  Sample_data <- data.frame(y,x, z)
+  Sample_data$class <- class[class != "QC"]
+  p[[i]] <- ggplot(Sample_data, aes(x, log10(y))) + 
+    geom_point(
+      aes(pch = z), position = position_jitter(1), 
+      color = colorRampPalette(brewer.pal(9, "YlOrRd"))(13)[
+        as.factor(Sample_data$class)]) + 
+    geom_smooth(method = "gam", formula = y ~s(x), col = "grey", alpha = 0.1) +
+    xlab("") + ylab("") + theme_light() + theme(legend.position = "none") + 
+    ggtitle(ttl <- mycmps[i])
+}
+grid.arrange(p[[1]], p[[2]], p[[3]], nrow = 1)
+
+
+idx2 <- which(fit$points[,1] > 1 & fit$points[,2] > (-0.5) & fit$points[,2] < 0.5)
+mycmps <- c(names(which.max(fit$points[,2][idx2])),
+            names(which.min(abs(median(fit$points[,2][idx2]) - fit$points[,2][idx2]))),
+            names(which.min(fit$points[,2][idx2]))
+)
+p <- list()
+x <- as.integer(as.Date(brix$data))
+for(i in seq(length(mycmps))){
+  y <- dt[,mycmps[i]]
+  z <- is.na(data[mycmps[i], class != "QC"])
+  Sample_data <- data.frame(y,x, z)
+  Sample_data$class <- class[class != "QC"]
+  p[[i]] <- ggplot(Sample_data, aes(x, log10(y))) + 
+    geom_point(
+      aes(pch = z), position = position_jitter(1), 
+      color = colorRampPalette(brewer.pal(9, "YlOrRd"))(13)[
+        as.factor(Sample_data$class)]) + 
+    geom_smooth(method = "gam", formula = y ~s(x), col = "grey", alpha = 0.1) +
+    xlab("") + ylab("") + theme_light() + theme(legend.position = "none") + 
+    ggtitle(ttl <- mycmps[i])
+}
+grid.arrange(p[[1]], p[[2]], p[[3]], nrow = 1)
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
