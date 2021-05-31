@@ -64,11 +64,9 @@ if(bygrgrape){
 }
 
 # Load compound annotations:
-fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
-cmps <- rbind(read_xlsx(fl, sheet = "IS")[, 1:2],
-              read_xlsx(fl, sheet = "FORMULE")[, 1:2])
-cmps$ID <- gsub("_Na", "", cmps$ID)
+cmps <- read.csv("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/compounds_target.csv")
 cmps <- cmps[cmps$ID %in% data$ID, ]
+nrow(data) == nrow(cmps) #TRUE
 cmps <- cmps[match(data$ID, cmps$ID), ]
 
 # Replace R problematic symbols in compound names:
@@ -241,8 +239,24 @@ rownames(data_n9) <- rownames(data)
 Additionally, we also remove data from internal standards (ISs) and potentially problematic analytes.
 
 ```{r}
-data_n9 <- data_n9[cmps$class != "IS",]
-cmps <- cmps[cmps$class != "IS",]
+IS <- c("15:0-18:1-D7-PA", "15:0-18:1(d7) DAG_Na", "15:0-18:1(d7) PC", 
+        "15:0-18:1(d7) PE", "15:0-18:1(d7) PG", "15:0-18:1(d7) PI", 
+        "15:0-18:1(d7) PS", "15:0-18:1(d7)-15:0 TAG_Na", "17:0 Lyso PA",
+        "17:1 Lyso PG", "17:1 Lyso PI", "17:1 Lyso PS", "18:1(d7) Chol Ester",
+        "18:1(d7) Lyso PC", "18:1(d7) Lyso PE", "18:1(d7) MAG", "24:0 (d4) carnitine",
+        "C15 Ceramide-d7", "d18:1-18:1(d9) SM", "Hydrog DGDG (18:0-18:0)",
+        "Hydrog MGDG (18:0-16:0)", "stearic_acid_D3")
+IS <- gsub("[^0-9A-Za-z///' ]", "_", IS)
+IS <- gsub("/", "_", IS)
+IS <- gsub(" ", "_", IS)
+IS <- gsub("__", "_", IS)
+idx <- grep("_$", IS)
+IS[idx] <- substr(IS[idx], 1, nchar(IS[idx])-1)
+IS <- gsub("_Na", "", IS)
+
+rownames(data_n9) <- cmps$ID
+data_n9 <- data_n9[!rownames(data_n9) %in% IS,]
+cmps <- cmps[!cmps$ID %in% IS,]
 rownames(data_n9) <- cmps$ID
 
 na_n <- apply(data_n9, 1, function(x) length(which(is.na(x))))
@@ -449,7 +463,7 @@ pheatmap(cd, show_rownames = F, cutree_rows = 3)
 ```
 
 
-## Discriminant compounds
+## Characteristic compounds
 
 A total of n=`r sum(padj < 0.05 & eta > 0.14)` compounds (`r round((sum(padj < 0.05 & eta > 0.14)/nrow(data_n9))*100, 1)`%) are found to have significant differences between tissues.  
 Below there is plotted again the loadings plot of the PCA and the heatmap highlighting the significant compounds.
@@ -602,7 +616,7 @@ Below, we compute again both the PCA and heatmap, but this time using only stati
 idx <- which(padj < 0.05 & eta > 0.14)
 
 dt <- log10(dt[,idx])
-dt <- data.frame(scaling.pareto(dt))
+dt <- scaling.pareto(dt)
 pca_sig <- prcomp(dt, center = FALSE, scale. = FALSE)
 tmp <- data.frame(pca_sig$x)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
@@ -738,16 +752,43 @@ Lipid composition of the different analyzed tissues.
 ```{r}
 all(rownames(data) == cmps$ID)
 classx <- c("entire", "skin", "pulp", "seeds")
-col_class_cmps <- colorRampPalette(brewer.pal(9, "Set1"))(length(unique(cmps$class)))
-names(col_class_cmps) <- unique(cmps$class)
+#col_class_cmps <- colorRampPalette(brewer.pal(9, "Set1"))(length(unique(cmps$class)))
+#names(col_class_cmps) <- unique(cmps$class)
+col_class_cmps <- c("#E41A1C", "#974661", "#4A72A6", "#3E8E93", "#48A462", "#5D995D",
+                    "#7E6E85", "#A35390", "#D16948", "#FF7F00", "#FFB716", "#FFF02D",
+                    "#E1C62F", "#B97B2A", "#B75F49", "#DB728C", "#EC83BA", "#C28EA9", 
+                    "#999999" )
+names(col_class_cmps) <- c("FFA", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", "PA",
+                           "PC", "PE", "PG", "PI", "PS", "CAR", "MAG", "CER", "DAG", 
+                           "DGDG", "Lyso_PC", "MGDG", "TAG")
+```
+
+Proportions:
+
+```{r}
 par(mfrow = c(2, 2), mar = c(0, 5, 1, 4))
 for(j in seq(length(classx))){
   tmp <- data[, class == classx[j]]
-  quanti <- aggregate(rowSums(tmp), list(cmps$class), function(x){sum(x, na.rm=T)})
+  tmp$mean <- rowMeans(tmp)
+  quanti <- aggregate(tmp$mean, list(cmps$class), function(x){sum(x, na.rm=T)})
   slices <- quanti$x
   lbls <- quanti$Group.1
   pie(slices, lbls, main = classx[j], 
       col = col_class_cmps[lbls])
+}
+```
+
+Absolute values:
+
+```{r}
+par(mfrow = c(2, 2), mar = c(2, 3, 1, 0.5))
+for(j in seq(length(classx))){
+  tmp <- data[, class == classx[j]]
+  tmp$mean <- rowMeans(tmp)
+  quanti <- aggregate(tmp$mean, list(cmps$class), function(x){sum(x, na.rm=T)})
+  barplot(quanti$x, horiz = T, main = classx[j],
+          col = col_class_cmps[quanti$Group.1],
+          names = quanti$Group.1, las = 1, cex.names = 0.6)
 }
 ```
 
@@ -768,9 +809,9 @@ for(i in seq(length(cmps.type))){
 
 
 
-## Discriminant compounds
+## Characteristic compounds
 
-Proportion of distribution for discriminant compounds:
+Proportion of distribution for characteristic compounds:
 
 ```{r}
 tmp <- data.frame(table(cmps$beh))
@@ -780,7 +821,7 @@ lbls <- tmp$Var1
 pie(slices, lbls, col = colorRampPalette(brewer.pal(8, "Set2"))(nrow(tmp)))
 ```
 
-Proportion of distribution for discriminant compounds considering the tissue with the highest values (those compounds for which there where >1 category as the one with the highest values are excluded):
+Proportion of distribution for characteristic compounds considering the tissue with the highest values (those compounds for which there where >1 category as the one with the highest values are excluded):
 
 ```{r}
 tmp$Var2 <- gsub("\\(", "", tmp$Var1)
@@ -792,7 +833,7 @@ lbls <- aggregate(tmp$Freq, list(tmp$class), sum)[,"Group.1"]
 pie(slices, lbls, col = brewer.pal(3, "Set1"))
 ```
 
-Proportion of discriminant compounds by class:
+Proportion of characteristic compounds by class:
 
 ```{r}
 tmp <- data.frame(table(cmps$class[cmps$beh != "NS"]))
@@ -802,7 +843,7 @@ lbls <- tmp$Var1
 pie(slices, lbls, col = col_class_cmps[lbls])
 ```
 
-Proportion of discriminant compounds per compound class:
+Proportion of characteristic compounds per compound class:
 
 ```{r}
 tmp2 <- data.frame(table(cmps$class))
@@ -816,7 +857,7 @@ barplot(tmp$perc, horiz = T,
 ```
 
 
-Proportion of discriminant compound classes by tissue:
+Proportion of characteristic compound classes by tissue:
 
 ```{r}
 tmp <- data.frame(table(cmps$beh))
