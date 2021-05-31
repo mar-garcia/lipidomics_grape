@@ -52,7 +52,7 @@ colnames(target)[1] <- "ID"
 
 
 # Compound ----
-x <- "P0005"
+x <- "P0001"
 idx <- which(my.features$FGx == x)
 if(length(idx == 2)){
   par(mfrow = c(1, 2))
@@ -73,8 +73,9 @@ for(i in seq(length(idx))){
 
 # plot integrated areas ------
 load("tissues/data/RData/data_XCMS_POS.RData")
-chrs <- featureChromatograms(xdata, 
-                             features = c("FT1408", "FT1410", "FT1413"))
+chrs <- featureChromatograms(
+  xdata, 
+  features = gsub("P", "FT", rownames(my.features)[idx]))
 sample_colors <- col_type[xdata$tissue]
 sample_colors[!names(sample_colors) %in% c("seeds", "pulp", "skin")] <- "#999999"
 plot(chrs, peakBg = paste0(sample_colors[chromPeaks(chrs)[, "sample"]], "60"))
@@ -130,15 +131,17 @@ legend("topright", pch = 16, col = seq(length(idx)), legend = round(my.features$
 
 
 # Correlation with target data ----
-target$ID[grep("TAG58:5", target$ID)]
-tg <- target[target$ID == "TAG58:5_FA18:2",grep("pt11", colnames(target))]
-ut <- data["P1408", grep("pt11", colnames(data))]
+target$ID[grep("DAG\\(18:", target$ID)]
+tg <- target[target$ID == "TAG54:7_FA18:2",grep("pt11", colnames(target))]
+ut <- data[rownames(my.features)[idx][1], grep("pt11", colnames(data))]
 plot(t(tg), ut, col = col_class_ts[class[!grepl("QC|xx00", class)]], pch = 16,
      main = paste("corr", round(cor(t(tg), ut), 3)), xlab = "target", ylab = "untarget")
+my.features[idx[1],"mzmed"]
+my.features[idx[1],"rtmed"]/60
 
 # MS2 ---------------
-mz <- 954.8474
-rt <- 21.94*60
+mz <- 984.8944 
+rt <- 22.41*60
 #ms2sub <- getSpectrum(ms2list, "precursor", mz, mz.tol = 0.001)
 ms2sub <- filterPrecursorMz(ms2, mz + 0.01 * c(-1, 1))
 #ms2sub <- getSpectrum(ms2sub, "rt", rt, rt.tol = 10)
@@ -201,97 +204,18 @@ for(i in i.seq){
 
 
 
-### delete:
-par(mfrow=c(1,2))
-if(length(ms2sub) > 30){
-  for(i in (length(ms2sub)-30):length(ms2sub)){
-    j <- order(intensitats)[i]
-    
-    if(grepl("lipidgrape_tissues", ms2sub[[j]]@annotation)){
-      study <- "tissues"
-    } else{
-      study <- "maturation"
-    }
-    
-    raw_data <- readMSData(
-      files = paste0(study, "/data/", gsub(".*_", "", gsub("_DDA.mzML", "", ms2sub[[j]]@annotation)), "_DDA_mzmL/", ms2sub[[j]]@annotation), 
-      mode = "onDisk")
-    chr <- chromatogram(raw_data, 
-                        mz = mz + 0.01 * c(-1, 1), 
-                        rt = rt + 20 * c(-1, 1)
-    )
-    plot(chr, xlim = rt + 20 * c(-1, 1))
-    abline(v=ms2sub[[j]]@rt)
-    
-    specplot(ms2sub[[j]], main = ms2sub[[j]]@id)
-    print(paste0(j, ": ", gsub(".*\\/", "", ms2sub[[j]]@annotation), " - ", ms2sub[[j]]@id, 
-                 " - ", ms2sub[[j]]@rt))
-  }
-} else if(length(ms2sub) > 1 & length(ms2sub) <= 30){
-  for(i in 1:length(ms2sub)){
-    j <- order(intensitats)[i]
-    
-    if(grepl("lipidgrape_tissues", ms2sub[[j]]@annotation)){
-      study <- "tissues"
-    } else{
-      study <- "maturation"
-    }
-    
-    
-    raw_data <- readMSData(
-      files = paste0(study, "/data/", gsub(".*_", "", gsub("_DDA.mzML", "", ms2sub[[j]]@annotation)), "_DDA_mzmL/", ms2sub[[j]]@annotation), 
-      mode = "onDisk")
-    chr <- chromatogram(raw_data, 
-                        mz = mz + 0.01 * c(-1, 1), 
-                        rt = rt + 50 * c(-1, 1)
-    )
-    plot(chr, xlim = rt + 50 * c(-1, 1))
-    abline(v=ms2sub[[j]]@rt)
-    
-    specplot(ms2sub[[j]], main = ms2sub[[j]]@id)
-    print(paste0(j, ": ", gsub(".*\\/", "", ms2sub[[j]]@annotation), " - ", ms2sub[[j]]@id, 
-                 " - ", ms2sub[[j]]@rt))
-  }
-} else if(length(ms2sub) == 1){
-  if(grepl("lipidgrape_tissues", ms2sub@annotation)){
-    study <- "tissues"
-  } else{
-    study <- "maturation"
-  }
-  if(substr(ms2sub@annotation, 1, 1) == "x"){
-    raw_data <- readMSData(files = paste0(study, "/data/", polarity, "_DDA_mzML/", ms2sub@annotation), 
-                           mode = "onDisk")
-  }
-  chr <- chromatogram(raw_data, 
-                      mz = mz + 0.01 * c(-1, 1), 
-                      rt = rt + 20 * c(-1, 1)
-  )
-  plot(chr, xlim = rt + 20 * c(-1, 1))
-  abline(v=ms2sub@rt)
-  
-  specplot(ms2sub, main = ms2sub@id)
-  print(paste0(gsub(".*\\/", "", ms2sub@annotation), " - ", ms2sub@id, " - ", ms2sub@rt))
-}else {
-  raw_data <- readMSData(files = ms2sub@annotation, mode = "onDisk")
-  chr <- chromatogram(raw_data, 
-                      mz = mz + 0.01 * c(-1, 1), 
-                      rt = rt + 20 * c(-1, 1)
-  )
-  plot(chr, xlim = rt + 20 * c(-1, 1))
-  abline(v=ms2sub@rt)
-  specplot(ms2sub)
-  print(ms2sub)
-  tmp <- data.frame(ms2sub@spectrum)
-  tmp <- tmp[tmp$X2 > tmp$X2[which.max(tmp$X2)]*0.01,  ]
-}
 
 # Sirius ----
+load("tissues/data/RData/data_XCMS_POS.RData")
+y.xdata <- filterFile(xdata, which.max(data[rownames(my.features)[idx[1]],]))
+mz <- 869.7390 
+rt <- 20.70*60
 xdata <- readMSData(
   files = fileNames(y.xdata),
   mode = "onDisk")
 chr <- chromatogram(xdata, mz = mz + 0.01 * c(-1, 1))
 chromPeaks(findChromPeaks(chr, param = CentWaveParam(peakwidth = c(2, 20))))
-rt2 <- 499.018                    
+rt2 <-  1242.60                     
 plot(chr, xlim = c(rt2 - 50, rt2 + 50))
 abline(v = rt2)
 sps <- xdata[[closest(rt2, rtime(xdata)#, duplicates = "closest"
@@ -301,7 +225,7 @@ plot(sps$mz, sps$i, type = "h", xlim = c(mz - 10, mz + 10))
 text(sps$mz, sps$i, round(sps$mz, 4), cex = 0.8)
 sps[unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10)):
       (unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10))+4),]
-tmp <- sps[unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10)):
+tmp <- sps[((unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10)))-4):
              (unlist(CompoundDb::matchWithPpm(mz, sps$mz, ppm = 10))+4),]
 tmp  <- tmp[order(tmp$i, decreasing = T), ]
 tmp[1:4,]
