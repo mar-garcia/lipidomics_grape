@@ -1,0 +1,234 @@
+---
+title: "Compound data"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Code
+
+```{r}
+myfolder <- c("//femsrv220.intra.ismaa.it/WATERS/experiments/AB6500_domenico2019/Grape_lipidomics_2019/2019_10_30/Results/SAMPLES_GRAPE_VAL/")
+
+data <- read.table(paste0(myfolder, "20210331_GRAPE_MATURATION_NEG_RT.txt"), 
+                   sep = "\t", header = T, na.strings = "N/A", skip = 2)
+cmps_maturation_NEG <- data.frame(
+  compound = data$Sample.Type,
+  RT_min = apply(data[,-1], 1, min, na.rm = TRUE),
+  RT_max = apply(data[,-1], 1, max, na.rm = TRUE))
+
+data <- read.table(paste0(myfolder, "20210331_GRAPE_MATURATION_POS_RT.txt"), 
+                   sep = "\t", header = T, na.strings = "N/A", skip = 2)
+cmps_maturation_POS <- data.frame(
+  compound = data$Sample.Type,
+  RT_min = apply(data[,-1], 1, min, na.rm = TRUE),
+  RT_max = apply(data[,-1], 1, max, na.rm = TRUE))
+
+
+data <- read.table(paste0(myfolder, "20210331_GRAPE_TISSUES_NEG_RT.txt"), 
+                   sep = "\t", header = T, na.strings = "N/A", skip = 2)
+cmps_tissues_NEG <- data.frame(
+  compound = data$Sample.Type,
+  RT_min = apply(data[,-1], 1, min, na.rm = TRUE),
+  RT_max = apply(data[,-1], 1, max, na.rm = TRUE))
+
+data <- read.table(paste0(myfolder, "20210331_GRAPE_TISSUES_POS_RT.txt"), 
+                   sep = "\t", header = T, na.strings = "N/A", skip = 2)
+cmps_tissues_POS <- data.frame(
+  compound = data$Sample.Type,
+  RT_min = apply(data[,-1], 1, min, na.rm = TRUE),
+  RT_max = apply(data[,-1], 1, max, na.rm = TRUE))
+
+cmps_maturation <- rbind(cmps_maturation_NEG, cmps_maturation_POS)
+cmps_tissues    <- rbind(cmps_tissues_NEG, cmps_tissues_POS)
+all(cmps_maturation$compound == cmps_tissues$compound)
+cmps_maturation[mapply(is.infinite, cmps_maturation)] <- NA
+cmps_tissues[mapply(is.infinite, cmps_tissues)] <- NA
+
+cmps <- data.frame(
+  ID = cmps_maturation$compound,
+  RT_min = apply(cbind(cmps_maturation[,-1], cmps_tissues[,-1]), 1, min, na.rm = TRUE),
+  RT_max = apply(cbind(cmps_maturation[,-1], cmps_tissues[,-1]), 1, max, na.rm = TRUE)
+)
+rm(cmps_maturation, cmps_maturation_NEG, cmps_maturation_POS,
+   cmps_tissues, cmps_tissues_NEG, cmps_tissues_POS, myfolder)
+cmps[mapply(is.infinite, cmps)] <- NA
+cmps <- cmps[!is.na(cmps$RT_min), ]
+cmps$ID <- gsub("_Na", "", cmps$ID)
+cmps$ID <- gsub("-H2O", "", cmps$ID)
+cmps$ID <- gsub("-COO", "", cmps$ID)
+
+fmls <- readxl::read_xlsx("//femsrv220.intra.ismaa.it/WATERS/experiments/AB6500_domenico2019/Lipidomics/possibile lunghezza catene_14_22_massa esatta.xlsx", sheet = "total")
+IS <- data.frame(
+  class = c("PC", "PE", "PG", "PI", "PS", "PA", "Lyso_PA", "Lyso_PG", "Lyso_PI",
+            "Lyso_PS", "Lyso_PE", "FFA", "DAG", "TAG", "Lyso_PC", "MAG", "CAR",
+            "CER", "SM", "DGDG", "MGDG", "CER", "CER"),
+  ID = c("15:0-18:1(d7) PC", "15:0-18:1(d7) PE", "15:0-18:1(d7) PG", 
+         "15:0-18:1(d7) PI", "15:0-18:1(d7) PS", "15:0-18:1-D7-PA",
+         "17:0 Lyso PA", "17:1 Lyso PG", "17:1 Lyso PI",           
+         "17:1 Lyso PS", "18:1(d7) Lyso PE", "stearic_acid_D3",        
+         "15:0-18:1(d7) DAG", "15:0-18:1(d7)-15:0 TAG", "18:1(d7) Lyso PC",       
+         "18:1(d7) MAG", "24:0 (d4) carnitine", "C15 Ceramide-d7",        
+         "d18:1-18:1(d9) SM", "Hydrog DGDG (18:0-18:0)", "Hydrog MGDG (18:0-16:0)",
+         "lactCER_24:0", "lact_dihydroCER_24:0"),
+  formula = c("C41H73D7NO8P", "C38H67D7NO8P", "C39H68D7O10P",
+              "C42H72D7O13P", "C39H67D7NO10P", "C36H62D7O8P",
+              "C20H41O7P", "C23H45O9P", "C26H48O12P", 
+              "C23H44NO9P", "C23H39D7NO7P", "C18H33D3O2",
+              "C36H61D7O5", "C51H89D7O6", "C26H45D7NO7P",
+              "C21H33D7O2", "C31H57D4NO4", "C33H58D7NO3", 
+              "C41H72D9N2O6P", "C51H96O15", "C43H82O10",
+              "C54H103NO13", "C54H105NO13")
+)
+fmls <- rbind(fmls, IS)
+data <- merge(cmps, fmls, by = "ID")
+cmps$ID[!cmps$ID %in% fmls$ID]
+rm(fmls, IS, cmps)
+
+data$RT <- rowMeans(data[,2:3])
+```
+
+
+```{r}
+data$mass <- NA
+for(i in seq(nrow(data))){
+  if(grepl("D", data$formula[i])){
+    data$mass[i] <- Rdisop::getMolecule(data$formula[i])$exactmass
+  } else {
+    data$mass[i] <- OrgMassSpecR::MonoisotopicMass(
+      formula = OrgMassSpecR::ListFormula(data$formula[i]))
+  }
+}
+data$NH4 <- unlist(CompoundDb::mass2mz(data$mass, "[M+NH4]+"))
+data <- data[order(data$RT, data$formula),]
+
+data$C <- gsub("H.*", "", data$formula)
+data$C <- gsub("C", "", data$C)
+data$C <- as.numeric(data$C)
+data$db <- gsub(".*:", "", data$ID)
+data$db <- gsub("-.*", "", data$db)
+data$db <- gsub(" .*", "", data$db)
+data$db <- gsub("\\(.*", "", data$db)
+data$db[data$ID == "C15 Ceramide-d7"] <- 1
+
+idx <- which(data$class %in% c("DAG", "MGDG", "DGDG",
+                               "PA", "PC", "PE", "PG", "PI", "PS", "SM"))
+data$db[idx] <- as.numeric(gsub(".*:", "", gsub("/.*", "", data$ID[idx]))) +
+  as.numeric(substr(gsub(".*:", "", data$ID[idx]), 1, 1))
+idx <- which(is.na(data$db))
+data$db[idx] <- as.numeric(gsub(".*:", "", gsub("-.*", "", data$ID[idx]))) +
+    as.numeric(substr(gsub(".*:", "", data$ID[idx]), 1, 1))
+
+write.csv(data[,c("class", "ID", "formula", "RT", "C", "db")], 
+          "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/compounds_target.csv", 
+          row.names = FALSE)
+```
+
+# Table
+
+```{r}
+data$RTx <- data$RT + 0.34
+#data$RT <- sprintf("%.2f", data$RT)
+data$RT_min <- sprintf("%.2f", data$RT_min)
+data$RT_max <- sprintf("%.2f", data$RT_max)
+data$RTx <- sprintf("%.2f", data$RTx)
+data$NH4 <- sprintf("%.5f", data$NH4)
+DT::datatable(data[,c("RT_min", "RT_max", "class", "ID", "NH4", "RTx")])
+```
+
+# Plot
+
+```{r}
+data$RT <- as.numeric(data$RT)
+data$C <- as.numeric(data$C)
+data$db <- as.numeric(data$db)
+col_class_cmps <- c("#E41A1C", "#974661", "#4A72A6", "#3E8E93", "#48A462", "#5D995D",
+                    "#7E6E85", "#A35390", "#D16948", "#FF7F00", "#FFB716", "#FFF02D",
+                    "#E1C62F", "#B97B2A", "#B75F49", "#DB728C", "#EC83BA", "#C28EA9", 
+                    "#999999", "black")
+names(col_class_cmps) <- c("FFA", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", "PA",
+                           "PC", "PE", "PG", "PI", "PS", "CAR", "MAG", "CER", "DAG", 
+                           "DGDG", "Lyso_PC", "MGDG", "TAG", "X")
+plot(data$RT, data$C, col = "white", xlim = c(1, 25), xlab = "RT", ylab = "n.C")
+text(data$RT, data$C, data$db, col = col_class_cmps[data$class])
+```
+
+# STDmix untarget
+
+```{r}
+dt <- readxl::read_xlsx("C:/Users/garciaalom/Google Drive/laboratory/db_compounds.xlsx")
+dt <- dt[which(dt$ID_cmp == "C0612"):
+           which(dt$ID_cmp == "C0713"),]
+dt$RT <- rowMeans(dt[,c("lipidgrape_min", "lipidgrape_max")])
+dt <- subset(dt, select = c("compound", "RT", "formula"))
+
+dt$C <- gsub("H.*", "", dt$formula)
+dt$C <- gsub("C", "", dt$C)
+dt$C <- as.numeric(dt$C)
+dt$db <- gsub(".*:", "", dt$compound)
+dt$db <- gsub("-.*", "", dt$db)
+dt$db <- gsub(" .*", "", dt$db)
+dt$db <- gsub("\\(.*", "", dt$db)
+dt$db[dt$compound == "stearic_acid_D3"] <- 0
+dt$db[dt$compound == "C15 Ceramide-d7"] <- 1
+dt$db[dt$compound == "15:0-18:1(d7)-15:0 TAG"] <- 1
+idx <- grep("DAG|MGDG|DGDG|PA|PC|PE|PG|PI|PS|SM", dt$compound)
+idx2 <- grep("Lyso", dt$compound)
+idx <- idx[!idx %in% idx2]
+dt$db[idx] <- as.numeric(gsub(".*:", "", gsub("/.*", "", dt$compound[idx]))) +
+  as.numeric(substr(gsub(".*:", "", dt$compound[idx]), 1, 1))
+idx <- which(is.na(dt$db))
+dt$db[idx] <- as.numeric(gsub(".*:", "", gsub("-.*", "", dt$compound[idx]))) +
+    as.numeric(substr(gsub(".*:", "", dt$compound[idx]), 1, 1))
+
+dt$class <- "X"
+dt$class[grep("FFA", dt$compound)] <- "FFA"
+dt$class[grep("stearic", dt$compound)] <- "FFA"
+dt$class[grep("PA", dt$compound)] <- "PA"
+dt$class[grep("PC", dt$compound)] <- "PC"
+dt$class[grep("PE", dt$compound)] <- "PE"
+dt$class[grep("PG", dt$compound)] <- "PG"
+dt$class[grep("PI", dt$compound)] <- "PI"
+dt$class[grep("PS", dt$compound)] <- "PS"
+dt$class[grep("MAG", dt$compound)] <- "MAG"
+dt$class[grep("DAG", dt$compound)] <- "DAG"
+dt$class[grep("TAG", dt$compound)] <- "TAG"
+dt$class[grep("SM", dt$compound)] <- "SM"
+dt$class[grep("MGDG", dt$compound)] <- "MGDG"
+dt$class[grep("DGDG", dt$compound)] <- "DGDG"
+dt$class[grep("Ceramide", dt$compound)] <- "CER"
+dt$class[grep("carnitine", dt$compound)] <- "CAR"
+dt$compound <- gsub("Lyso ", "Lyso_", dt$compound)
+dt$class[grep("Lyso_PA", dt$compound)] <- "Lyso_PA"
+dt$class[grep("Lyso_PE", dt$compound)] <- "Lyso_PE"
+dt$class[grep("Lyso_PG", dt$compound)] <- "Lyso_PG"
+dt$class[grep("Lyso_PI", dt$compound)] <- "Lyso_PI"
+dt$class[grep("Lyso_PS", dt$compound)] <- "Lyso_PS"
+View(dt)
+
+plot(dt$RT, dt$C, col = "white", xlim = c(1, 25), xlab = "RT", ylab = "n.C")
+text(dt$RT, dt$C, dt$db, col = col_class_cmps[dt$class])
+
+
+plot(dt$RT, dt$C, col = "white", xlab = "RT", ylab = "n.C", 
+     xlim = c(20, 22.5), ylim = c(41,61))
+text(dt$RT, dt$C, dt$db, col = col_class_cmps[dt$class])
+points(21.75, 51, col = "red", pch = 8)
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
