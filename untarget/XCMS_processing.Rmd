@@ -18,7 +18,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "NEG" # specify "POS" or "NEG"
+polarity <- "POS" # specify "POS" or "NEG"
 study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
@@ -130,7 +130,8 @@ if(study == "maturation"){
   injections <- injections[grep("solv_rep1", injections$filename):nrow(injections),]
 }
 
-injections <- injections[grepl("skin|pulp|seeds", injections$tissue),]
+#injections <- injections[grepl("skin|pulp|seeds", injections$tissue),]
+injections <- injections[grepl("entire", injections$tissue),]
 
 # Read the data
 data_raw <- readMSData(
@@ -278,7 +279,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
 # Save data
 
 ```{r save}
-save(xdata, file = paste0(study, "/data/RData/data_XCMS_3ts_", polarity, ".RData"))
+save(xdata, file = paste0(study, "/data/RData/data_XCMS_entire_", polarity, ".RData"))
 ```
 
 

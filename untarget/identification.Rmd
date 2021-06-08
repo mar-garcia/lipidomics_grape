@@ -45,8 +45,9 @@ table(feat_grape$tissue, feat_tissu$tissue)
 #                        feat_grape$tissue == "pulp" & feat_tissu$tissue == "pulp" |
 #                        feat_grape$tissue == "skin" & feat_tissu$tissue == "skin"]
 library(CompoundDb)
-feat_grape$rtmed[unlist(matchWithPpm(c(636.5562, 663.5205), feat_grape$mzmed, ppm = 5))]/60
-my.ft <- feat_grape$X[unlist(matchWithPpm(c(636.5562, 663.5205), feat_grape$mzmed, ppm = 5))][2]
+#feat_grape$rtmed[unlist(matchWithPpm(c(954.6149, 981.5792), feat_grape$mzmed, ppm = 5))]/60
+my.ft <- feat_grape$X[unlist(matchWithPpm(c(758.5694, 802.5604), 
+                                          feat_grape$mzmed, ppm = 5))][c(1, 3)]
 
 modes <- c("POS", "NEG")
 for(i in 1:2){

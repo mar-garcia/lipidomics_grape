@@ -15,15 +15,15 @@ ms2_NEG <- c(ms2_NEG, ms2)
 rm(ms2)
 
 
-ms2sub <- filterPrecursorMz(ms2_POS, 636.5562 + 0.01 * c(-1, 1))
-ms2sub <- filterRt(ms2sub, 17.41*60 + 10 * c(-1, 1))
+ms2sub <- filterPrecursorMz(ms2_POS, 871.5715 + 0.01 * c(-1, 1))
+ms2sub <- filterRt(ms2sub, 18.98*60 + 10 * c(-1, 1))
 #ms2sub <- ms2sub[containsMz(ms2sub,c(570.5049), tolerance = 0.005)]
 #ms2sub <- ms2sub[containsMz(ms2sub, c(491.3220), tolerance = 0.005)]
 length(ms2sub)
 intensitats <- c()
 for(i in seq(length(ms2sub))){
   idx <- c(
-    which(unlist(mz(ms2sub[i])) > 620),
+    which(unlist(mz(ms2sub[i])) > 872),
     which(unlist(mz(ms2sub[i])) > 283.5 & unlist(mz(ms2sub[i])) < 283.9),
     which(unlist(mz(ms2sub[i])) > 341.1 & unlist(mz(ms2sub[i])) < 341.3)
   )
@@ -32,7 +32,7 @@ for(i in seq(length(ms2sub))){
   intensitats <- c(intensitats, int.good / int.noise)
 }
 rm(tmp)
-#tmp <- order(intensitats)[(length(intensitats)-10):length(intensitats)]
+tmp <- order(intensitats)[(length(intensitats)-10):length(intensitats)]
 dev.off()
 if(exists("tmp")){
   i.seq <- tmp

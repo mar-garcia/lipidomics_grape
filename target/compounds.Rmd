@@ -90,8 +90,8 @@ IS <- data.frame(
               "C54H103NO13", "C54H105NO13")
 )
 fmls <- rbind(fmls, IS)
-data <- merge(cmps, fmls, by = "ID")
 cmps$ID[!cmps$ID %in% fmls$ID]
+data <- merge(cmps, fmls, by = "ID", all = TRUE)
 rm(fmls, IS, cmps)
 
 data$RT <- rowMeans(data[,2:3])
@@ -108,7 +108,7 @@ for(i in seq(nrow(data))){
       formula = OrgMassSpecR::ListFormula(data$formula[i]))
   }
 }
-data$NH4 <- unlist(CompoundDb::mass2mz(data$mass, "[M+NH4]+"))
+data$NH4 <- unlist(MetaboCoreUtils::mass2mz(data$mass, "[M+NH4]+"))
 data <- data[order(data$RT, data$formula),]
 
 data$C <- gsub("H.*", "", data$formula)
@@ -142,7 +142,8 @@ data$RT_min <- sprintf("%.2f", data$RT_min)
 data$RT_max <- sprintf("%.2f", data$RT_max)
 data$RTx <- sprintf("%.2f", data$RTx)
 data$NH4 <- sprintf("%.5f", data$NH4)
-DT::datatable(data[,c("RT_min", "RT_max", "class", "ID", "NH4", "RTx")])
+DT::datatable(data[,c(#"RT_min", "RT_max", 
+  "class", "ID", "formula", "NH4", "RTx")], rownames = FALSE)
 ```
 
 # Plot

@@ -131,7 +131,7 @@ legend("topright", pch = 16, col = seq(length(idx)), legend = round(my.features$
 
 
 # Correlation with target data ----
-target$ID[grep("DAG\\(18:", target$ID)]
+target$ID[grep("PA\\(16:0", target$ID)]
 tg <- target[target$ID == "TAG54:7_FA18:2",grep("pt11", colnames(target))]
 ut <- data[rownames(my.features)[idx][1], grep("pt11", colnames(data))]
 plot(t(tg), ut, col = col_class_ts[class[!grepl("QC|xx00", class)]], pch = 16,
