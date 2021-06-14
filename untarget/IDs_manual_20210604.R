@@ -4,7 +4,8 @@ colnames(target)[1] <- "ID"
 target <- target[,c(grep("ID|entire", colnames(target)))]
 
 ## Compound data ----
-cmps <- read.csv("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/compounds_target.csv")
+#cmps <- read.csv("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/compounds_target.csv")
+cmps <- read.csv("compounds_target.csv")
 
 #fml.list <- list()
 #for(i in seq(nrow(cmps))){

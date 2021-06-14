@@ -17,7 +17,7 @@ rm(ms2)
 
 ms2sub <- filterPrecursorMz(ms2_POS, 871.5715 + 0.01 * c(-1, 1))
 ms2sub <- filterRt(ms2sub, 18.98*60 + 10 * c(-1, 1))
-#ms2sub <- ms2sub[containsMz(ms2sub,c(570.5049), tolerance = 0.005)]
+#ms2sub <- ms2sub[!containsMz(ms2sub,c(871.5715+1.003355), tolerance = 0.005)]
 #ms2sub <- ms2sub[containsMz(ms2sub, c(491.3220), tolerance = 0.005)]
 length(ms2sub)
 intensitats <- c()
@@ -49,7 +49,7 @@ for(i in i.seq){
     #j <- order(rtime(ms2sub))[i]
   }
   
-  xdata <- readMSData(ms2sub[j]@backend@spectraData$dataOrigin, mode = "onDisk")
+  xdata <- readMSData(gsub("garciaalom", "lenovo", ms2sub[j]@backend@spectraData$dataOrigin), mode = "onDisk")
   chr <- chromatogram(
     xdata, mz = ms2sub[j]@backend@spectraData$precursorMz + 0.01 * c(-1, 1),
     rt = ms2sub[j]@backend@spectraData$rtime + 30 * c(-1, 1)
@@ -75,10 +75,10 @@ for(i in i.seq){
   text(unlist(mz(ms2sub[j]))[idx], 
        (unlist(intensity(ms2sub[j])) / max(unlist(intensity(ms2sub[j]))))[idx],
        round(unlist(mz(ms2sub[j]))[idx], 4))
-  tmp2 <- c(tmp2, paste(
-    inj$ID_file[
-      inj$filename == gsub(".mzML", "", basename(ms2sub[j]@backend@spectraData$dataOrigin))],
-    basename(ms2sub[j]@backend@spectraData$dataOrigin), 
-    ms2sub[j]@backend@spectraData$acquisitionNum))
+  #tmp2 <- c(tmp2, paste(
+  #  inj$ID_file[
+  #    inj$filename == gsub(".mzML", "", basename(ms2sub[j]@backend@spectraData$dataOrigin))],
+  #  basename(ms2sub[j]@backend@spectraData$dataOrigin), 
+  #  ms2sub[j]@backend@spectraData$acquisitionNum))
 }
 tmp2[order(tmp2)]
