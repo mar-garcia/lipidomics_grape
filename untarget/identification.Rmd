@@ -4,17 +4,31 @@ author: "Mar Garcia-Aloy"
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output: 
   html_document:
-    toc: false
+    toc: true
     number_sections: false
-    toc_float: false
+    toc_float: true
 ---
 
 ```{r startpoint, include = FALSE}
 startpoint <- Sys.time()
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
 ```
 
-```{r}
+# Preliminaries
+
+## Libraries
+
+```{r libraries, message=FALSE, warning=FALSE}
+library(xcms)
+library(Rdisop)
+library(MetaboCoreUtils)
+library(OrgMassSpecR)
+```
+
+
+## Functions
+
+```{r functions}
 .ppm <- function(x, ppm = 10) {
   ppm * x / 1e6
 }
@@ -23,140 +37,493 @@ matchWithPpm <- function(x, y, ppm = 0) {
     which(abs(z - y) <= (.ppm(z, ppm)) + 1e-9)
   }, ppm = force(ppm))
 }
-
-study <- "tissues" # specify "maturation" or "tissues"
-source("../../R/ft_group.R")
-
-feat_prep <- function(flname){
-  feat <- read.csv(flname)
-  feat$tissue <- NA
-  feat$tissue <- gsub(").*", "", feat$beh)
-  feat$tissue <- gsub("\\(", "", feat$tissue)
-  feat$tissue <- gsub(" >.*", "", feat$tissue)
-  feat$tissue[feat$beh == "NS"] <- "NS"
-  return(feat)
-}
-
-feat_tissu <- feat_prep(paste0(study, "/data/features_grtissue.csv"))
-feat_grape <- feat_prep(paste0(study, "/data/features_grgrape.csv"))
-
-table(feat_grape$tissue, feat_tissu$tissue)
-#my.ft <- feat_tissu$X[(feat_grape$tissue == "seeds" & feat_tissu$tissue == "seeds") |
-#                        feat_grape$tissue == "pulp" & feat_tissu$tissue == "pulp" |
-#                        feat_grape$tissue == "skin" & feat_tissu$tissue == "skin"]
-library(CompoundDb)
-#feat_grape$rtmed[unlist(matchWithPpm(c(954.6149, 981.5792), feat_grape$mzmed, ppm = 5))]/60
-my.ft <- feat_grape$X[unlist(matchWithPpm(c(758.5694, 802.5604), 
-                                          feat_grape$mzmed, ppm = 5))][c(1, 3)]
-
-modes <- c("POS", "NEG")
-for(i in 1:2){
-  load(paste0(study, "/data/RData/data_XCMS_", modes[i], ".RData"))
-  my.data <- dt_preparation(xobj = xdata, class = "tissue", mznoise = c())
-  
-  load(paste0(study, "/data/RData/MS2_library_", modes[i], ".RData"))
-  idx <- which(rownames(my.data[["features"]]) %in% my.ft)
-  if(length(idx) > 0){
-    my.data <- ft_grouping(
-    datax = my.data, MS2x = ms2, 
-    ft_idx = idx, 
-    rt_d = 5, icor = 0.9)
-  } else{
-    tmp <- my.data[["features"]]
-    tmp$FG <- NA
-    tmp$MS2 <- NA
-    my.data[["features"]] <- tmp
-  }
-  assign(paste0("my.data_", tolower(modes[i])), my.data)
-}
-
-my.features <- isotopologues(
-  features = rbind(
-    my.data_pos[["features"]], my.data_neg[["features"]])
-  )
-
-for(i in 1:2){
-  my.data_x <- get(paste0("my.data_", tolower(modes[i])))
-  my.data_x <- my.data_x[["data"]]
-  if(study == "tissues"){
-    colnames(my.data_x) <- gsub(".*tissues_", "", colnames(my.data_x))
-  }
-  my.data_x <- my.data_x[, order(colnames(my.data_x))]
-  assign(paste0("data_", tolower(modes[i])), my.data_x)
-}
-
-
-my.features <- fg_grouping(data = rbind(data_pos, data_neg), 
-                           features = my.features)
-my.features <- my.features[!is.na(my.features$FGx), ]
-idx <- which(my.features$rtmed > 22.21*60 & my.features$rtmed < 22.23*60)
-idx2 <- unlist(matchWithPpm(918.8482, my.features$mzmed, ppm = 10))
-if(length(idx2) > 0 & length(idx) > 0){
-  if(idx2 %in% idx){
-    my.features$FGx[idx2] <- paste0(my.features$FGx[idx2], "b")
-  }
-}
 ```
+
+
+## Data import
+
+```{r data}
+for(s in c("tissues", "maturation")){
+  for(p in c("POS", "NEG")){
+    load(paste0(s, "/data/RData/data_XCMS_", p, ".RData"))
+    feat <- as.data.frame(featureDefinitions(xdata))
+    rownames(feat) <- gsub("FT", substring(p, 1, 1), rownames(feat))
+    data <- featureValues(xdata, method = "sum", value = "into")
+    rownames(data) <- gsub("FT", substring(p, 1, 1), rownames(data))
+    colnames(data) <- gsub(paste0("_", p, "_FS.mzData"), "", colnames(data))
+    if(s == "tissues"){
+      colnames(data) <- gsub(".*tissues_", "", colnames(data))
+    } else if(s == "maturation"){
+      colnames(data) <- gsub(".*lipidgrape_", "", colnames(data))
+    }
+    data <- data[, order(colnames(data))]
+    assign(paste("feat", p, sep = "_"), feat)
+    assign(paste("data", p, sep = "_"), data)
+  } # end polarity "p"
+  feat <- rbind(feat_POS, feat_NEG)
+  if(all(colnames(data_POS) == colnames(data_NEG))){
+    data <- rbind(data_POS, data_NEG)
+  } else{
+    print("Ull!! Check column order of matrix 'data'!!!")
+  }
+  feat <- subset(feat, select = c("mzmed", "rtmed"))
+  assign(paste(s, "feat", sep = "_"), feat)
+  assign(paste(s, "data", sep = "_"), data)
+} # end study "s"
+rm(s, p, feat, data, xdata, data_POS, data_NEG, feat_POS, feat_NEG)
+```
+
+
+## In-house database
+
+```{r ions}
+sn <- data.frame(
+  "C" = rep(seq(16, 20), each = 4),
+  "db" = rep(seq(0, 3), 5)
+)
+sn$formula <- paste0("C", sn$C, "H", sn$C*2 - 2*sn$db, "O2")
+sn$sn <- paste0(sn$C, ":", sn$db)
+sn$mass <- NA
+for(i in seq(nrow(sn))){
+  sn$mass[i] <- getMolecule(sn$formula[i])$exactmass
+}
+
+
+ids <- readxl::read_xlsx("identification.xlsx")
+ions <- data.frame(matrix(ncol = 6, nrow = 0))
+colnames(ions) <- c("class", "compound", "RT", "mz", "adduct", "polarity")
+for(i in seq(nrow(ids))){
+  if(grepl("D", ids$formula[i])){
+    j.mass <- Rdisop::getMolecule(ids$formula[i])$exactmass
+  } else if(!grepl("C", ids$formula[i])){
+    j.mass <- as.numeric(ids$formula[i])
+  } else {
+    j.mass <- MonoisotopicMass(formula = ListFormula(ids$formula[i]))
+  }
+  i.class <- ids$class[i]
+  #if(i.class == "FFA"){
+  #  i.ions <- c("[M-H]-", "[M-H+HCOOH]-", "13C[M-H+HCOOH]-")
+  #}else if(i.class == "CAR"){
+  #  i.ions <- c("[M+H]+", "13C[M+H]+"," 2(13C)[M+H]+", 
+  #              "[M-H+HCOOH]-", "13C[M-H+HCOOH]-")
+  #  if(ids$compound[i] == "CAR24:0_d4"){
+  #    i.ions <- c(i.ions, "[24:0_d4-H]-")
+  #  }
+  #} else if(i.class == "CER"){
+  #  i.ions <- c("[M+H]+", "[M-H+HCOOH]-")
+  #} else if(i.class == "Lyso_PC"){
+  #  i.ions <- c("[M+H]+", "13C[M+H]+", 
+  #              "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", "[M-H-CH2]-")
+  #} else if(i.class %in% c("Lyso_PE", "Lyso_PG")){
+  #  i.ions <- c("[M+H]+", "[M-H]-")
+  #} else 
+  if(i.class %in% c("PA", "mPA", "dmPA")) {
+    i.ions <- c(
+      #    "[M+H]+", "13C[M+H]+",
+      "[M+NH4]+", #"13C[M+NH4]+", "2(13C)[M+NH4]+", "3(13C)[M+NH4]+",
+      #    "[M+C2H8N]+", "13C[M+C2H8N]+", 
+      #    "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", "3(13C)[2M+H]+", "4(13C)[2M+H]+",
+      #    "[2M+NH4]+","13C[2M+NH4]+","2(13C)[2M+NH4]+"," 3(13C)[2M+NH4]+", "4(13C)[2M+NH4]+",
+      #    "[2M+C2H8N]+", "13C[2M+-C2H8N]+", "2(13C)[2M+C2H8N]+",
+      "[M-H]-"#, "13C[M-H]-", "2(13C)[M-H]-", "3(13C)[M-H]-",
+      #    "[M-H+HCOOH]-",
+      #    "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-", "3(13C)[2M-H]-",
+      #    "[2M-H-CH2]-", "13C[2M-H-CH2]-", "2(13C)[2M-H-CH2]-", "3(13C)[2M-H-CH2]-"
+    )
+    #  if(i.class == "PA"){
+    #    i.ions <- c(i.ions, "[M+H-PA]+", "13C[M+H-PA]+")
+    #  }else if(i.class == "mPA"){
+    #    i.ions <- c(i.ions, "[M+H-mPA]+")
+    #  }
+  } else if(i.class == "PC"){
+    i.ions <- c(
+      "[M+H]+", "13C[M+H]+", #"2(13C)[M+H]+", "3(13C)[M+H]+", "[M+Na]+", 
+      #    "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", "3(13C)[2M+H]+", 
+      "[M-H+HCOOH]-", "13C[M-H+HCOOH]-"#, "2(13C)[M-H+HCOOH]-", "3(13C)[M-H+HCOOH]-", 
+      #    "[2M-H+HCOOH]-", "13C[2M-H+HCOOH]-", "2(13C)[2M-H+HCOOH]-", 
+      #    "[M-CH3]-", "13C[M-H-CH3]-"
+    )
+  } else if(i.class == "PE"){
+    i.ions <- c(
+      #    "[M+H]+", "13C[M+H]+", "2(13C)[M+H]+", "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", 
+      "[M-H]-"#, "13C[M-H]-", "2(13C)[M-H]-", "3(13C)[M-H]-", "[M-H+HCOONa]-", 
+      #    "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-"
+    )
+    #} else if(i.class == "PG"){
+    #  i.ions <- c("[M+NH4]+", "13C[M+NH4]+", "[M-H]-", "13C[M-H]-")
+  } else if(i.class == "PI"){
+    i.ions <- c(
+      #    "[M+H]+", 
+      #    "[M+NH4]+","13C[M+NH4]+", "2(13C)[M+NH4]+",  "3(13C)[M+NH4]+", "[M+NH4-PI]+", 
+      #    "[M+C2H8N]+", 
+      #    "[2M+NH4]+", "13C[2M+NH4]+","2(13C)[2M+NH4]+", 
+      "[M-H]-"#, "13C[M-H]-", "2(13C)[M-H]-", "3(13C)[M-H]-", 
+      #    "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-", "3(13C)[2M-H]-"
+    )
+    #} else if(i.class == "PS"){
+    #  i.ions <- c("[M+H]+", "[M-H]-", "13C[M-H]-")
+    #} else if(i.class == "SM"){
+    #  i.ions <- c("[M+H]+"," 13C[M+H]+", "[M-H+HCOOH]-")
+  } else if(i.class %in% c("MGDG", "DGDG")){
+    i.ions <- c(
+      #    "2(13C)[M+H]+", "[M+NH4]+", "13C[M+NH4]+", "2(13C)[M+NH4]+", "3(13C)[M+NH4]+", 
+      #    "[M+Na]+", "13C[M+Na]+", 
+      #    "[M+C2H8N]+", "13C[M+C2H8N]+",
+      #    "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", 
+      #    "[2M+Na]+", "13C[2M+Na]+", "2(13C)[2M+Na]+",
+      #    "[M-H]-", "13C[M-H]", 
+      "[M-H+HCOOH]-"#, "13C[M-H+HCOOH]-", "2(13C)[M-H+HCOOH]-", "3(13C)[M-H+HCOOH]-"
+    )
+  } else if(i.class == "DAG"){
+    i.ions <-c(
+      #             "[M+H]+", "13C[M+H]+",
+      "[M+NH4]+", "13C[M+NH4]+"#, "2(13C)[M+NH4]+", "3(13C)[M+NH4]+", 
+      #             "[M+Na]+", "13C[M+Na]+", "2(13C)[M+Na]+", 
+      #             "[M+C2H8N]+","13C[M+C2H8N]+", 
+      #             "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", "3(13C)[2M+NH4]+",
+      #             "[2M+Na]+", "13C[2M+Na]+", 
+      #             "[M+H-H2O]+", "13C[M+H-H2O]+".
+      #    "[M-H+HCOOH]-", "13C[M-H+HCOOH]-","2(13C)[M-H+HCOOH]-",[2M-H+HCOOH]-", "13C[2M-H+HCOOH]-", "2(13C)[2M-H+HCOOH]-"
+    )
+  } else if(i.class == "TAG"){
+    i.ions <- c(
+      "[M+NH4]+", "13C[M+NH4]+", "2(13C)[M+NH4]+"#, "3(13C)[M+NH4]+", 
+      #    "4(13C)[M+NH4]+", "5(13C)[M+NH4]+", 
+      #    "[M+Na]+", "13C[M+Na]+", 
+      #    "[M+C2H8N]+", "13C[M+C2H8N]+", 
+      #    "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", "3(13C)[2M+NH4]+", 
+      #    "4(13C)[2M+NH4]+",
+      #    "[2M+C2H6N]+", "13C[2M+C2H6N]+", "2(13C)[2M+C2H6N]+", "3(13C)[2M+C2H6N]+",
+      #    "4(13C)[2M+C2H6N]+", 
+      #    "[2M+C2H8N]+", "13C[2M+C2H8N]+"
+    )
+  } else if(i.class == "others"){
+    i.ions <- c(
+      #"[M+H]+",
+      "[M-H]-"#, "13C[M-H]-", "[2M-H]-", "[M-H-CO2]-", "[M-H-H2O]-"
+    )
+  } else if(i.class == "unknown"){
+    i.ions <- c(
+      #    "[M+H]+", "13C[M+H]+", "2(13C)[M+H]+", "3(13C)[M+H]+", 
+      #    "[M+NH4]+", "13C[M+NH4]+", "2(13C)[M+NH4]+", 
+      #    "[M+Na]+", "13C[M+Na]+", 
+      #    "[M+C2H8N]+", "13C[M+C2H8N]+", 
+      #    "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", "3(13C)[2M+H]+", 
+      #    "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", "3(13C)[2M+NH4]+", 
+      #    "[2M+2Na-H]+", "13C[2M+2Na-H]+", "2(13C)[2M+2Na-H]+", 
+      #    "[2M+C2H8N]+", "13C[2M+C2H8N]+", 
+      "[M-H]-", "13C[M-H]-", #"2(13C)[M-H]-", "3(13C)[M-H]-", 
+      #    "[M+Cl]-", 
+          "[M-H+HCOOH]-"#, "13C[M-H+HCOOH]-", "2(13C)[M-H+HCOOH]-", "3(13C)[M-H+HCOOH]", 
+      #    "[M-H+HCOONa]-", 
+      #    "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-", 
+      #    "[2M-H+HCOOH]-", "13C[2M-H+HCOOH]-", "2(13C)[2M-H+HCOOH]-", "3(13C)[M-H+HCOOH]-", 
+      #    "[2M+Na-2H]-", "13C[2M+Na-2H]-", "2(13C)[2M+Na-2H]-", 
+      #    "[3M+Na-2H]-", "13C[3M+Na-2H]-", "2(13C)[3M+Na-2H]-", "3(13C)[3M+Na-2H]-"
+    )
+  }
+  
+  if(grepl("16:0", ids$compound[i])){
+    i.ions <- c(i.ions, "[M+H-16:0]+","[16:0-H]-")
+  }
+  if(grepl("18:0", ids$compound[i])){
+    i.ions <- c(i.ions, "[M+H-18:0]+", "[18:0-H]-")
+  }
+  if(grepl("18:1", ids$compound[i])){
+    i.ions <- c(i.ions, "[M+H-18:1]+", "13C[M+H-18:1]+")
+  }
+  if(grepl("18:2", ids$compound[i])){
+    i.ions <- c(i.ions, "[M+H-18:2]+",  "13C[M+H-18:2]+", 
+                "[18:2-H]-", "[M-H-18:2]-")
+  }
+  if(grepl("18:3", ids$compound[i])){
+    i.ions <- c(i.ions, "[18:3-H]-", "[M-H-18:3]-")
+  }
+  if(grepl("20:1", ids$compound[i])){
+    i.ions <- c(i.ions, "[M+H-20:1]+")
+  }
+  
+  for(j in seq(length(i.ions))){
+    j.add <- gsub(".*\\[", "[", i.ions[j])
+    j.add <- gsub("-H\\+HCOOH", "\\+CHO2", j.add)
+    if(j.add %in% c(adductNames(polarity = "positive"), 
+                    adductNames(polarity = "negative"))){
+      j.mz <- unlist(mass2mz(j.mass, j.add))
+    } else if(grepl("C2H8N", j.add)){
+      if(grepl("2M", j.add)){
+        j.mz <- j.mass*2 + getMolecule("C2H8N")$exactmass
+      } else {
+        j.mz <- j.mass + getMolecule("C2H8N")$exactmass
+      }
+    } else if(grepl("C2H6N", j.add)){
+      if(grepl("2M", j.add)){
+        j.mz <- j.mass*2 + getMolecule("C2H6N")$exactmass
+      } else {
+        j.mz <- j.mass + getMolecule("C2H6N")$exactmass
+      }
+    } else if(grepl("M\\+2Na-H", j.add)){
+      j.mz <- j.mass * as.numeric(substr(j.add, 2, 2)) + 21.9819*2 - 1.007276
+    } else if(grepl("M\\+Na-2H", j.add)){
+      j.mz <- j.mass * as.numeric(substr(j.add, 2, 2)) + 21.9819 - 1.007276*2
+    } else if(grepl("H\\+HCOONa", j.add)){
+      j.mz <- j.mass + as.numeric(paste0(substr(j.add, 3, 3), 1))*1.007276 +
+        getMolecule("HCOONa")$exactmass
+    }else if(grepl("H-CO2]", j.add)){
+      j.mz <- mass2mz(j.mass, paste0(
+        substr(j.add, 1, 4), "]", 
+        substr(j.add, nchar(j.add), nchar(j.add)))) - getMolecule("CO2")$exactmass
+    } else if(grepl("H-H2O]", j.add)){
+      j.mz <- mass2mz(j.mass, paste0(
+        substr(j.add, 1, 4), "]", 
+        substr(j.add, nchar(j.add), nchar(j.add)))) - getMolecule("H2O")$exactmass
+    } else if(grepl("-PA", j.add)){
+      j.mz <- j.mass - getMolecule("H2PO4")$exactmass
+    } else if(grepl("-PI", j.add)){
+      if(grepl("NH4", j.add)){
+        j.mz <- as.numeric(mass2mz(j.mass, "[M+NH4]+")) - 
+          getMolecule("H2PO4C6H12O6")$exactmass
+      } else {
+        j.mz <- j.mass - getMolecule("H2PO4C6H12O6")$exactmass
+      }
+    } else if(grepl("-mPA", j.add)){
+      j.mz <- j.mass - getMolecule("H2PO4CH2")$exactmass
+    } else if(grepl("-CH3", j.add)){
+      j.mz <- j.mass - getMolecule("CH3")$exactmass
+    } else if(grepl("-CH2", j.add)){
+      if(grepl("2M", j.add)){
+        j.mz <- j.mass*2 - getMolecule("CH3")$exactmass
+      } else {
+        j.mz <- j.mass - getMolecule("CH3")$exactmass
+      }
+    } else if(grepl(":", j.add)){
+      if(j.add == "[24:0_d4-H]-"){
+        j.mz <- mass2mz(getMolecule("C24H44D4O2")$exactmass, "[M-H]-")
+      } else if(grepl("H-", j.add)){
+        j.mz <- mass2mz(j.mass,
+                        paste0(substr(j.add, 1, 4), 
+                               substr(j.add, nchar(j.add)-1, nchar(j.add)))) - 
+          sn$mass[sn$sn == substr(j.add, 6, nchar(j.add)-2)]
+      } else{
+        j.mz <- sn$mass[sn$sn == gsub("\\[", "", gsub("-H]-", "", j.add))]
+        j.mz <- as.numeric(
+          mass2mz(j.mz, gsub(gsub("\\[", "", gsub("-H]-", "", j.add)), "M", j.add)))
+      }
+    }
+    if(grepl("13C", i.ions[j])){
+      if(grepl("\\(", i.ions[j])){
+        j.mz <- j.mz + 1.003355*as.numeric(gsub("\\(.*", "", i.ions[j]))
+      } else {
+        j.mz <- j.mz + 1.003355
+      }
+    } 
+    if(substr(i.ions[j], nchar(i.ions[j]), nchar(i.ions[j])) == "+"){
+      i.pol <- "POS"
+    } else if(substr(i.ions[j], nchar(i.ions[j]), nchar(i.ions[j])) == "-"){
+      i.pol <- "NEG"
+    }
+    
+    ions[nrow(ions)+1, ] <- c(ids$class[i], ids$compound[i], ids$RT[i], j.mz, 
+                              i.ions[j], i.pol)
+  }
+}
+ions$RT <- as.numeric(ions$RT)
+ions$mz <- as.numeric(ions$mz)
+rm(i, i.ions, i.pol, j, j.mass, j.add, j.mz, sn)
+```
+
+
+## Feature matching
+
+```{r feats}
+for(s in c("tissues", "maturation")){
+  feat <- get(paste(s, "feat", sep = "_"))
+  feat$class <- NA
+  feat$compound <- NA
+  feat$adduct <- NA
+  feat$ppm <- NA
+  feat$rtdev <- NA
+  if(s == "maturation"){
+    idx <- ions$RT > 9
+    ions$RT[idx] <- ions$RT[idx] - 0.1 + 0.003*ions$RT[idx]
+    idx <- ions$compound == "LysoPC18:1_d7"
+    ions$RT[idx] <- ions$RT[idx] + 0.08
+    idx <- ions$compound == "LysoPE18:1_d7"
+    ions$RT[idx] <- ions$RT[idx] + 0.17
+  }
+  for(i in seq(nrow(feat))){
+    idx <- unlist(matchWithPpm(feat$mzmed[i], ions$mz, ppm = 10))
+    idx <- idx[substr(ions$polarity[idx], 1, 1) == 
+                 substr(rownames(feat)[i], 1, 1)]
+    idx <- idx[abs(feat$rtmed[i] - ions$RT[idx]*60) < 5]
+    if(length(idx) > 1){
+      if(length(unique(gsub(" .*|_.*", "", ions$compound[idx]))) > 1){
+        print(paste(s, "feat", i, "- ULL!! Check ion", 
+                    round(ions$mz[idx][1], 5), "(can be",
+                    paste(ions$compound[idx], collapse = " - "), ")"))
+      }
+      idx <- idx[which.min(abs(feat$rtmed[i] - ions$RT[idx]*60) )]
+    }
+    if(length(idx) == 1){
+      feat$class[i] <- ions$class[idx]
+      feat$compound[i] <- ions$compound[idx]
+      feat$adduct[i] <- ions$adduct[idx]
+      feat$ppm[i] <- ((feat$mzmed[i] - ions$mz[idx])/ions$mz[idx])*1e6
+      feat$rtdev[i] <- feat$rtmed[i]/60 - ions$RT[idx]
+    }
+  }
+  feat <- feat[order(rownames(feat)),]
+  feat$class[is.na(feat$class)] <- "X"
+  assign(paste(s, "feat", sep = "_"), feat)
+}
+rm(s, i, idx, feat)
+
+cmps <- unique(c(tissues_feat$compound, maturation_feat$compound))
+```
+
+
+# Table
+
+```{r id-table}
+for(s in c("tissues", "maturation")){
+  feat <- get(paste0(s, "_feat"))
+  data <- get(paste0(s, "_data"))
+  cmps <- unique(feat$compound)
+  mydb <- data.frame(matrix(ncol = 5, nrow = length(cmps)))
+  colnames(mydb) <- c("class", "compound", "formula", "RT", "ions")
+  mydb$compound <- cmps
+  data[is.na(data)] <- 0
+  
+  for(i in seq(nrow(mydb))){
+    idx <- which(feat$compound == cmps[i])
+    mydb$class[i] <- unique(feat$class[idx])
+    mydb$formula[i] <- ids$formula[ids$compound == feat$compound[idx][1]]
+    mydb$RT[i] <- sprintf("%.2f", mean(as.numeric(feat$rtmed[idx]))/60)
+    mydb$ions[i] <- paste(feat$adduct[idx], collapse = "; ")
+  }
+  colnames(mydb)[4:ncol(mydb)] <- paste(colnames(mydb)[4:ncol(mydb)], s, sep = "_")
+  assign(paste0("mydb_", s), mydb)
+}
+rm(s, i, feat, data, cmps, mydb, idx)
+
+mydb <- merge(mydb_tissues, 
+              mydb_maturation[,-which(colnames(mydb_maturation) %in% 
+                                        c("class", "formula"))], 
+              by = "compound", all = TRUE)
+idx <- which(is.na(mydb$class))
+for(i in seq(length(idx))){
+  i.idx <- which(mydb_maturation$compound == mydb$compound[idx[i]])
+  mydb$class[idx][i] <- mydb_maturation$class[i.idx]
+  mydb$formula[idx][i] <- mydb_maturation$formula[i.idx]
+}
+
+
+mydb$class <- factor(mydb$class, levels = c(
+  "FFA", "CAR", "CER", "PA", "mPA", "dmPA", "Lyso_PC", "PC", "Lyso_PE", "PE", "PG", "PI", "PS", 
+  "MGDG", "DGDG", "DAG", "TAG", "SM", "IS", 
+  "others", "unknown"))
+mydb <- mydb[order(mydb$class, #mydb$RT, 
+                   mydb$compound), ]
+DT::datatable(mydb[,-2], rownames = FALSE, options = list(pageLength = nrow(mydb)))
+
+write.csv(mydb, "output/ids_table.csv", row.names = FALSE)
+save("tissues_feat", "maturation_feat", "ids", file = "output/feat.RData")
+```
+
+# Graphs
+
+Classes of identified compounds:
+
+```{r graphs}
+col_class_cmps <- c("#E41A1C", "#974661", "#4A72A6", "#3E8E93", "#48A462", 
+                    "#5D995D", "#90CC90", "#7E6E85", "#A35390", "#D16948", 
+                    "#FF7F00", "#FFB716", "#FFF02D", "#E1C62F", "#B97B2A", 
+                    "#B75F49", "#DB728C", "#EC83BA", "#C28EA9", "#999999", 
+                    "#FFFFBF50", "tomato", "black", "white")
+names(col_class_cmps) <- c("FFA", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", 
+                           "PA", "mPA", "PC", "PE", "PG", 
+                           "PI", "PS", "CAR", "MAG", "CER", 
+                           "DAG", "DGDG", "Lyso_PC", "MGDG", "TAG", 
+                           "X", "others", "unknown", "IS")
+mydb$class2 <- mydb$class
+mydb$class2[grepl("d", mydb$compound)] <- "IS"
+mydb$class2[grepl("dmPA", mydb$compound)] <- "dmPA"
+mydb$class2 <- droplevels(mydb$class2)
+slices <- data.frame(table(mydb$class2))$Freq
+lbls <- paste0(data.frame(table(mydb$class2))$Var1, " (n=", 
+               data.frame(table(mydb$class2))$Freq, ", ",
+               round((data.frame(table(mydb$class2))$Freq/nrow(mydb))*100), "%)")
+pie(slices, lbls, 
+    col = col_class_cmps[as.character(data.frame(table(mydb$class2))$Var1)])
+
+fa <- mydb$compound[grepl("FA", mydb$compound) & mydb$class2 != "IS"]
+fa <- gsub(" .*", "", fa)
+fa <- gsub(".*_FA", "", fa)
+fa <- gsub("FFA", "", fa)
+fa <- unlist(strsplit(fa, "_"))
+
+slices <- data.frame(table(fa))$Freq
+lbls <- paste0(data.frame(table(fa))$fa, "(n=", 
+               data.frame(table(fa))$Freq, ", ",
+               round((data.frame(table(fa))$Freq/length(fa))*100), "%)")
+pie(slices, lbls)
+```
+
+# Deviations
 
 ```{r}
-my.features$rtmed <- my.features$rtmed/60
-my.features <- my.features[order(my.features$mzmed),]
-my.features$rtmed <- sprintf("%.2f", my.features$rtmed)
-my.features$mzmed <- sprintf("%.4f", my.features$mzmed)
+summary(tissues_feat$ppm[grep("N", rownames(tissues_feat))])
+summary(tissues_feat$rtdev[grep("N", rownames(tissues_feat))])
 
-my.features <- my.features[order(my.features$polarity, decreasing = T),]
-DT::datatable(my.features[,c("mzmed", "rtmed", "FG", "isotopes", "annotation", "MS2")])
-save.image(paste0("ID_", study, ".RData"))
+summary(tissues_feat$ppm[grep("P", rownames(tissues_feat))])
+summary(tissues_feat$rtdev[grep("P", rownames(tissues_feat))])
+
+
+
+summary(maturation_feat$ppm[grep("N", rownames(maturation_feat))])
+summary(maturation_feat$rtdev[grep("N", rownames(maturation_feat))])
+
+summary(maturation_feat$ppm[grep("P", rownames(maturation_feat))])
+summary(maturation_feat$rtdev[grep("P", rownames(maturation_feat))])
 ```
 
 
-```{r, eval=FALSE}
-cmps <- read.csv("compounds_RT_formula.csv")
-cmps$RT <- cmps$RT*60
-cmps$mass <- NA
-for(i in seq(nrow(cmps))){
-  cmps$mass[i] <- getMolecule(cmps$formula[i])$exactmass
+# RTs
+
+```{r rt}
+clas <- unique(mydb$class)
+clas <- clas[!clas %in% c("unknown", "others")]
+mydb$RT_tissues <- as.numeric(mydb$RT_tissues)
+mydb$RT_maturation <- as.numeric(mydb$RT_maturation)
+mydb$RT <- rowMeans(mydb[,grep("RT", colnames(mydb))], na.rm = T)
+for(i in seq(length(clas))){
+  i.db <- mydb[mydb$class == clas[i],]
+  if(nrow(i.db) > 1){
+    C <- gsub("H.*", "", i.db$formula)
+    C <- as.numeric(gsub("C", "", C))
+    db <- as.numeric(
+      gsub(" .*", "", gsub(".*:", "", 
+                           do.call(rbind, strsplit(i.db$compound, "_"))[,1])))
+    rt <- as.numeric(i.db$RT)
+    md <- lm(rt ~ C + db)
+    plot(rt, C, col = "white", 
+         main = paste0(
+           clas[i], "\n", "RT=", 
+           sprintf("%.3f", md$coefficients["(Intercept)"]),
+           "+ C*", sprintf("%.3f", md$coefficients["C"]), "+ db*",
+           sprintf("%.3f", md$coefficients["db"])))
+    text(rt, C, db)
+    dbx <- unique(db)
+    for(j in dbx){
+      idx <- which(db == j)
+      if(length(idx) > 1){
+        #  abline(lm(C[idx] ~ rt[idx]), lty = 3, col = "grey")
+        points(c(md$coefficients[1] + min(C):max(C)*md$coefficients[2] + 
+                   j*md$coefficients[3]), min(C):max(C), 
+               type = "l", lty = 3, col = "grey")
+      }
+    }
+  }
 }
-load(paste0(study, "/data/RData/MS2_library_POS.RData"))
-ms2_pos <- ms2
-load(paste0(study, "/data/RData/MS2_library_NEG.RData"))
-ms2 <- c(ms2, ms2_pos)
-my.dt_ids <- identification(features = my.features, cmps, MS2x = ms2, rt_d = 120)
-dt_fg <- my.dt_ids[["dt_fg"]]
-
-dt_fg$beh_grape <- NA
-dt_fg$beh_tissue <- NA
-ft <- my.dt_ids[["features"]]
-ft <- ft[!is.na(ft$FGx),]
-for(i in seq(nrow(dt_fg))){
-  tmp_grape <- data.frame(table(feat_grape$beh[
-    feat_grape$X %in% rownames(ft)[ft$FGx == dt_fg$FG[i]]]))
-  tmp_tissu <- data.frame(table(feat_tissu$beh[
-    feat_tissu$X %in% rownames(ft)[ft$FGx == dt_fg$FG[i]]]))
-  dt_fg$beh_grape[i] <- paste(tmp_grape$Var1[
-    tmp_grape$Freq == tmp_grape$Freq[which.max(tmp_grape$Freq)]], collapse = "; ")
-  dt_fg$beh_tissue[i] <- paste(tmp_tissu$Var1[
-    tmp_tissu$Freq == tmp_tissu$Freq[which.max(tmp_tissu$Freq)]], collapse = "; ")
-}
-
-dt_fg$check <- 0
-check <- read.csv("identifications_checked.csv")
-for(i in seq(nrow(check))){
-  i.idx <- unlist(matchWithPpm(getMolecule(check$formula[i])$exactmass, 
-                               dt_fg$mass, ppm = 10))
-  dt_fg$check[i.idx] <- 1
-}
-
-
-dt_fg <- dt_fg[order(#dt_fg$beh_grape, dt_fg$beh_tissue, 
-  as.numeric(dt_fg$RT)), ]
-library(DT)
-datatable(dt_fg[,-which(colnames(dt_fg) == "mass")], rownames = FALSE, 
-          options = list(pageLength = nrow(dt_fg), dom = 't')) %>% 
-  formatStyle("check", target = "row", 
-              backgroundColor = styleEqual(
-                c(0, 1), c('', 'lightblue')))
-save.image(paste0("ID_", study, ".RData"))
 ```
 
 
