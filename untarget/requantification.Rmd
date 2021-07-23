@@ -1,0 +1,222 @@
+---
+title: "Re-quantification"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
+```
+
+# Libraries
+
+```{r, message=FALSE}
+library(xcms)
+library(OrgMassSpecR)
+library(MetaboCoreUtils)
+```
+
+# Data import
+
+```{r}
+load("output/feat.RData")
+```
+
+
+# Re-quantification
+
+```{r, eval=FALSE}
+featureDefinitions(xdata)
+ft_chr <- featureChromatograms(xdata, features = "FT18", expandRt = 5)
+plot(ft_chr)
+abline(v=c(min(chromPeaks(ft_chr)[,"rtmin"]), max(chromPeaks(ft_chr)[,"rtmax"])))
+min(chromPeaks(ft_chr)[,"rtmin"])
+max(chromPeaks(ft_chr)[,"rtmax"])
+```
+
+
+```{r quanti}
+for(s in c("tissues", "maturation")){
+  if(!dir.exists(paste0("output/chr_", s))){
+    dir.create(paste0("output/chr_", s))
+  }
+  feat <- get(paste0(s, "_feat"))
+  cmps <- unique(feat$compound)
+  for(p in c("POS", "NEG")){
+    load(paste0(s, "/data/RData/data_XCMS_", p, ".RData"))
+    assign(paste0("ydata_", p), xdata)
+    xdata <- list.files(paste0(s, "/data/", p, "_FS_fixed/"))
+    if(s == "tissues"){
+      xdata <- xdata[grep(paste(c("seeds", "pulp", "skin", "entire", "QC"), 
+                                collapse = "|"), xdata)]
+    } else if(s == "maturation"){
+      xdata <- xdata[grep(paste(c("Pt", "QC"), collapse = "|"), xdata)]
+      xdata <- xdata[!grepl(("MIX"), xdata)]
+    }
+    xdata <- xdata[!grepl("QCeq", xdata)]
+    xdata <- readMSData(paste0(s, "/data/", p, "_FS_fixed/", xdata), 
+                        mode = "onDisk")
+    assign(paste0("xdata_", p), xdata)
+  }
+  
+  data2 <- matrix(nrow = length(fileNames(xdata)), ncol = length(cmps))
+  if(s == "tissues"){
+    tmp <- unlist(substring(basename(fileNames(xdata)), 25, 40))
+    tmp <- gsub("xx00_", "", tmp)
+    tmp <- gsub("_N|_P|_NEG|_POS", "", tmp)
+    idx <- grepl("_$", tmp)
+    tmp[idx] <- unlist(substring(tmp[idx], 1, 15))
+  } else if(s == "maturation"){
+    tmp <- unlist(substring(basename(fileNames(xdata)), 17, 28))
+    tmp <- gsub("xx_00_xQC_", "QC", tmp)
+    tmp <- gsub("Rep_", "", tmp)
+    tmp <- gsub("Pt_", "Pt", tmp)
+  }
+  
+  rownames(data2) <- tmp
+  colnames(data2) <- cmps
+  
+  col_smpl <- rep("grey", length(fileNames(xdata)))
+  col_smpl[grep("skin", fileNames(xdata))] <- "#377EB8"
+  col_smpl[grep("pulp", fileNames(xdata))] <- "#4DAF4A"
+  col_smpl[grep("seeds", fileNames(xdata))] <- "#984EA3"
+  col_smpl[grep("entire", fileNames(xdata))] <- "#A65628"
+  col_smpl[grep("QCdl_02uL", fileNames(xdata))] <- "#FFFFB2"
+  col_smpl[grep("QCdl_05uL", fileNames(xdata))] <- "#FED976"
+  col_smpl[grep("QCdl_10uL", fileNames(xdata))] <- "#FEB24C"
+  col_smpl[grep("QCrw_02uL", fileNames(xdata))] <- "#FD8D3C"
+  col_smpl[grep("QCrw_05uL", fileNames(xdata))] <- "#F03B20"
+  col_smpl[grep("QCrw_10uL", fileNames(xdata))] <- "#BD0026"
+  col_smpl[grep("Pt_01", fileNames(xdata))] <- "#EFF3FF"
+  col_smpl[grep("Pt_02", fileNames(xdata))] <- "#C6DBEF"
+  col_smpl[grep("Pt_03", fileNames(xdata))] <- "#9ECAE1"
+  col_smpl[grep("Pt_04", fileNames(xdata))] <- "#6BAED6"
+  col_smpl[grep("Pt_05", fileNames(xdata))] <- "#4292C6"
+  col_smpl[grep("Pt_06", fileNames(xdata))] <- "#2171B5"
+  col_smpl[grep("Pt_07", fileNames(xdata))] <- "#084594"
+  col_smpl[grep("Pt_08", fileNames(xdata))] <- "#9E9AC8"
+  col_smpl[grep("Pt_09", fileNames(xdata))] <- "#807DBA"
+  col_smpl[grep("Pt_10", fileNames(xdata))] <- "#6A51A3"
+  col_smpl[grep("Pt_11", fileNames(xdata))] <- "#54278F"
+  col_smpl[grep("Pt_12", fileNames(xdata))] <- "#3F007D"
+  col_smpl[grep("Pt_13", fileNames(xdata))] <- "#3F007D"
+  
+  for(i in seq(length(cmps))){
+    if(!cmps[i] %in% c(
+      "PA36:2_FA18:0_18:2", "TAG56:6_FA18:3_18:3_20:0", "Unk-059 (I)", "Unk-109")){
+      i.class <- ids$class[ids$compound == cmps[i]]
+      if(i.class %in% c("PA", "mPA", "PE", "PI")){
+        i.add <- "[M-H]-"
+      } else if(i.class %in% c("MGDG", "DGDG")){
+        i.add <- "[M-H+HCOOH]-"
+      } else if(i.class %in% c("PC", "CAR")){
+        i.add <- "[M+H]+"
+      } else if(i.class %in% c("DAG", "TAG")){
+        i.add <- "[M+NH4]+"
+      } else if(cmps[i] %in% c(
+        "(Epi)catechin", "Malic acid",
+        "Unk-006", "Unk-007", "Unk-008", "Unk-017", "Unk-036", "Unk-037", 
+        "Unk-044", "Unk-054", "Unk-066", "Unk-109")){
+        i.add <- "[M-H]-"
+      } else if(cmps[i] %in% c(
+        "Unk-003", "Unk-004", "Unk-009", "Unk-016", "Unk-018", "Unk-019 (I)", 
+        "Unk-019 (II)", "Unk-113")){
+        i.add <- "[M-H+HCOOH]-"
+      } else if(cmps[i] %in% c("Unk-001 (22:1)", "Unk-002", "Unk-012", "Unk-013", 
+                               "Unk-014", "Unk-015 (23:2_24:1)	")){
+        i.add <- "[M+H]+"
+      } else if(cmps[i] %in% c("Unk-010", "Unk-011")){
+        i.add <- "[M+NH4]+"
+      } else if(i.class == "unknown"){
+        i.add <- "[M+H]+"
+      }
+      i.fml <- ids$formula[ids$compound == cmps[i]]
+      if(grepl("D", i.fml)){
+        i.mass <- Rdisop::getMolecule(i.fml)$exactmass
+      } else if(!grepl("C", i.fml)){
+        i.mass <- as.numeric(i.fml)
+      } else {
+        i.mass <- MonoisotopicMass(formula = ListFormula(i.fml))
+      }
+      tmp <- feat[feat$compound == cmps[i], ]
+      if(!any(tmp$adduct %in% i.add)){
+        i.add <- tmp$adduct[1]
+      }
+      
+      if(grepl("]-", i.add)){
+        ydata <- ydata_NEG
+        xdata <- xdata_NEG
+      } else if(grepl("]+", i.add)){
+        ydata <- ydata_POS
+        xdata <- xdata_POS
+      }
+      ft_chr <- featureChromatograms(
+        ydata, features = gsub("P|N", "FT", rownames(tmp)[tmp$adduct == i.add]))
+      if(i.add == "[M-H+HCOOH]-"){
+        i.add <- "[M+CHO2]-"
+      }
+      i.cmp <- matrix(c(unlist(mass2mz(i.mass, i.add) + 0.01 * c(-1, 1)),
+                        min(chromPeaks(ft_chr)[,"rtmin"]),
+                        max(chromPeaks(ft_chr)[,"rtmax"])), nrow = 1)
+      if(!is.na(ids[ids$compound == cmps[i], paste0(substr(s, 1, 1), "_min")])){
+        i.cmp[,3] <- as.numeric(ids[ids$compound == cmps[i], 
+                                    paste0(substr(s, 1, 1), "_min")])*60
+      }
+      if(!is.na(ids[ids$compound == cmps[i], paste0(substr(s, 1, 1), "_max")])){
+        i.cmp[,4] <- as.numeric(ids[ids$compound == cmps[i], 
+                                    paste0(substr(s, 1, 1), "_max")])*60
+      }
+      colnames(i.cmp) <- c("mzmin", "mzmax", "rtmin", "rtmax")
+      
+      register(SerialParam())
+      pks <- manualChromPeaks(xdata,
+                              chromPeaks = i.cmp,
+                              samples = seq_along(fileNames(xdata)),
+                              BPPARAM = bpparam(),
+                              msLevel = 1L)
+      if(!paste0(gsub(":", "_", cmps[i]), ".jpeg") %in% list.files(
+        paste0("output/chr_", s, "/"))){
+        jpeg(paste0("output/chr_", s, "/", gsub(":", "_", cmps[i]), ".jpeg"))
+        chr <- chromatogram(xdata, 
+                            mz = i.cmp[,1:2], rt = i.cmp[,3:4] + 10 * c(-1,1))
+        plot(chr, col = col_smpl, xaxt = "n")
+        axis(1, at = seq(0, 60*30, 3), labels = sprintf("%.2f", seq(0, 30, 3/60))) 
+        abline(v=i.cmp[,3:4])
+        dev.off()
+      }
+      pks <- data.frame(chromPeaks(pks))
+      if(s == "tissues"){
+        tmp <- unlist(substring(basename(fileNames(xdata)), 25, 40))
+        tmp <- gsub("xx00_", "", tmp)
+        tmp <- gsub("_N|_P|_NEG|_POS", "", tmp)
+        idx <- grepl("_$", tmp)
+        tmp[idx] <- unlist(substring(tmp[idx], 1, 15))
+      } else if(s == "maturation"){
+        tmp <- unlist(substring(basename(fileNames(xdata)), 17, 28))
+        tmp <- gsub("xx_00_xQC_", "QC", tmp)
+        tmp <- gsub("Rep_", "", tmp)
+        tmp <- gsub("Pt_", "Pt", tmp)
+      }
+      pks$smpl <- tmp[pks$sample]
+      data2[pks$smpl, cmps[i]] <- pks$into
+    }
+  } # close cmp "i"
+  
+  
+  write.csv(data2, paste0(s, "/data/data_quanti.csv"))
+} # close study "s"
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```

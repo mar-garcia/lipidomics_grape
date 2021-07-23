@@ -37,6 +37,10 @@ matchWithPpm <- function(x, y, ppm = 0) {
     which(abs(z - y) <= (.ppm(z, ppm)) + 1e-9)
   }, ppm = force(ppm))
 }
+
+if(!dir.exists("output")){
+  dir.create("output/")
+}
 ```
 
 
@@ -101,125 +105,132 @@ for(i in seq(nrow(ids))){
     j.mass <- MonoisotopicMass(formula = ListFormula(ids$formula[i]))
   }
   i.class <- ids$class[i]
-  #if(i.class == "FFA"){
-  #  i.ions <- c("[M-H]-", "[M-H+HCOOH]-", "13C[M-H+HCOOH]-")
-  #}else if(i.class == "CAR"){
-  #  i.ions <- c("[M+H]+", "13C[M+H]+"," 2(13C)[M+H]+", 
-  #              "[M-H+HCOOH]-", "13C[M-H+HCOOH]-")
-  #  if(ids$compound[i] == "CAR24:0_d4"){
-  #    i.ions <- c(i.ions, "[24:0_d4-H]-")
-  #  }
-  #} else if(i.class == "CER"){
-  #  i.ions <- c("[M+H]+", "[M-H+HCOOH]-")
-  #} else if(i.class == "Lyso_PC"){
-  #  i.ions <- c("[M+H]+", "13C[M+H]+", 
-  #              "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", "[M-H-CH2]-")
-  #} else if(i.class %in% c("Lyso_PE", "Lyso_PG")){
-  #  i.ions <- c("[M+H]+", "[M-H]-")
-  #} else 
-  if(i.class %in% c("PA", "mPA", "dmPA")) {
+  if(i.class == "FFA"){
+    i.ions <- c("[M-H]-", "[M-H+HCOOH]-", "13C[M-H+HCOOH]-")
+  }else if(i.class == "CAR"){
+    i.ions <- c("[M+H]+", "13C[M+H]+"," 2(13C)[M+H]+", 
+                "[M-H+HCOOH]-"#, "13C[M-H+HCOOH]-"
+    )
+    if(ids$compound[i] == "CAR24:0_d4"){
+      i.ions <- c(i.ions, "[24:0_d4-H]-")
+    }
+  } else if(i.class == "CER"){
+    i.ions <- c("[M+H]+", "[M-H+HCOOH]-")
+  } else if(i.class == "Lyso_PC"){
+    i.ions <- c("[M+H]+", #"13C[M+H]+", 
+                "[M-H+HCOOH]-"#, "13C[M-H+HCOOH]-", "[M-H-CH2]-"
+    )
+  } else if(i.class %in% c("Lyso_PE", "Lyso_PG")){
+    i.ions <- c("[M+H]+", "[M-H]-")
+  } else if(i.class %in% c("PA", "mPA", "dmPA")) {
     i.ions <- c(
       #    "[M+H]+", "13C[M+H]+",
-      "[M+NH4]+", #"13C[M+NH4]+", "2(13C)[M+NH4]+", "3(13C)[M+NH4]+",
-      #    "[M+C2H8N]+", "13C[M+C2H8N]+", 
+      "[M+NH4]+", "13C[M+NH4]+", #"2(13C)[M+NH4]+", #"3(13C)[M+NH4]+",
+      #    "[M+C2H8N]+", #"13C[M+C2H8N]+", 
       #    "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", "3(13C)[2M+H]+", "4(13C)[2M+H]+",
-      #    "[2M+NH4]+","13C[2M+NH4]+","2(13C)[2M+NH4]+"," 3(13C)[2M+NH4]+", "4(13C)[2M+NH4]+",
+      "[2M+NH4]+", "13C[2M+NH4]+", #"2(13C)[2M+NH4]+", #"3(13C)[2M+NH4]+", "4(13C)[2M+NH4]+",
       #    "[2M+C2H8N]+", "13C[2M+-C2H8N]+", "2(13C)[2M+C2H8N]+",
-      "[M-H]-"#, "13C[M-H]-", "2(13C)[M-H]-", "3(13C)[M-H]-",
+      "[M-H]-", "13C[M-H]-", "2(13C)[M-H]-", #"3(13C)[M-H]-",
       #    "[M-H+HCOOH]-",
-      #    "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-", "3(13C)[2M-H]-",
-      #    "[2M-H-CH2]-", "13C[2M-H-CH2]-", "2(13C)[2M-H-CH2]-", "3(13C)[2M-H-CH2]-"
+      "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-", "3(13C)[2M-H]-",
+      "[2M-CH3]-", "13C[2M-CH3]-"#, "2(13C)[2M-CH3]-", "3(13C)[2M-CH3]-"
     )
     #  if(i.class == "PA"){
     #    i.ions <- c(i.ions, "[M+H-PA]+", "13C[M+H-PA]+")
-    #  }else if(i.class == "mPA"){
+    #  }else 
+    #if(i.class == "mPA"){
     #    i.ions <- c(i.ions, "[M+H-mPA]+")
     #  }
   } else if(i.class == "PC"){
     i.ions <- c(
-      "[M+H]+", "13C[M+H]+", #"2(13C)[M+H]+", "3(13C)[M+H]+", "[M+Na]+", 
-      #    "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", "3(13C)[2M+H]+", 
-      "[M-H+HCOOH]-", "13C[M-H+HCOOH]-"#, "2(13C)[M-H+HCOOH]-", "3(13C)[M-H+HCOOH]-", 
-      #    "[2M-H+HCOOH]-", "13C[2M-H+HCOOH]-", "2(13C)[2M-H+HCOOH]-", 
-      #    "[M-CH3]-", "13C[M-H-CH3]-"
+      "[M+H]+", "13C[M+H]+", "2(13C)[M+H]+", "3(13C)[M+H]+", #"[M+Na]+", 
+      "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", #"3(13C)[2M+H]+", 
+      "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", "2(13C)[M-H+HCOOH]-", #"3(13C)[M-H+HCOOH]-", 
+      "[2M-H+HCOOH]-", "13C[2M-H+HCOOH]-", #"2(13C)[2M-H+HCOOH]-", 
+      "[M-CH3]-"#, "13C[M-H-CH3]-"
     )
   } else if(i.class == "PE"){
     i.ions <- c(
-      #    "[M+H]+", "13C[M+H]+", "2(13C)[M+H]+", "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", 
-      "[M-H]-"#, "13C[M-H]-", "2(13C)[M-H]-", "3(13C)[M-H]-", "[M-H+HCOONa]-", 
-      #    "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-"
+      "[M+H]+", "13C[M+H]+", "2(13C)[M+H]+", 
+      "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", 
+      "[M-H]-", "13C[M-H]-", "2(13C)[M-H]-", #"3(13C)[M-H]-", 
+      "[M-H+HCOONa]-", 
+      "[2M-H]-", "13C[2M-H]-"#, "2(13C)[2M-H]-"
     )
-    #} else if(i.class == "PG"){
-    #  i.ions <- c("[M+NH4]+", "13C[M+NH4]+", "[M-H]-", "13C[M-H]-")
+  } else if(i.class == "PG"){
+    i.ions <- c("[M+NH4]+", "13C[M+NH4]+", 
+                "[M-H]-", "13C[M-H]-")
   } else if(i.class == "PI"){
     i.ions <- c(
       #    "[M+H]+", 
-      #    "[M+NH4]+","13C[M+NH4]+", "2(13C)[M+NH4]+",  "3(13C)[M+NH4]+", "[M+NH4-PI]+", 
+      "[M+NH4]+", "13C[M+NH4]+", #"2(13C)[M+NH4]+",  "3(13C)[M+NH4]+", "[M+NH4-PI]+", 
       #    "[M+C2H8N]+", 
       #    "[2M+NH4]+", "13C[2M+NH4]+","2(13C)[2M+NH4]+", 
-      "[M-H]-"#, "13C[M-H]-", "2(13C)[M-H]-", "3(13C)[M-H]-", 
-      #    "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-", "3(13C)[2M-H]-"
+      "[M-H]-", "13C[M-H]-", "2(13C)[M-H]-", #"3(13C)[M-H]-", 
+      "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-"#, "3(13C)[2M-H]-"
     )
-    #} else if(i.class == "PS"){
-    #  i.ions <- c("[M+H]+", "[M-H]-", "13C[M-H]-")
-    #} else if(i.class == "SM"){
-    #  i.ions <- c("[M+H]+"," 13C[M+H]+", "[M-H+HCOOH]-")
+  } else if(i.class == "PS"){
+    i.ions <- c("[M+H]+", "[M-H]-", "13C[M-H]-")
+  } else if(i.class == "SM"){
+    i.ions <- c("[M+H]+"," 13C[M+H]+", "[M-H+HCOOH]-")
   } else if(i.class %in% c("MGDG", "DGDG")){
     i.ions <- c(
-      #    "2(13C)[M+H]+", "[M+NH4]+", "13C[M+NH4]+", "2(13C)[M+NH4]+", "3(13C)[M+NH4]+", 
-      #    "[M+Na]+", "13C[M+Na]+", 
+      #    "2(13C)[M+H]+", 
+      "[M+NH4]+", "13C[M+NH4]+", "2(13C)[M+NH4]+", #"3(13C)[M+NH4]+", 
+      "[M+Na]+", #"13C[M+Na]+", 
       #    "[M+C2H8N]+", "13C[M+C2H8N]+",
       #    "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", 
       #    "[2M+Na]+", "13C[2M+Na]+", "2(13C)[2M+Na]+",
-      #    "[M-H]-", "13C[M-H]", 
-      "[M-H+HCOOH]-"#, "13C[M-H+HCOOH]-", "2(13C)[M-H+HCOOH]-", "3(13C)[M-H+HCOOH]-"
+      "[M-H]-", "13C[M-H]", 
+      "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", "2(13C)[M-H+HCOOH]-"#, "3(13C)[M-H+HCOOH]-"
     )
   } else if(i.class == "DAG"){
     i.ions <-c(
       #             "[M+H]+", "13C[M+H]+",
-      "[M+NH4]+", "13C[M+NH4]+"#, "2(13C)[M+NH4]+", "3(13C)[M+NH4]+", 
-      #             "[M+Na]+", "13C[M+Na]+", "2(13C)[M+Na]+", 
-      #             "[M+C2H8N]+","13C[M+C2H8N]+", 
+      "[M+NH4]+", "13C[M+NH4]+", "2(13C)[M+NH4]+", #"3(13C)[M+NH4]+", 
+      "[M+Na]+", #"13C[M+Na]+", "2(13C)[M+Na]+", 
+      #"[M+C2H8N]+", #"13C[M+C2H8N]+", 
       #             "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", "3(13C)[2M+NH4]+",
       #             "[2M+Na]+", "13C[2M+Na]+", 
       #             "[M+H-H2O]+", "13C[M+H-H2O]+".
-      #    "[M-H+HCOOH]-", "13C[M-H+HCOOH]-","2(13C)[M-H+HCOOH]-",[2M-H+HCOOH]-", "13C[2M-H+HCOOH]-", "2(13C)[2M-H+HCOOH]-"
+      "[M-H+HCOOH]-"#, "13C[M-H+HCOOH]-","2(13C)[M-H+HCOOH]-",[2M-H+HCOOH]-", "13C[2M-H+HCOOH]-", "2(13C)[2M-H+HCOOH]-"
     )
   } else if(i.class == "TAG"){
     i.ions <- c(
-      "[M+NH4]+", "13C[M+NH4]+", "2(13C)[M+NH4]+"#, "3(13C)[M+NH4]+", 
+      "[M+NH4]+", "13C[M+NH4]+", "2(13C)[M+NH4]+", "3(13C)[M+NH4]+", 
       #    "4(13C)[M+NH4]+", "5(13C)[M+NH4]+", 
       #    "[M+Na]+", "13C[M+Na]+", 
-      #    "[M+C2H8N]+", "13C[M+C2H8N]+", 
-      #    "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", "3(13C)[2M+NH4]+", 
+      #"[M+C2H8N]+", #"13C[M+C2H8N]+", 
+      "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", "3(13C)[2M+NH4]+", 
       #    "4(13C)[2M+NH4]+",
-      #    "[2M+C2H6N]+", "13C[2M+C2H6N]+", "2(13C)[2M+C2H6N]+", "3(13C)[2M+C2H6N]+",
+      "[2M+C2H6N]+", "13C[2M+C2H6N]+", "2(13C)[2M+C2H6N]+", "3(13C)[2M+C2H6N]+"#,
       #    "4(13C)[2M+C2H6N]+", 
       #    "[2M+C2H8N]+", "13C[2M+C2H8N]+"
     )
   } else if(i.class == "others"){
-    i.ions <- c(
-      #"[M+H]+",
-      "[M-H]-"#, "13C[M-H]-", "[2M-H]-", "[M-H-CO2]-", "[M-H-H2O]-"
-    )
+    i.ions <- c("[M+H]+", "[M-H]-", "13C[M-H]-", "[2M-H]-")
+    if(grepl("catechin", ids$compound[i])){
+      i.ions <- c(i.ions, "[M-H-CO2]-")
+    }else if(ids$compound[i] == "Malic acid"){
+      i.ions <- c(i.ions, "[M-H-H2O]-")
+    }
   } else if(i.class == "unknown"){
     i.ions <- c(
-      #    "[M+H]+", "13C[M+H]+", "2(13C)[M+H]+", "3(13C)[M+H]+", 
-      #    "[M+NH4]+", "13C[M+NH4]+", "2(13C)[M+NH4]+", 
+      "[M+H]+", "13C[M+H]+", "2(13C)[M+H]+", "3(13C)[M+H]+", 
+      "[M+NH4]+", "13C[M+NH4]+", "2(13C)[M+NH4]+", 
       #    "[M+Na]+", "13C[M+Na]+", 
-      #    "[M+C2H8N]+", "13C[M+C2H8N]+", 
-      #    "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", "3(13C)[2M+H]+", 
-      #    "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", "3(13C)[2M+NH4]+", 
+      "[M+C2H8N]+", "13C[M+C2H8N]+", 
+      "[2M+H]+", "13C[2M+H]+", "2(13C)[2M+H]+", #"3(13C)[2M+H]+", 
+      "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", #"3(13C)[2M+NH4]+", 
       #    "[2M+2Na-H]+", "13C[2M+2Na-H]+", "2(13C)[2M+2Na-H]+", 
-      #    "[2M+C2H8N]+", "13C[2M+C2H8N]+", 
-      "[M-H]-", "13C[M-H]-", #"2(13C)[M-H]-", "3(13C)[M-H]-", 
-      #    "[M+Cl]-", 
-          "[M-H+HCOOH]-"#, "13C[M-H+HCOOH]-", "2(13C)[M-H+HCOOH]-", "3(13C)[M-H+HCOOH]", 
+      "[2M+C2H8N]+", "13C[2M+C2H8N]+", 
+      "[M-H]-", "13C[M-H]-", "2(13C)[M-H]-", #"3(13C)[M-H]-", 
+      "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", "2(13C)[M-H+HCOOH]-", #"3(13C)[M-H+HCOOH]", 
       #    "[M-H+HCOONa]-", 
-      #    "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-", 
-      #    "[2M-H+HCOOH]-", "13C[2M-H+HCOOH]-", "2(13C)[2M-H+HCOOH]-", "3(13C)[M-H+HCOOH]-", 
-      #    "[2M+Na-2H]-", "13C[2M+Na-2H]-", "2(13C)[2M+Na-2H]-", 
-      #    "[3M+Na-2H]-", "13C[3M+Na-2H]-", "2(13C)[3M+Na-2H]-", "3(13C)[3M+Na-2H]-"
+      "[2M-H]-", "13C[2M-H]-", "2(13C)[2M-H]-", 
+      "[2M-H+HCOOH]-", #"13C[2M-H+HCOOH]-", "2(13C)[2M-H+HCOOH]-", "3(13C)[M-H+HCOOH]-", 
+      "[2M+Na-2H]-", "13C[2M+Na-2H]-", "2(13C)[2M+Na-2H]-", 
+      "[3M+Na-2H]-", "13C[3M+Na-2H]-", "2(13C)[3M+Na-2H]-", "3(13C)[3M+Na-2H]-"
     )
   }
   
@@ -287,9 +298,7 @@ for(i in seq(nrow(ids))){
       }
     } else if(grepl("-mPA", j.add)){
       j.mz <- j.mass - getMolecule("H2PO4CH2")$exactmass
-    } else if(grepl("-CH3", j.add)){
-      j.mz <- j.mass - getMolecule("CH3")$exactmass
-    } else if(grepl("-CH2", j.add)){
+    } else if(grepl("-CH3|-CH2", j.add)){
       if(grepl("2M", j.add)){
         j.mz <- j.mass*2 - getMolecule("CH3")$exactmass
       } else {
@@ -326,6 +335,31 @@ for(i in seq(nrow(ids))){
                               i.ions[j], i.pol)
   }
 }
+ions.exclude <- rbind(
+  c("Unk-104", "2(13C)[M-H]-"),
+  c("Unk-104", "2(13C)[M-H+HCOOH]-"),
+  c("Unk-104", "2(13C)[M+NH4]+")
+)
+idx <- which(paste(ions$compound, ions$adduct) %in% 
+               paste(ions.exclude[,1], ions.exclude[,2]))
+ions <- ions[-idx,]
+ions.include <- rbind(
+  c("PA",  "PA34:2_FA16:0_18:2", 16.21, 692.5136, "2(13C)[M+NH4]+", "POS"),
+  c("mPA", "mPA36:4_FA18:2_18:2", 15.72, 756.554330807, "[M+C2H8N]+", "POS"),
+  c("DAG", "DAG36:4_FA18:2_18:2", 17.60, 662.572349812, "[M+C2H8N]+", "POS"),
+  c("TAG", "TAG54:3_FA18:1_18:1_18:1", 21.82, 100.3140, "[+]", "POS"),
+  c("TAG", "TAG54:3_FA18:1_18:1_18:1", 21.82, 100.4249, "[+]", "POS"),
+  c("TAG", "TAG54:4_FA18:1_18:1_18:2", 21.57, 100.0900, "[+]", "POS"),
+  c("TAG", "TAG54:4_FA18:1_18:1_18:2", 21.57, 100.2015, "[+]", "POS"),
+  c("TAG", "TAG54:6_FA18:2_18:2_18:2", 21.37, 896.7702, "[M+NH4]+", "POS"), #tail
+  c("TAG", "TAG54:8_FA18:2_18:3_18:3", 20.40, 920.770715352, "[M+C2H8N]+", "POS"),
+  c("unknown", "Unk-003", 18.55, 878.6477, "[M+Cl]-", "NEG"),
+  c("unknown", "Unk-037", 13.98, 221.1547, "[14:3-H]-", "NEG"),
+  c("unknown", "Unk-054", 15.39, 311.2956, "[20:0-H]-", "NEG"),
+  c("unknown", "Unk-109", 16.41, 339.3269, "[22:0-H]-", "NEG")
+)
+colnames(ions.include) <- colnames(ions)
+ions <- rbind(ions, ions.include)
 ions$RT <- as.numeric(ions$RT)
 ions$mz <- as.numeric(ions$mz)
 rm(i, i.ions, i.pol, j, j.mass, j.add, j.mz, sn)
@@ -335,6 +369,7 @@ rm(i, i.ions, i.pol, j, j.mass, j.add, j.mz, sn)
 ## Feature matching
 
 ```{r feats}
+load("../../R/ann_order.RData")
 for(s in c("tissues", "maturation")){
   feat <- get(paste(s, "feat", sep = "_"))
   feat$class <- NA
@@ -358,7 +393,7 @@ for(s in c("tissues", "maturation")){
     if(length(idx) > 1){
       if(length(unique(gsub(" .*|_.*", "", ions$compound[idx]))) > 1){
         print(paste(s, "feat", i, "- ULL!! Check ion", 
-                    round(ions$mz[idx][1], 5), "(can be",
+                    round(ions$mz[idx][1], 5), "@", round(ions$RT[idx][1], 2), "(can be",
                     paste(ions$compound[idx], collapse = " - "), ")"))
       }
       idx <- idx[which.min(abs(feat$rtmed[i] - ions$RT[idx]*60) )]
@@ -371,7 +406,8 @@ for(s in c("tissues", "maturation")){
       feat$rtdev[i] <- feat$rtmed[i]/60 - ions$RT[idx]
     }
   }
-  feat <- feat[order(rownames(feat)),]
+  feat$adduct <- factor(feat$adduct, levels = ann)
+  feat <- feat[order(feat$compound, feat$adduct),]
   feat$class[is.na(feat$class)] <- "X"
   assign(paste(s, "feat", sep = "_"), feat)
 }
@@ -396,7 +432,7 @@ for(s in c("tissues", "maturation")){
   for(i in seq(nrow(mydb))){
     idx <- which(feat$compound == cmps[i])
     mydb$class[i] <- unique(feat$class[idx])
-    mydb$formula[i] <- ids$formula[ids$compound == feat$compound[idx][1]]
+    mydb$formula[i] <- unique(ids$formula[ids$compound == feat$compound[idx][1]])
     mydb$RT[i] <- sprintf("%.2f", mean(as.numeric(feat$rtmed[idx]))/60)
     mydb$ions[i] <- paste(feat$adduct[idx], collapse = "; ")
   }
@@ -418,7 +454,8 @@ for(i in seq(length(idx))){
 
 
 mydb$class <- factor(mydb$class, levels = c(
-  "FFA", "CAR", "CER", "PA", "mPA", "dmPA", "Lyso_PC", "PC", "Lyso_PE", "PE", "PG", "PI", "PS", 
+  "FFA", "CAR", "CER", "PA", "mPA", "dmPA", "Lyso_PC", "PC", "Lyso_PE", "PE", 
+  "PG", "PI", "PS", 
   "MGDG", "DGDG", "DAG", "TAG", "SM", "IS", 
   "others", "unknown"))
 mydb <- mydb[order(mydb$class, #mydb$RT, 
@@ -497,12 +534,13 @@ mydb$RT_maturation <- as.numeric(mydb$RT_maturation)
 mydb$RT <- rowMeans(mydb[,grep("RT", colnames(mydb))], na.rm = T)
 for(i in seq(length(clas))){
   i.db <- mydb[mydb$class == clas[i],]
+  i.db$compound <- gsub("_d", "d", i.db$compound)
   if(nrow(i.db) > 1){
     C <- gsub("H.*", "", i.db$formula)
     C <- as.numeric(gsub("C", "", C))
     db <- as.numeric(
-      gsub(" .*", "", gsub(".*:", "", 
-                           do.call(rbind, strsplit(i.db$compound, "_"))[,1])))
+      gsub("d7|d4", "", gsub(" .*", "", gsub(".*:", "", 
+                                             do.call(rbind, strsplit(i.db$compound, "_"))[,1]))))
     rt <- as.numeric(i.db$RT)
     md <- lm(rt ~ C + db)
     plot(rt, C, col = "white", 
@@ -512,6 +550,16 @@ for(i in seq(length(clas))){
            "+ C*", sprintf("%.3f", md$coefficients["C"]), "+ db*",
            sprintf("%.3f", md$coefficients["db"])))
     text(rt, C, db)
+    idx <- grep("d7|d4", i.db$compound)
+    if(length(idx) > 0){
+      text(rt[idx], C[idx], db[idx], col = "skyblue")
+    }
+    rm(idx)
+    idx <- which(abs(rt - (md$coefficients[1] + md$coefficients[2]*C + md$coefficients[3]*db)) > 1)
+    if(length(idx) > 0){
+      text(rt[idx], C[idx], db[idx], col = "red")
+    }
+    rm(idx)
     dbx <- unique(db)
     for(j in dbx){
       idx <- which(db == j)
@@ -521,6 +569,7 @@ for(i in seq(length(clas))){
                    j*md$coefficients[3]), min(C):max(C), 
                type = "l", lty = 3, col = "grey")
       }
+      rm(idx)
     }
   }
 }

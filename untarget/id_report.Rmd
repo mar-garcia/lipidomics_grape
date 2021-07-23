@@ -1,0 +1,215 @@
+---
+output:
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+# Main data
+
+```{r data, echo = FALSE, warning = FALSE, message = FALSE}
+data[i,c(1,3)]
+data[i,4:5]
+data[i,6:7]
+```
+
+# EIC
+
+```{r eic, echo = FALSE, warning = FALSE, message = FALSE}
+if(grepl("D", data$formula[i])){
+  i.mass <- getMolecule(data$formula[i])$exactmass
+} else if(!grepl("C", data$formula[i])){
+  i.mass <- as.numeric(data$formula[i])
+} else {
+  i.mass <- MonoisotopicMass(formula = ListFormula(data$formula[i]))
+}
+l <- htmltools::tagList()
+for(j in 1:4){
+  p <- cmb[1,j]
+  s <- cmb[2,j]
+  i.mz <- as.numeric(mass2mz(i.mass, ions.main[ions.main$class == data$class[i], p]))
+  xdata <- get(paste0("xdata_", s, "_", p))
+  i.chr <- chromatogram(xdata, mz = (i.mz + 0.01 * c(-1, 1)))
+  i.rt <- rtime(i.chr[[1]])/60
+  i.int <- intensity(i.chr[[1]])
+  m <- plot_ly(x = i.rt, y = i.int) %>% 
+    add_lines() %>% 
+    layout(xaxis = list(range = c(0, 30)), 
+           title = paste(
+             s, p, "-",
+             "EIC of m/z", sprintf("%.5f", i.mz), "@", 
+             data$compound[i], ions.main[ions.main$class == data$class[i], p]))
+  i.int[is.na(i.int)] <- 0
+  if(!is.na(data[i, paste0("RT_", s)])){
+    tmp <- names(which.max(i.int[i.rt > (data[i,paste0("RT_", s)] - 5/60) &
+                                   i.rt < (data[i,paste0("RT_", s)] + 5/60)]))
+  } else {
+    tmp <- names(which.max(i.int[
+      i.rt > (mean(c(data$RT_tissues[i], data$RT_maturation[i]), na.rm = T) - 5/60) &
+        i.rt < (mean(c(data$RT_tissues[i], data$RT_maturation[i]), na.rm = T) + 5/60)]
+    ))
+  }
+  l[[j]] <- m %>% add_markers(x = i.rt[tmp], y = i.int[tmp])
+}
+l
+```
+
+
+## Peak shape
+
+```{r ps, echo = FALSE, warning = FALSE, message = FALSE}
+for(j in 1:4){
+  p <- cmb[1,j]
+  s <- cmb[2,j]
+  feat <- get(paste0(s, "_feat"))
+  i.ft <- feat[feat$compound == data$compound[i],]
+  if(p == "NEG"){
+    i.ft <- i.ft[grepl("]-", i.ft$adduct),]
+  } else if (p == "POS"){
+    i.ft <- i.ft[!grepl("]-", i.ft$adduct),]
+  }
+  if(nrow(i.ft) > 1){
+    i.col <- RColorBrewer::brewer.pal(9, "Set1")
+    xdata <- get(paste0("xdata_", s, "_", p))
+    i.mz <- i.ft$mzmed[1]
+    i.chr <- chromatogram(xdata, mz = (i.mz + 0.01 * c(-1, 1)))
+    plot(rtime(i.chr[[1]])/60, 
+         intensity(i.chr[[1]])/max(intensity(i.chr[[1]]), na.rm = T),
+         col = i.col[1], type = "l", xlim = mean(i.ft$rtmed)/60 + 0.5 * c(-1,1), 
+         xlab = "RT", ylab = "intensity",
+         main = paste(s, p))
+    for(k in 2:nrow(i.ft)){
+      i.mz <- i.ft$mzmed[k]
+      i.chr <- chromatogram(xdata, mz = (i.mz + 0.01 * c(-1, 1)))
+      lines(rtime(i.chr[[1]])/60, 
+            intensity(i.chr[[1]])/max(intensity(i.chr[[1]]), na.rm = T),
+            col = i.col[k], type = "l")
+    }
+    legend("topright", sprintf("%.4f", i.ft$mzmed), col = i.col[1:nrow(i.ft)], 
+           lty = 1)
+  }
+}
+```
+
+
+# Full-scan MS
+
+```{r fs, echo = FALSE, warning = FALSE, message = FALSE}
+l <- htmltools::tagList()
+for(j in 1:4){
+  p <- cmb[1,j]
+  s <- cmb[2,j]
+  i.feat <- get(paste0(s, "_feat"))
+  i.ft <- i.feat[i.feat$compound == data$compound[i],]
+  if(p == "NEG"){
+    i.ft <- i.ft[grepl("]-", i.ft$adduct),]
+  } else if (p == "POS"){
+    i.ft <- i.ft[!grepl("]-", i.ft$adduct),]
+  }
+  print(i.ft)
+  xdata <- get(paste0("xdata_", s, "_", p))
+  i.mz <- as.numeric(mass2mz(i.mass, ions.main[ions.main$class == data$class[i], p]))
+  i.chr <- chromatogram(xdata, mz = (i.mz + 0.01 * c(-1, 1)))
+  i.rt <- rtime(i.chr[[1]])/60
+  i.int <- intensity(i.chr[[1]])
+  i.int[is.na(i.int)] <- 0
+  if(!is.na(data[i, paste0("RT_", s)])){
+    i.sps <- names(which.max(i.int[i.rt > (data[i,paste0("RT_", s)] - 5/60) &
+                                     i.rt < (data[i,paste0("RT_", s)] + 5/60)]))
+  } else {
+    i.sps <- names(which.max(i.int[
+      i.rt > (mean(c(data$RT_tissues[i], data$RT_maturation[i]), na.rm = T) - 5/60) &
+        i.rt < (mean(c(data$RT_tissues[i], data$RT_maturation[i]), na.rm = T) + 5/60)]
+    ))
+  }
+  
+  sps <- as.data.frame(xdata[[i.sps]])
+  idx <- unlist(matchWithPpm(i.ft$mzmed, sps$mz, ppm = 10))
+  m <- plot_ly(sps, x = ~mz, y = ~i, type = "bar", text = sprintf("%.5f", sps$mz)) %>% 
+    add_markers(color = NA) %>% 
+    layout(showlegend = FALSE,
+           title = paste(s, p, "-",
+                         "FS MS @", sprintf("%.2f", rtime(xdata[[i.sps]]) / 60), "min"
+           )) 
+  if(length(idx) > 0){
+    m <- add_text(m, x = sps$mz[idx], y = sps$i[idx], 
+                  text = sprintf("%.5f", sps$mz[idx], 5))
+    #add_markers(m, x = sps$mz[idx], y = sps$i[idx]) %>% add_text()
+  }
+  l[[j]] <- m
+}
+l
+```
+
+# MS/MS 
+
+```{r msms, echo = FALSE, warning = FALSE, message = FALSE}
+l <- htmltools::tagList()
+#for(j in 1:2){
+#p <- c("POS", "NEG")[j]
+i.ms2.dt <- ms2_dt[ms2_dt$compound == data$compound[i] #& ms2_dt$polarity == p
+                   ,]
+if(nrow(i.ms2.dt) > 0){
+  for(k in seq(nrow(i.ms2.dt))){
+    i.ms2 <- get(paste0("ms2_", i.ms2.dt$polarity[k]))
+    i.ms2 <- i.ms2[paste(basename(dataOrigin(i.ms2)), scanIndex(i.ms2)) %in% 
+                     paste(i.ms2.dt$file[k], i.ms2.dt$scan[k])]
+    m <- plot_ly(x = unlist(mz(i.ms2)), y = unlist(intensity(i.ms2)), 
+                 type = "bar") %>% 
+      add_markers(color = NA) %>%
+      layout(xaxis = list(range = c(50, precursorMz(i.ms2))), showlegend = FALSE,
+             title = paste(
+               "MS/MS for", sprintf("%.5f", precursorMz(i.ms2)), "@", 
+               sprintf("%.2f", rtime(i.ms2)/60), "min -",
+               gsub("_DDA.mzML", "", basename(dataOrigin(i.ms2))), "-", 
+               scanIndex(i.ms2)
+             ))
+    idx <- which((unlist(intensity(i.ms2))/max(unlist(intensity(i.ms2)))) > 0.1)
+    l[[k]] <- add_text(m, x = unlist(mz(i.ms2))[idx], 
+                       y = unlist(intensity(i.ms2))[idx], 
+                       text = sprintf("%.5f", unlist(mz(i.ms2)))[idx])
+  }
+  #assign(paste0("i.ms2_", p), i.ms2)
+}
+#assign(paste0("i.ms2.dt_", p), i.ms2.dt)
+#}
+l
+```
+
+
+## Combined spectra
+
+```{r msms-combined, echo = FALSE, warning = FALSE, message = FALSE}
+l <- htmltools::tagList()
+i.ms2.dt <- ms2_dt[ms2_dt$compound == data$compound[i],]
+if(nrow(i.ms2.dt) > 0){
+  i.add <- unique(i.ms2.dt$adduct)
+  for(j in seq(length(i.add))){
+    i.ms2.dt <- ms2_dt[ms2_dt$compound == data$compound[i] & 
+                         ms2_dt$adduct == i.add[j],]
+    i.ms2 <- get(paste0("ms2_", i.ms2.dt$polarity[1]))
+    i.ms2 <- i.ms2[paste(basename(dataOrigin(i.ms2)), scanIndex(i.ms2)) %in% 
+                     paste(i.ms2.dt$file, i.ms2.dt$scan)]
+    i.ms2 <- addProcessing(i.ms2, norm_int)
+    i.ms2 <- Spectra::combineSpectra(
+      i.ms2, intensityFun = base::mean, mzFun = base::mean, 
+      tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+      weighted = TRUE)
+    m <- plot_ly(x = unlist(mz(i.ms2)), y = unlist(intensity(i.ms2)), 
+                 type = "bar") %>% 
+      add_markers(color = NA) %>% 
+      layout(xaxis = list(range = c(50, precursorMz(i.ms2))), 
+             showlegend = FALSE,
+             title = paste(
+               "MS/MS for", sprintf("%.5f", precursorMz(i.ms2)), "@", 
+               sprintf("%.2f", rtime(i.ms2)/60), "min", i.add[j]
+             ))
+    idx <- unlist(intensity(i.ms2)) > 10
+    l[[j]] <- add_text(m, x = unlist(mz(i.ms2))[idx], 
+                       y = unlist(intensity(i.ms2))[idx], 
+                       text = sprintf("%.5f", unlist(mz(i.ms2)))[idx])
+  }
+}
+l
+```
+

@@ -16,3 +16,5 @@
 !IS_feature_grouping_v2.html
 !feature_selection_identification.html
 !test.csv
+*.jpeg
+tmp*
