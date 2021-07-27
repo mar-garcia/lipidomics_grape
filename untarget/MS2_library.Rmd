@@ -1,0 +1,36 @@
+---
+title: "MS2 library"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: false
+    number_sections: false
+    toc_float: false
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+```{r, message = FALSE, warning = FALSE}
+library(Spectra)
+```
+
+```{r}
+for(s in c("tissues", "maturation")){
+  for(p in c("POS", "NEG")){
+    pth <- paste0(s, "/data/", p,"_DDA_mzML/")
+    fls <- list.files(pth)
+    ms2 <- Spectra(paste0(pth, fls), backend = MsBackendDataFrame())
+    ms2 <- ms2[msLevel(ms2) > 1]
+    save(ms2, file = paste0(s, "/data/RData/MS2_library_", p, ".RData"))
+  }
+}
+```
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```

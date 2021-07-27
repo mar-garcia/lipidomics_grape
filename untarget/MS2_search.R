@@ -23,17 +23,17 @@ ms2_NEG <- c(ms2_NEG, ms2)
 rm(ms2)
 
 
-ms2sub <- filterPrecursorMz(ms2_NEG, 857.5186  + 0.005 * c(-1, 1))
-ms2sub <- filterRt(ms2sub, 15.05*60 + 5 * c(-1, 1))
-ms2sub <- ms2sub[containsMz(ms2sub, c(575.5034), tolerance = 0.005)]
+ms2sub <- filterPrecursorMz(ms2_NEG, 714.5079  + 0.005 * c(-1, 1))
+ms2sub <- filterRt(ms2sub, 16.67*60 + 5 * c(-1, 1))
+#ms2sub <- ms2sub[containsMz(ms2sub, c(575.5034), tolerance = 0.005)]
 
-tmp <- intensity(ms2sub)[matchWithPpm(766.5392, mz(ms2sub), ppm = 10)[[1]]]/max(intensity(ms2sub))
+tmp <- intensity(ms2sub)[matchWithPpm(255.23295, mz(ms2sub), ppm = 10)[[1]]]/max(intensity(ms2sub))
 tmp <- lapply(tmp, function(x) if (length(x) == 0) {0} else {x})
-ms2sub <- ms2sub[unlist(tmp == 1)]
+ms2sub <- ms2sub[unlist(tmp > 0)]
 
-tmp <- mz(ms2sub)[order(intensity(ms2sub), decreasing = T)]
-tmp <- sapply(tmp, "[[", 3)
-ms2sub <- ms2sub[unlist(matchWithPpm(255.23295, tmp, ppm = 10))]
+#tmp <- mz(ms2sub)[order(intensity(ms2sub), decreasing = T)]
+#tmp <- sapply(tmp, "[[", 3)
+#ms2sub <- ms2sub[unlist(matchWithPpm(255.23295, tmp, ppm = 10))]
 
 length(ms2sub)
 intensitats <- c()
