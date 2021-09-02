@@ -12,7 +12,8 @@ output:
 ```{r startpoint, include = FALSE}
 startpoint <- Sys.time()
 knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
-nsubmod <- 100
+nsubmod <- 1000
+indep <- "brix" # specify "brix" or "date"
 ```
 
 This document belongs to the project of application of the new targeted lipidomics method to grape samples collected at different maturation stages.  
@@ -239,9 +240,7 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
 rm(tmp, dt, class2, idx, IS, scaling.pareto, pca)
 ```
 
-
-
-# Associations of brix degree and the lipidomic profile of samples
+# Associations of brix degree / date with the lipidomic profile of samples
 
 ## Data preparation
 
@@ -266,26 +265,42 @@ dt <- t(imputeRowMinRand(as.matrix(data), method = "from_to",
                          min_fraction = 1/2,
                          min_fraction_from = 0))
 dt <- data.frame(log10(dt))
-set.seed(123)
-model <- plsr(brix$Brix ~ ., data = dt, scale = TRUE, center = TRUE, 
-              validation = "CV", ncomp = 10)
+if(indep == "brix"){
+  set.seed(123)
+  model <- plsr(brix$Brix ~ ., data = dt, scale = TRUE, center = TRUE, 
+                validation = "CV", ncomp = 10)
+} else if(indep == "date"){
+  xtime <- as.integer(as.Date(brix$data))
+  set.seed(123)
+  model <- plsr(xtime ~ ., data = dt, scale = TRUE, center = TRUE, 
+                validation = "CV", ncomp = 10)
+}
 summary(model)
 validationplot(model)
 validationplot(model, val.type = "R2")
 selectNcomp(model, plot = TRUE)
 ```
 
-The algorithm suggests that the best number of components is 2.
+`r if(indep == "brix"){"The algorithm suggests that the best number of components is 2."}`  
+`r if(indep == "date"){"The algorithm suggests that the best number of components is 4."}`  
 
 ```{r}
-plot(model, ncomp = 2, line = T)
+if(indep == "brix"){
+  plot(model, ncomp = 2, line = T)
+} else if(indep == "date"){
+  plot(model, ncomp = 4, line = T)
+}
 ```
 
-The correlation between measured and predicted brix degree is `r sprintf("%.3f", cor(brix$Brix, predict(model, dt, ncomp = 2)))`.  
+
+`r if(indep == "brix"){paste0("The correlation between measured and predicted brix degree is ", sprintf("%.3f", cor(brix$Brix, predict(model, dt, ncomp = 2))))}`  
+
+`r if(indep == "date"){paste0("The correlation between real and predicted date is ", sprintf("%.3f", cor(xtime, predict(model, dt, ncomp = 4))))}`  
+
 
 ## Validation
 
-In order to verify that the model is not overfitted, below we are going to repeat the procedure, but this time building the model with 2/3 of the samples and predicting the brix values with the other 1/3 of samples. Assignation of samples to train or test set is doing randomly and the process is repeated `r nsubmod` times. We will check the distribution on the optimal number of components and R2 values along all generated models.
+In order to verify that the model is not overfitted, below we are going to repeat the procedure, but this time building the model with 2/3 of the samples and predicting the brix / date values with the other 1/3 of samples. Assignation of samples to train or test set is doing randomly and the process is repeated `r nsubmod` times. We will check the distribution on the optimal number of components and R2 values along all generated models.
 
 ```{r, fig.width = 4}
 all(rownames(data) == cmps$ID) # TRUE
@@ -300,23 +315,33 @@ rndm <- sample(seq(1e6), nsubmod, replace = FALSE)
 for(i in seq(length(seeds))){
   set.seed(seeds[i])
   idx <- sample(seq(nrow(dt)), 40, replace = FALSE)
-  set.seed(rndm[i])
-  brix.rndm <- brix$Brix[sample(seq(length(brix$Brix)), 
-                                length(brix$Brix), replace = FALSE)]
-  dt_train <- cbind(brix = brix$Brix[idx], dt[idx,])
-  dt_test <- cbind(brix = brix$Brix[!seq(nrow(dt)) %in% idx],
-                   dt[!seq(nrow(dt)) %in% idx,])
-  
-  dt_train_r <- cbind(brix = brix.rndm[idx], dt[idx,])
-  dt_test_r <- cbind(brix = brix.rndm[!seq(nrow(dt)) %in% idx],
+  if(indep == "brix"){
+    set.seed(rndm[i])
+    x.rndm <- brix$Brix[sample(seq(length(brix$Brix)), 
+                               length(brix$Brix), replace = FALSE)]
+    dt_train <- cbind(brix = brix$Brix[idx], dt[idx,])
+    dt_test <- cbind(brix = brix$Brix[!seq(nrow(dt)) %in% idx],
                      dt[!seq(nrow(dt)) %in% idx,])
-  
-  mdl <- plsr(brix ~ ., data = dt_train, scale = TRUE, center = TRUE, 
-              validation = "CV", ncomp = 10)
-  
-  mdl_r <- plsr(brix ~ ., data = dt_train_r, scale = TRUE, center = TRUE, 
+    dt_train_r <- cbind(brix = x.rndm[idx], dt[idx,])
+    dt_test_r <- cbind(brix = x.rndm[!seq(nrow(dt)) %in% idx],
+                       dt[!seq(nrow(dt)) %in% idx,])
+    mdl <- plsr(brix ~ ., data = dt_train, scale = TRUE, center = TRUE, 
                 validation = "CV", ncomp = 10)
-  
+    mdl_r <- plsr(brix ~ ., data = dt_train_r, scale = TRUE, center = TRUE, 
+                  validation = "CV", ncomp = 10)
+  }else if(indep == "date"){
+    x.rndm <- xtime[sample(seq(length(xtime)), length(xtime), replace = FALSE)]
+    dt_train <- cbind(date = xtime[idx], dt[idx,])
+    dt_test <- cbind(date = xtime[!seq(nrow(dt)) %in% idx],
+                     dt[!seq(nrow(dt)) %in% idx,])
+    dt_train_r <- cbind(date = x.rndm[idx], dt[idx,])
+    dt_test_r <- cbind(date = x.rndm[!seq(nrow(dt)) %in% idx],
+                       dt[!seq(nrow(dt)) %in% idx,])
+    mdl <- plsr(date ~ ., data = dt_train, scale = TRUE, center = TRUE, 
+                validation = "CV", ncomp = 10)
+    mdl_r <- plsr(date ~ ., data = dt_train_r, scale = TRUE, center = TRUE, 
+                  validation = "CV", ncomp = 10)
+  }
   N.vals <- c(N.vals, selectNcomp(mdl))
   R2.vals <- c(R2.vals, 
                R2(mdl, estimate = "test", newdata = dt_test
@@ -342,7 +367,7 @@ stripchart(c(R2.vals, R2.rndm) ~ c(rep(1, nsubmod), rep(2, nsubmod)),
 R2 values of the generated sub-models have a median value `r sprintf("%.3f", median(R2.vals))`, a considerably higher value than the one obtained with the random models (median `r sprintf("%.3f", median(R2.rndm))`).
 
 
-# Associated classes of compounds with brix degree
+# Associated classes of compounds with brix degree / date
 
 To get a general overview of which types of compounds are associated with the brix degree, we check the distribution of regression coefficients in the model built with all experimental data according to compound class, considering that those classes with a higher proportion in the first quartile will be those compounds with a decreasing behaviour over maturation process, whereas those compound classes with higher proportions in the fourth quartile will be those compounds with a direct association with the brix degree (i.e., maturation process).
 
