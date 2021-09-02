@@ -13,7 +13,7 @@ output:
 startpoint <- Sys.time()
 knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
 nsubmod <- 1000
-indep <- "brix" # specify "brix" or "date"
+indep <- "date" # specify "brix" or "date"
 ```
 
 This document belongs to the project of application of the new targeted lipidomics method to grape samples collected at different maturation stages.  
@@ -45,7 +45,8 @@ class <- gsub("_MIX.*", "", class)
 class[grep("QC", class)] <- "QC"
 
 # Load compound annotations:
-cmps <- read.csv("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/compounds_target.csv")
+#cmps <- read.csv("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/compounds_target.csv")
+cmps <- read.csv("data/compounds_target.csv")
 cmps <- cmps[cmps$ID %in% data$ID, ]
 nrow(data) == nrow(cmps) #TRUE
 cmps <- cmps[match(data$ID, cmps$ID), ]
@@ -369,7 +370,7 @@ R2 values of the generated sub-models have a median value `r sprintf("%.3f", med
 
 # Associated classes of compounds with brix degree / date
 
-To get a general overview of which types of compounds are associated with the brix degree, we check the distribution of regression coefficients in the model built with all experimental data according to compound class, considering that those classes with a higher proportion in the first quartile will be those compounds with a decreasing behaviour over maturation process, whereas those compound classes with higher proportions in the fourth quartile will be those compounds with a direct association with the brix degree (i.e., maturation process).
+To get a general overview of which types of compounds are associated with the brix degree / date, we check the distribution of regression coefficients in the model built with all experimental data according to compound class, considering that those classes with a higher proportion in the first quartile will be those compounds with a decreasing behaviour over maturation process, whereas those compound classes with higher proportions in the fourth quartile will be those compounds with a direct association with the brix degree / date (i.e., maturation process).
 
 ```{r}
 col_class_cmps <- c(
@@ -403,6 +404,7 @@ The following heatmap shows the quartile distribution of regression coefficients
 pheatmap(tmp2, cluster_cols = F, cutree_rows = 3)
 ```
 
+**When using `brix degree` as independent variable:**
 Heatmap clearly shows that there is a group of compound classes (`CAR`, `FFA`, `TAG`, `MAG`, `DAG` and `PS`) for which most of compounds do not have a strong regression coefficient, that is, in general do not seem to be sensitive to ripening.  
 On the other hand, we can see two other row clusters: one with those compound classes with higher proportions within the Q1 and the other one with those compound classes with higher proportions within the Q4. Among these, we could say that classes `CER`, `Lyso_PI` and `Lyso_PG` seems to be the ones with higher proportions of specific compounds inversely related with brix degree (i.e., in general, their levels drop as brix increases), whereas `PE`, `PG` and `Lyso_PE` would be the ones with higher proportion of specific compounds directly related with brix degree.  
 Below we plot the behaviour of specific compounds of mentioned classes. Color scale is proportional to the corresponding regression coefficient.
@@ -413,26 +415,45 @@ plt.cls <- function(cls, clr, dcrs){
   pal <- colorRampPalette(brewer.pal(9, clr))
   i <- 1
   j <- order(tmp$RC[idx], decreasing = dcrs)[i]
-  plot(brix$Brix, scale(dt[,cmps$ID[idx][j]]), xlab = "Brix", ylab = "", 
-       main = cls, col = pal(length(idx))[i], bty = "l", 
-       ylim = c(min(scale(dt[,cmps$ID[idx]])), max(scale(dt[,cmps$ID[idx]]))))
-  abline(lm(scale(dt[,cmps$ID[idx][j]])~brix$Brix), col = pal(length(idx))[i])
-  for(i in 2:length(idx)){
-    j <- order(tmp$RC[idx], decreasing = dcrs)[i]
-    points(brix$Brix, scale(dt[,cmps$ID[idx][j]]), col = pal(length(idx))[i])
+  if(indep == "brix"){
+    plot(brix$Brix, scale(dt[,cmps$ID[idx][j]]), xlab = "Brix", ylab = "", 
+         main = cls, col = pal(length(idx))[i], bty = "l", 
+         ylim = c(min(scale(dt[,cmps$ID[idx]])), max(scale(dt[,cmps$ID[idx]]))))
     abline(lm(scale(dt[,cmps$ID[idx][j]])~brix$Brix), col = pal(length(idx))[i])
+    for(i in 2:length(idx)){
+      j <- order(tmp$RC[idx], decreasing = dcrs)[i]
+      points(brix$Brix, scale(dt[,cmps$ID[idx][j]]), col = pal(length(idx))[i])
+      abline(lm(scale(dt[,cmps$ID[idx][j]])~brix$Brix), col = pal(length(idx))[i])
+    }
+  } else if(indep == "date"){
+    plot(xtime, scale(dt[,cmps$ID[idx][j]]), xlab = "Brix", ylab = "", 
+         main = cls, col = pal(length(idx))[i], bty = "l", 
+         ylim = c(min(scale(dt[,cmps$ID[idx]])), max(scale(dt[,cmps$ID[idx]]))))
+    abline(lm(scale(dt[,cmps$ID[idx][j]])~xtime), col = pal(length(idx))[i])
+    for(i in 2:length(idx)){
+      j <- order(tmp$RC[idx], decreasing = dcrs)[i]
+      points(xtime, scale(dt[,cmps$ID[idx][j]]), col = pal(length(idx))[i])
+      abline(lm(scale(dt[,cmps$ID[idx][j]])~xtime), col = pal(length(idx))[i])
+    }
   }
 }
 par(mfrow = c(2, 3), mar = c(2, 2, 1, 0.5))
-plt.cls(cls = "CER", clr = "Greens", dcrs = T)
-plt.cls(cls = "Lyso_PI", clr = "Greens", dcrs = T)
-plt.cls(cls = "Lyso_PG", clr = "Greens", dcrs = T)
-plt.cls(cls = "PG", clr = "Reds", dcrs = F)
-plt.cls(cls = "Lyso_PE", clr = "Reds", dcrs = F)
-plt.cls(cls = "PE", clr = "Reds", dcrs = F)
+if(indep == "brix"){
+  plt.cls(cls = "CER", clr = "Greens", dcrs = T)
+  plt.cls(cls = "Lyso_PI", clr = "Greens", dcrs = T)
+  plt.cls(cls = "Lyso_PG", clr = "Greens", dcrs = T)
+  plt.cls(cls = "PG", clr = "Reds", dcrs = F)
+  plt.cls(cls = "Lyso_PE", clr = "Reds", dcrs = F)
+  plt.cls(cls = "PE", clr = "Reds", dcrs = F)
+} else if(indep == "date"){
+  plt.cls(cls = "Lyso_PG", clr = "Greens", dcrs = T)
+  plt.cls(cls = "PA", clr = "Greens", dcrs = T)
+  plt.cls(cls = "PS", clr = "Greens", dcrs = T)
+  plt.cls(cls = "Lyso_PE", clr = "Reds", dcrs = F)
+  plt.cls(cls = "Lyso_PC", clr = "Reds", dcrs = F)
+  plt.cls(cls = "PE", clr = "Reds", dcrs = F)
+}
 ```
-
-
 
 
 # Session information
