@@ -16,7 +16,7 @@ ms2_NEG <- c(ms2_NEG, ms2)
 rm(ms2)
 
 ms2_dt <- openxlsx::read.xlsx("output/MS2_spectra.xlsx")
-ms2_dt <- ms2_dt[grepl("TAG|DAG", ms2_dt$compound),]
+#ms2_dt <- ms2_dt[grepl("TAG|DAG", ms2_dt$compound),]
 cmps <- unique(ms2_dt$compound)
 
 for(j in 1:2){

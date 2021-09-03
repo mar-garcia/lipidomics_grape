@@ -410,6 +410,7 @@ for(s in c("tissues", "maturation")){
   feat <- feat[order(feat$compound, feat$adduct),]
   feat$class[is.na(feat$class)] <- "X"
   assign(paste(s, "feat", sep = "_"), feat)
+  write.csv(feat, paste0("output/feat_", s, ".csv"))
 }
 rm(s, i, idx, feat)
 

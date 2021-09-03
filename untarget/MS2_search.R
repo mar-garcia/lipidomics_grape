@@ -23,11 +23,11 @@ ms2_NEG <- c(ms2_NEG, ms2)
 rm(ms2)
 
 
-ms2sub <- filterPrecursorMz(ms2_POS, 878.8171 + 0.005 * c(-1, 1))
-ms2sub <- filterRt(ms2sub, 22.03*60 + 10 * c(-1, 1))
+ms2sub <- filterPrecursorMz(ms2_POS, 797.5174 + 0.005 * c(-1, 1))
+ms2sub <- filterRt(ms2sub, 15.4*60 + 10 * c(-1, 1))
 #ms2sub <- ms2sub[containsMz(ms2sub, c(575.5034), tolerance = 0.005)]
 
-tmp <- intensity(ms2sub)[matchWithPpm(579.5347, mz(ms2sub), ppm = 10)[[1]]]/max(intensity(ms2sub))
+tmp <- intensity(ms2sub)[matchWithPpm(339.289371, mz(ms2sub), ppm = 10)[[1]]]/max(intensity(ms2sub))
 tmp <- lapply(tmp, function(x) if (length(x) == 0) {0} else {x})
 ms2sub <- ms2sub[unlist(tmp>0)]
 
