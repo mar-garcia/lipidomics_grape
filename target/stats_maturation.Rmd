@@ -13,7 +13,6 @@ output:
 startpoint <- Sys.time()
 knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
 nsubmod <- 1000
-indep <- "date" # specify "brix" or "date"
 ```
 
 This document belongs to the project of application of the new targeted lipidomics method to grape samples collected at different maturation stages.  
@@ -21,6 +20,7 @@ This document belongs to the project of application of the new targeted lipidomi
 # Libraries
 
 ```{r libraries, warning = FALSE, message = FALSE}
+indep <- "brix" # specify "brix" or "date"
 library(readxl)
 library(xcms)
 library(plotly)
@@ -45,8 +45,8 @@ class <- gsub("_MIX.*", "", class)
 class[grep("QC", class)] <- "QC"
 
 # Load compound annotations:
-#cmps <- read.csv("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/compounds_target.csv")
-cmps <- read.csv("data/compounds_target.csv")
+cmps <- read.csv("C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/compounds_target.csv")
+#cmps <- read.csv("data/compounds_target.csv")
 cmps <- cmps[cmps$ID %in% data$ID, ]
 nrow(data) == nrow(cmps) #TRUE
 cmps <- cmps[match(data$ID, cmps$ID), ]
@@ -401,7 +401,10 @@ colnames(tmp2) <- c("Q1", "Q2-Q3", "Q4")
 The following heatmap shows the quartile distribution of regression coefficients by compound class. Since the clases of interest will be the ones with higher proportion of compunds in the first and fourth quartile, we have grouped together Q2 and Q3. Proportions of compounds in different quartiles are depicted with a color scale where red represents the categories with higher proportions and blue represents the lowest ones.
 
 ```{r}
-pheatmap(tmp2, cluster_cols = F, cutree_rows = 3)
+pheatmap(tmp2, cluster_cols = F, cutree_rows = 1, 
+         color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100))
+pheatmap(tmp2[,-2], cluster_cols = F, cutree_rows = 1, 
+         color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100))
 ```
 
 **When using `brix degree` as independent variable:**
@@ -417,42 +420,46 @@ plt.cls <- function(cls, clr, dcrs){
   j <- order(tmp$RC[idx], decreasing = dcrs)[i]
   if(indep == "brix"){
     plot(brix$Brix, scale(dt[,cmps$ID[idx][j]]), xlab = "Brix", ylab = "", 
-         main = cls, col = pal(length(idx))[i], bty = "l", 
+         main = cls, bty = "l", 
+         col = pal(length(idx))[i], 
          ylim = c(min(scale(dt[,cmps$ID[idx]])), max(scale(dt[,cmps$ID[idx]]))))
-    abline(lm(scale(dt[,cmps$ID[idx][j]])~brix$Brix), col = pal(length(idx))[i])
+    abline(lm(scale(dt[,cmps$ID[idx][j]])~brix$Brix), 
+           col = pal(length(idx))[i])
+           
     for(i in 2:length(idx)){
       j <- order(tmp$RC[idx], decreasing = dcrs)[i]
-      points(brix$Brix, scale(dt[,cmps$ID[idx][j]]), col = pal(length(idx))[i])
-      abline(lm(scale(dt[,cmps$ID[idx][j]])~brix$Brix), col = pal(length(idx))[i])
+      points(brix$Brix, scale(dt[,cmps$ID[idx][j]]), 
+             col = pal(length(idx))[i])
+      abline(lm(scale(dt[,cmps$ID[idx][j]])~brix$Brix), 
+             col = pal(length(idx))[i])
     }
   } else if(indep == "date"){
     plot(xtime, scale(dt[,cmps$ID[idx][j]]), xlab = "Brix", ylab = "", 
-         main = cls, col = pal(length(idx))[i], bty = "l", 
+         main = cls, bty = "l", 
+         col = pal(length(idx))[i], 
          ylim = c(min(scale(dt[,cmps$ID[idx]])), max(scale(dt[,cmps$ID[idx]]))))
-    abline(lm(scale(dt[,cmps$ID[idx][j]])~xtime), col = pal(length(idx))[i])
+    abline(lm(scale(dt[,cmps$ID[idx][j]])~xtime), 
+           col = pal(length(idx))[i])
     for(i in 2:length(idx)){
       j <- order(tmp$RC[idx], decreasing = dcrs)[i]
-      points(xtime, scale(dt[,cmps$ID[idx][j]]), col = pal(length(idx))[i])
-      abline(lm(scale(dt[,cmps$ID[idx][j]])~xtime), col = pal(length(idx))[i])
+      points(xtime, scale(dt[,cmps$ID[idx][j]]), 
+             col = pal(length(idx))[i])
+      abline(lm(scale(dt[,cmps$ID[idx][j]])~xtime), 
+             col = pal(length(idx))[i])
     }
   }
 }
-par(mfrow = c(2, 3), mar = c(2, 2, 1, 0.5))
-if(indep == "brix"){
-  plt.cls(cls = "CER", clr = "Greens", dcrs = T)
-  plt.cls(cls = "Lyso_PI", clr = "Greens", dcrs = T)
-  plt.cls(cls = "Lyso_PG", clr = "Greens", dcrs = T)
-  plt.cls(cls = "PG", clr = "Reds", dcrs = F)
-  plt.cls(cls = "Lyso_PE", clr = "Reds", dcrs = F)
-  plt.cls(cls = "PE", clr = "Reds", dcrs = F)
-} else if(indep == "date"){
-  plt.cls(cls = "Lyso_PG", clr = "Greens", dcrs = T)
-  plt.cls(cls = "PA", clr = "Greens", dcrs = T)
-  plt.cls(cls = "PS", clr = "Greens", dcrs = T)
-  plt.cls(cls = "Lyso_PE", clr = "Reds", dcrs = F)
-  plt.cls(cls = "Lyso_PC", clr = "Reds", dcrs = F)
-  plt.cls(cls = "PE", clr = "Reds", dcrs = F)
-}
+par(mfrow = c(2, 4), mar = c(2, 2, 1, 0.5))
+#for(i in seq(length(unique(cmps$class)))){
+#  print(plt.cls(cls = unique(cmps$class)[i]))
+#}
+plt.cls(cls = "PE", clr = "Greens", dcrs = F)
+plt.cls(cls = "PG", clr = "Greens", dcrs = F)
+plt.cls(cls = "Lyso_PC", clr = "Greens", dcrs = F)
+plt.cls(cls = "Lyso_PE", clr = "Greens", dcrs = F)
+
+plt.cls(cls = "CER", clr = "Reds", dcrs = T)
+plt.cls(cls = "DGDG", clr = "Reds", dcrs = T)
 ```
 
 
