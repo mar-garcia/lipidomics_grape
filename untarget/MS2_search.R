@@ -23,11 +23,11 @@ ms2_NEG <- c(ms2_NEG, ms2)
 rm(ms2)
 
 
-ms2sub <- filterPrecursorMz(ms2_POS, 797.5174 + 0.005 * c(-1, 1))
-ms2sub <- filterRt(ms2sub, 15.4*60 + 10 * c(-1, 1))
-#ms2sub <- ms2sub[containsMz(ms2sub, c(575.5034), tolerance = 0.005)]
+ms2sub <- filterPrecursorMz(ms2_POS, 814.632 + 0.005 * c(-1, 1))
+ms2sub <- filterRt(ms2sub, 17.99*60 + 10 * c(-1, 1))
+ms2sub <- filterMzValues(ms2sub, 341.3221, ppm = 20, keep = FALSE)
 
-tmp <- intensity(ms2sub)[matchWithPpm(339.289371, mz(ms2sub), ppm = 10)[[1]]]/max(intensity(ms2sub))
+tmp <- intensity(ms2sub)[matchWithPpm(502.329201, mz(ms2sub), ppm = 10)[[1]]]/max(intensity(ms2sub))
 tmp <- lapply(tmp, function(x) if (length(x) == 0) {0} else {x})
 ms2sub <- ms2sub[unlist(tmp>0)]
 
@@ -106,6 +106,12 @@ for(i in i.seq){
 tmp2
 par(mfrow=c(1,1))
 
+##############################################################
+dt <- data.frame(cbind(unlist(mz(ms2sub[j])), 
+            unlist(intensity(ms2sub[j])) / max(unlist(intensity(ms2sub[j])))))
+dt$X2 <- dt$X2*100
+dt <- dt[dt$X2 > 1,]
+write.table(dt, "dt.txt", row.names = F, col.names = F)
 ##############################################################
 library(pheatmap)
 label_fun <- function(x) {
