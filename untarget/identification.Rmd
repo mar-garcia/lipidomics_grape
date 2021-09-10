@@ -106,8 +106,11 @@ for(i in seq(nrow(ids))){
   }
   i.class <- ids$class[i]
   if(i.class == "FFA"){
-    i.ions <- c("[M-H]-", "[M-H+HCOOH]-", "13C[M-H+HCOOH]-")
-  }else if(i.class == "CAR"){
+    i.ions <- c("[M-H]-", "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", "2(13C)[M-H+HCOOH]-",
+                "[2M-H+2(HCOOH)]-", "13C[2M-H+2(HCOOH)]-", "2(13C)[2M-H+2(HCOOH)]-")
+  } else if(i.class == "FFA_O"){
+    i.ions <- c("[M-H+HCOOH]-", "13C[M-H+HCOOH]-")
+  } else if(i.class == "CAR"){
     i.ions <- c("[M+H]+", "13C[M+H]+"," 2(13C)[M+H]+", 
                 "[M-H+HCOOH]-"#, "13C[M-H+HCOOH]-"
     )
@@ -317,9 +320,11 @@ for(i in seq(nrow(ids))){
         j.mz <- as.numeric(
           mass2mz(j.mz, gsub(gsub("\\[", "", gsub("-H]-", "", j.add)), "M", j.add)))
       }
+    } else if(grepl("2M-H\\+2\\(HCOOH)", j.add)){
+      j.mz <- j.mass*2 + getMolecule("HCOOH")$exactmass*2 - 1.007276
     }
     if(grepl("13C", i.ions[j])){
-      if(grepl("\\(", i.ions[j])){
+      if(grepl(")\\[", i.ions[j])){
         j.mz <- j.mz + 1.003355*as.numeric(gsub("\\(.*", "", i.ions[j]))
       } else {
         j.mz <- j.mz + 1.003355
@@ -355,8 +360,8 @@ ions.include <- rbind(
   c("TAG", "TAG54:8_FA18:2_18:3_18:3", 20.40, 920.770715352, "[M+C2H8N]+", "POS"),
   c("unknown", "Unk-003", 18.55, 878.6477, "[M+Cl]-", "NEG"),
   c("unknown", "Unk-037", 13.98, 221.1547, "[14:3-H]-", "NEG"),
-  c("unknown", "Unk-054", 15.39, 311.2956, "[20:0-H]-", "NEG"),
-  c("unknown", "Unk-109", 16.41, 339.3269, "[22:0-H]-", "NEG")
+  #c("unknown", "Unk-054", 15.39, 311.2956, "[20:0-H]-", "NEG"),
+  c("unknown", "Unk-109", 16.41, 339.3265, "[22:0-H]-", "NEG")
 )
 colnames(ions.include) <- colnames(ions)
 ions <- rbind(ions, ions.include)
@@ -455,7 +460,7 @@ for(i in seq(length(idx))){
 
 
 mydb$class <- factor(mydb$class, levels = c(
-  "FFA", "CAR", "CER", "PA", "mPA", "dmPA", "Lyso_PC", "PC", "Lyso_PE", "PE", 
+  "FFA", "FFA_O", "CAR", "CER", "PA", "mPA", "dmPA", "Lyso_PC", "PC", "Lyso_PE", "PE", 
   "PG", "PI", "PS", 
   "MGDG", "DGDG", "DAG", "TAG", "SM", "IS", 
   "others", "unknown"))
@@ -472,12 +477,12 @@ save("tissues_feat", "maturation_feat", "ids", file = "output/feat.RData")
 Classes of identified compounds:
 
 ```{r graphs}
-col_class_cmps <- c("#E41A1C", "#974661", "#4A72A6", "#3E8E93", "#48A462", 
+col_class_cmps <- c("#E41A1C", "pink", "#974661", "#4A72A6", "#3E8E93", "#48A462", 
                     "#5D995D", "#90CC90", "#7E6E85", "#A35390", "#D16948", 
                     "#FF7F00", "#FFB716", "#FFF02D", "#E1C62F", "#B97B2A", 
                     "#B75F49", "#DB728C", "#EC83BA", "#C28EA9", "#999999", 
                     "#FFFFBF50", "tomato", "black", "white")
-names(col_class_cmps) <- c("FFA", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", 
+names(col_class_cmps) <- c("FFA", "FFA_O", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", 
                            "PA", "mPA", "PC", "PE", "PG", 
                            "PI", "PS", "CAR", "MAG", "CER", 
                            "DAG", "DGDG", "Lyso_PC", "MGDG", "TAG", 

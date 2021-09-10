@@ -23,13 +23,13 @@ ms2_NEG <- c(ms2_NEG, ms2)
 rm(ms2)
 
 
-ms2sub <- filterPrecursorMz(ms2_POS, 758.5694 + 0.005 * c(-1, 1))
-ms2sub <- filterRt(ms2sub, 16.45*60 + 10 * c(-1, 1))
-#ms2sub <- filterMzValues(ms2sub, 341.3221, ppm = 20, keep = FALSE)
+ms2sub <- filterPrecursorMz(ms2_NEG, 447.348 + 0.005 * c(-1, 1))
+ms2sub <- filterRt(ms2sub, 15.39*60 + 10 * c(-1, 1))
+#ms2sub <- filterMzValues(ms2sub, 283.7, ppm = 20, keep = FALSE)
 
-tmp <- intensity(ms2sub)[matchWithPpm(601.519431, mz(ms2sub), ppm = 10)[[1]]]/max(intensity(ms2sub))
+tmp <- intensity(ms2sub)[matchWithPpm(311.2956, mz(ms2sub), ppm = 10)[[1]]]/max(intensity(ms2sub))
 tmp <- lapply(tmp, function(x) if (length(x) == 0) {0} else {x})
-ms2sub <- ms2sub[unlist(tmp>0)]
+ms2sub <- ms2sub[unlist(tmp==1)]
 
 #tmp <- mz(ms2sub)[order(intensity(ms2sub), decreasing = T)]
 #tmp <- sapply(tmp, "[[", 3)
@@ -50,7 +50,7 @@ for(i in seq(length(ms2sub))){
   intensitats <- c(intensitats, int.good / int.noise)
 }
 rm(tmp)
-tmp <- order(intensitats)[(length(intensitats)-10):length(intensitats)]
+tmp <- order(intensitats)[(length(intensitats)-15):length(intensitats)]
 dev.off()
 if(exists("tmp")){
   i.seq <- tmp
