@@ -15,7 +15,7 @@ knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
 nsubmod <- 1000
 ```
 
-This document belongs to the project of application of the new targeted lipidomics method to grape samples collected at different maturation stages.  
+This document belongs to the project of application of the new targeted lipidomics method to grape samples collected at different maturation stages.
 
 # Libraries
 
@@ -29,7 +29,6 @@ library(pls)
 library(pheatmap)
 library(RColorBrewer)
 ```
-
 
 # Read data
 
@@ -65,7 +64,7 @@ rownames(data) <- cmps$ID
 rm(idx)
 ```
 
-Below we import and plot the data regarding the brix degree of collected samples according to the sampling date.  
+Below we import and plot the data regarding the brix degree of collected samples according to the sampling date.
 
 ```{r brix}
 brix <- readxl::read_excel("data/Grape_Brix_Datafile.xlsx")
@@ -75,11 +74,9 @@ plot(as.Date(brix$data), brix$Brix,
 legend("bottomright", legend = paste("Rep ", seq(5)), col = 2:6, pch = 16)
 ```
 
-
-
 # Identify and remove problematic compounds
 
-The dataset contains information about the quantification of n=`r nrow(data)` compounds in n=`r ncol(data)` samples of the following classes: `r paste0(aggregate(class, list(class), function(x){sum(class == x)})[,1], " (n=", aggregate(class, list(class), function(x){sum(class == x)})[,2], ")", collapse = "; ")`. 
+The dataset contains information about the quantification of n=`r nrow(data)` compounds in n=`r ncol(data)` samples of the following classes: `r paste0(aggregate(class, list(class), function(x){sum(class == x)})[,1], " (n=", aggregate(class, list(class), function(x){sum(class == x)})[,2], ")", collapse = "; ")`.
 
 Missing values (n=`r sum(is.na(data))`) in the dataset will be replaced by a random value between 0 and the half the smallest measured concentration for the corresponding compound
 
@@ -105,8 +102,8 @@ CV_QC <- apply(data[, class == "QC"], 1, CV)
 plot(density(CV_QC, na.rm = TRUE), xlab = "CV (%)", main = "")
 ```
 
-The CV is around or below 10% for most of the compounds, but some have a higher CV.  
-The following table shows the the amount of compounds with specific CV intervals:  
+The CV is around or below 10% for most of the compounds, but some have a higher CV.\
+The following table shows the the amount of compounds with specific CV intervals:
 
 ```{r qc-cv-table}
 kable(table(cut(CV_QC, c(0, 10, 20, 30, 50, 80, max(CV_QC, na.rm = T)))))
@@ -125,10 +122,9 @@ for(i in seq(4)){
 rm(tmp, CV, idx, i)
 ```
 
-<span style="color:red">**We still have to decide if to exclude some compounds based what it has been observed within QC samples.**</span>  
+[**We still have to decide if to exclude some compounds based what it has been observed within QC samples.**]{style="color:red"}
 
-
-In the table below there are listed the compounds with the highest CV in QC samples togheter with the number of QC and study samples WITHOUT any quantification value for the respective compound (i.e, <LOQ or <LOD).
+In the table below there are listed the compounds with the highest CV in QC samples togheter with the number of QC and study samples WITHOUT any quantification value for the respective compound (i.e, \<LOQ or \<LOD).
 
 ```{r}
 dt <- data.frame(
@@ -140,8 +136,6 @@ dt <- dt[order(dt$CV_QC, decreasing = T),]
 head(dt, 20)
 rm(CV_QC, dt)
 ```
-
-
 
 ## Study samples
 
@@ -156,8 +150,8 @@ na_n <- apply(na_n[,-1], 2, max)
 head(na_n[order(na_n)], 20)
 ```
 
-There are n=`r sum(na_n == 0)` compounds (`r names(which(na_n == 0))`) that have `NA` values for all study samples. These compounds are excluded from the dataset.  
-Additionally, there are n=`r sum(na_n == 1 | na_n == 2)` compounds (`r names(which(na_n == 1 | na_n == 2))`) that, although they were detected in >=1 sample, they have only been detected at maximum in 1 or 2 samples within a same class. These compounds are also excluded from the dataset.      
+There are n=`r sum(na_n == 0)` compounds (`r names(which(na_n == 0))`) that have `NA` values for all study samples. These compounds are excluded from the dataset.\
+Additionally, there are n=`r sum(na_n == 1 | na_n == 2)` compounds (`r names(which(na_n == 1 | na_n == 2))`) that, although they were detected in \>=1 sample, they have only been detected at maximum in 1 or 2 samples within a same class. These compounds are also excluded from the dataset.
 
 ```{r}
 cmps <- cmps[cmps$ID %in% rownames(data)[na_n > 2], ]
@@ -165,7 +159,6 @@ data <- data[na_n > 2, ]
 rownames(data) <- cmps$ID
 rm(na_n)
 ```
-
 
 ## IS
 
@@ -191,16 +184,13 @@ data <- data[!rownames(data) %in% IS,]
 cmps <- cmps[!cmps$ID %in% IS,]
 ```
 
-
 The filtered dataset contains information about the quantification of n=`r nrow(data)` compounds in n=`r ncol(data)` samples.
-
 
 # PCA
 
-We start with an exploratory analysis of the data through a principal component analysis (PCA) on log-transformed and Pareto-scaled abundances.  
+We start with an exploratory analysis of the data through a principal component analysis (PCA) on log-transformed and Pareto-scaled abundances.
 
-
-```{r pca-score}
+```{r pca-score, fig.height=6, fig.width=8}
 scaling.pareto <- BioMark::scalefun(sc.p="pareto")
 set.seed(123)
 dt <- t(imputeRowMinRand(as.matrix(data), method = "from_to",
@@ -215,9 +205,9 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
         color = class)
 ```
 
-`QC` samples are clustered together close to the origin of the scores plot. They show a lower dispersion between them compared to that observed among the study samples and also among the samples from the same study group (i.e., time-point), indicating a good analytical reproducibility (i.e., the variability due to the analytical platform is smaller than the biological/technical variability between the samples, either the ones collected at the same moment).  
+`QC` samples are clustered together close to the origin of the scores plot. They show a lower dispersion between them compared to that observed among the study samples and also among the samples from the same study group (i.e., time-point), indicating a good analytical reproducibility (i.e., the variability due to the analytical platform is smaller than the biological/technical variability between the samples, either the ones collected at the same moment).
 
-Visual inspection of the PCA score shows a certain degree of separation between the first and second half of samples along the first two components (accounting for `r round(summary(pca)$importance[2,1]*100, 1)`% and `r round(summary(pca)$importance[2,2]*100, 1)`% of the total variance explained, respectively).  
+Visual inspection of the PCA score shows a certain degree of separation between the first and second half of samples along the first two components (accounting for `r round(summary(pca)$importance[2,1]*100, 1)`% and `r round(summary(pca)$importance[2,2]*100, 1)`% of the total variance explained, respectively).\
 To visualize this more clearly, the samples below are colored according to whether they belong to the first or the second half of sampling:
 
 ```{r}
@@ -231,14 +221,65 @@ plot_ly(x = tmp$PC1, y = tmp$PC2,
         color = class2)
 ```
 
-
 ```{r pca-loading}
 all(cmps$ID == rownames(data)) # TRUE
 tmp <- data.frame(pca$rotation)
 plot_ly(x = tmp$PC1, y = tmp$PC2,
         text = rownames(tmp),
         color = cmps$class)
-rm(tmp, dt, class2, idx, IS, scaling.pareto, pca)
+rm(tmp, dt, class2, idx, IS, scaling.pareto)
+```
+
+## Manuscript
+
+```{r, fig.width=10}
+class_col <- c(colorRampPalette(brewer.pal(10, "PiYG"))(13), "grey")
+names(class_col) <- unique(class)
+
+par(mfrow = c(1,2), mar = c(5,4,4,0.5))
+tmp <- data.frame(pca$x)
+plot(tmp$PC1, tmp$PC2, axes = FALSE,
+     xlab = paste0("PC1 (", round(summary(pca)$importance[2,1]*100), "%)"),
+     ylab = paste0("PC2 (", round(summary(pca)$importance[2,2]*100), "%)"),
+     col =  class_col[class], 
+     pch = 16, ylim = c(-12.5, 15), main = "Score plot")
+grid()
+abline(v=0, h=0, col = "grey", lty = 2)
+tmp2 <- gsub("Pt_0", "", class)
+tmp2 <- gsub("QC", "", tmp2)
+tmp2 <- gsub("Pt_", "", tmp2)
+points(tmp$PC1, tmp$PC2, col = class_col[class], pch = 16) 
+text(tmp$PC1, tmp$PC2, tmp2, pos = 1, cex = 0.6)
+axis(1, at = seq(-30, 30, by = 10), col = NA)
+axis(2, at = seq(-20, 20, by = 5), col = NA)
+
+add_legend <- function(...) {
+  opar <- par(fig=c(0, 1, 0, 1), oma=c(0, 0, 0, 0), 
+              mar=c(0, 0, 0, 0), new=TRUE)
+  on.exit(par(opar))
+  plot(0, 0, type='n', bty='n', xaxt='n', yaxt='n')
+  legend(...)
+}
+
+col_class <- c(brewer.pal(12, "Paired"), brewer.pal(9, "Set1"))
+#names(col_class) <- levels(factor((cmps$class)))
+names(col_class) <- c("PC", "LPA", "LPE", "PG", "LPI", "LPS", "PA", "FFA", "LPG", "PE", "PI", "PS",
+                      "CER", "CAR", "DAG", "DGDG", "LPC", "MAG", "MGDG", "SM", "TAG")
+col_class[names(col_class) == "MAG"] <- "#FFD92F"
+col_class[names(col_class) == "PI"] <- "#FFD92F"
+col_class <- c(col_class[14], col_class[13], col_class[15], col_class[16], col_class[8], col_class[2], col_class[17], col_class[3], col_class[9], col_class[5], col_class[6], col_class[18], col_class[19], col_class[7], col_class[1], col_class[10], col_class[4], col_class[11], col_class[12], col_class[20], col_class[21])
+
+tmp <- data.frame(pca$rotation)
+plot(tmp$PC1, tmp$PC2, axes = FALSE, xlab = "PC1", ylab = "PC2",
+     col =  col_class[cmps$class], xlim = c(-0.07, 0.07), 
+     pch = 16, main = "Loading plot")
+grid()
+abline(v=0, h=0, col = "grey", lty = 2)
+axis(1, at = seq(-1, 1, by = 0.02), col = NA)
+axis(2, at = seq(-1, 1, by = 0.02), col = NA)
+add_legend("right", legend = names(col_class), pch = 16, 
+           col = col_class, horiz = FALSE, cex = 0.75)
+rm(pca)
 ```
 
 # Associations of brix degree / date with the lipidomic profile of samples
@@ -279,11 +320,12 @@ if(indep == "brix"){
 summary(model)
 validationplot(model)
 validationplot(model, val.type = "R2")
+R2(model)
 selectNcomp(model, plot = TRUE)
 ```
 
-`r if(indep == "brix"){"The algorithm suggests that the best number of components is 2."}`  
-`r if(indep == "date"){"The algorithm suggests that the best number of components is 4."}`  
+`r if(indep == "brix"){"The algorithm suggests that the best number of components is 2."}`\
+`r if(indep == "date"){"The algorithm suggests that the best number of components is 4."}`
 
 ```{r}
 if(indep == "brix"){
@@ -293,17 +335,15 @@ if(indep == "brix"){
 }
 ```
 
+`r if(indep == "brix"){paste0("The correlation between measured and predicted brix degree is ", sprintf("%.3f", cor(brix$Brix, predict(model, dt, ncomp = 2))))}`
 
-`r if(indep == "brix"){paste0("The correlation between measured and predicted brix degree is ", sprintf("%.3f", cor(brix$Brix, predict(model, dt, ncomp = 2))))}`  
-
-`r if(indep == "date"){paste0("The correlation between real and predicted date is ", sprintf("%.3f", cor(xtime, predict(model, dt, ncomp = 4))))}`  
-
+`r if(indep == "date"){paste0("The correlation between real and predicted date is ", sprintf("%.3f", cor(xtime, predict(model, dt, ncomp = 4))))}`
 
 ## Validation
 
 In order to verify that the model is not overfitted, below we are going to repeat the procedure, but this time building the model with 2/3 of the samples and predicting the brix / date values with the other 1/3 of samples. Assignation of samples to train or test set is doing randomly and the process is repeated `r nsubmod` times. We will check the distribution on the optimal number of components and R2 values along all generated models.
 
-```{r, fig.width = 4}
+```{r, fig.width = 4, eval=TRUE}
 all(rownames(data) == cmps$ID) # TRUE
 
 N.vals <- c()
@@ -367,7 +407,6 @@ stripchart(c(R2.vals, R2.rndm) ~ c(rep(1, nsubmod), rep(2, nsubmod)),
 
 R2 values of the generated sub-models have a median value `r sprintf("%.3f", median(R2.vals))`, a considerably higher value than the one obtained with the random models (median `r sprintf("%.3f", median(R2.rndm))`).
 
-
 # Associated classes of compounds with brix degree / date
 
 To get a general overview of which types of compounds are associated with the brix degree / date, we check the distribution of regression coefficients in the model built with all experimental data according to compound class, considering that those classes with a higher proportion in the first quartile will be those compounds with a decreasing behaviour over maturation process, whereas those compound classes with higher proportions in the fourth quartile will be those compounds with a direct association with the brix degree / date (i.e., maturation process).
@@ -403,13 +442,17 @@ The following heatmap shows the quartile distribution of regression coefficients
 ```{r}
 pheatmap(tmp2, cluster_cols = F, cutree_rows = 1, 
          color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100))
+rownames(tmp2) <- gsub("Lyso_", "L", rownames(tmp2))
 pheatmap(tmp2[,-2], cluster_cols = F, cutree_rows = 1, 
-         color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100))
+         color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100),
+         cellwidth = 50, fontsize = 8)
+pheatmap(tmp2[,-2], cluster_cols = F, cutree_rows = 3, 
+         color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100),
+         cellwidth = 50, fontsize = 8)
 ```
 
-**When using `brix degree` as independent variable:**
-Heatmap clearly shows that there is a group of compound classes (`CAR`, `FFA`, `TAG`, `MAG`, `DAG` and `PS`) for which most of compounds do not have a strong regression coefficient, that is, in general do not seem to be sensitive to ripening.  
-On the other hand, we can see two other row clusters: one with those compound classes with higher proportions within the Q1 and the other one with those compound classes with higher proportions within the Q4. Among these, we could say that classes `CER`, `Lyso_PI` and `Lyso_PG` seems to be the ones with higher proportions of specific compounds inversely related with brix degree (i.e., in general, their levels drop as brix increases), whereas `PE`, `PG` and `Lyso_PE` would be the ones with higher proportion of specific compounds directly related with brix degree.  
+**When using `brix degree` as independent variable:** Heatmap clearly shows that there is a group of compound classes (`CAR`, `FFA`, `TAG`, `MAG`, `DAG` and `PS`) for which most of compounds do not have a strong regression coefficient, that is, in general do not seem to be sensitive to ripening.\
+On the other hand, we can see two other row clusters: one with those compound classes with higher proportions within the Q1 and the other one with those compound classes with higher proportions within the Q4. Among these, we could say that classes `CER`, `Lyso_PI` and `Lyso_PG` seems to be the ones with higher proportions of specific compounds inversely related with brix degree (i.e., in general, their levels drop as brix increases), whereas `PE`, `PG` and `Lyso_PE` would be the ones with higher proportion of specific compounds directly related with brix degree.\
 Below we plot the behaviour of specific compounds of mentioned classes. Color scale is proportional to the corresponding regression coefficient.
 
 ```{r}
@@ -419,13 +462,14 @@ plt.cls <- function(cls, clr, dcrs){
   i <- 1
   j <- order(tmp$RC[idx], decreasing = dcrs)[i]
   if(indep == "brix"){
-    plot(brix$Brix, scale(dt[,cmps$ID[idx][j]]), xlab = "Brix", ylab = "", 
-         main = cls, bty = "l", 
+    plot(brix$Brix, scale(dt[,cmps$ID[idx][j]]), xlab = "", ylab = "", 
+         main = gsub("Lyso_", "L", cls), bty = "l", 
          col = pal(length(idx))[i], 
          ylim = c(min(scale(dt[,cmps$ID[idx]])), max(scale(dt[,cmps$ID[idx]]))))
     abline(lm(scale(dt[,cmps$ID[idx][j]])~brix$Brix), 
            col = pal(length(idx))[i])
-           
+    title(xlab = "°Brix", line = 2, cex.lab = 1.2, ylab = "scaled value")
+    
     for(i in 2:length(idx)){
       j <- order(tmp$RC[idx], decreasing = dcrs)[i]
       points(brix$Brix, scale(dt[,cmps$ID[idx][j]]), 
@@ -435,7 +479,7 @@ plt.cls <- function(cls, clr, dcrs){
     }
   } else if(indep == "date"){
     plot(xtime, scale(dt[,cmps$ID[idx][j]]), xlab = "Brix", ylab = "", 
-         main = cls, bty = "l", 
+         main = gsub("Lyso_", "L", cls), bty = "l", 
          col = pal(length(idx))[i], 
          ylim = c(min(scale(dt[,cmps$ID[idx]])), max(scale(dt[,cmps$ID[idx]]))))
     abline(lm(scale(dt[,cmps$ID[idx][j]])~xtime), 
@@ -449,19 +493,34 @@ plt.cls <- function(cls, clr, dcrs){
     }
   }
 }
-par(mfrow = c(2, 4), mar = c(2, 2, 1, 0.5))
+```
+
+
+```{r}
+par(mfrow = c(2, 3), mar = c(4, 3, 2, 0.5))
 #for(i in seq(length(unique(cmps$class)))){
 #  print(plt.cls(cls = unique(cmps$class)[i]))
 #}
 plt.cls(cls = "PE", clr = "Greens", dcrs = F)
 plt.cls(cls = "PG", clr = "Greens", dcrs = F)
 plt.cls(cls = "Lyso_PC", clr = "Greens", dcrs = F)
-plt.cls(cls = "Lyso_PE", clr = "Greens", dcrs = F)
 
+plt.cls(cls = "Lyso_PE", clr = "Greens", dcrs = F)
 plt.cls(cls = "CER", clr = "Reds", dcrs = T)
 plt.cls(cls = "DGDG", clr = "Reds", dcrs = T)
 ```
 
+
+```{r, fig.height=7, fig.width=5}
+par(mfrow = c(3, 2), mar = c(4, 4, 2, 0.5))
+plt.cls(cls = "PE", clr = "Greens", dcrs = F)
+plt.cls(cls = "PG", clr = "Greens", dcrs = F)
+plt.cls(cls = "Lyso_PC", clr = "Greens", dcrs = F)
+
+plt.cls(cls = "Lyso_PE", clr = "Greens", dcrs = F)
+plt.cls(cls = "CER", clr = "Reds", dcrs = T)
+plt.cls(cls = "DGDG", clr = "Reds", dcrs = T)
+```
 
 # Session information
 

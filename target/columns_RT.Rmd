@@ -3,10 +3,11 @@ title: "RTs in columns"
 output: html_document
 ---
 
-```{r, fig.width=7, fig.height=5, warning=FALSE}
+```{r, fig.width=9, fig.height=7.5, warning=FALSE}
 pth <- "//femsrv220.intra.ismaa.it/WATERS/experiments/AB6500_domenico2019/Grape_lipidomics_2019/2019_10_30/Results/SAMPLES_GRAPE_VAL/prove colonne/"
 library(OrgMassSpecR)
 library(RColorBrewer)
+library(Rdisop)
 
 fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
 cmps <- readxl::read_xlsx(fl, sheet = "FORMULE")
@@ -19,12 +20,13 @@ for(i in seq(nrow(cmps_IS))){
 
 
 cmps <- rbind(cmps[,c("ID", "formula", "class")], cmps_IS[,c("ID", "formula", "class")])
+cmps$class <- gsub("Lyso_", "L", cmps$class)
 
 #col_class <- colorRampPalette(brewer.pal(12, "Paired"))(length(unique(cmps$class)))
 col_class <- c(brewer.pal(12, "Paired"), brewer.pal(9, "Set1"))
 #names(col_class) <- levels(factor((cmps$class)))
-names(col_class) <- c("PC", "Lyso_PA", "Lyso_PE", "PG", "Lyso_PI", "Lyso_PS", "PA", "FFA", "Lyso_PG", "PE", "PI", "PS",
-                      "CER", "CAR", "DAG", "DGDG", "Lyso_PC", "MAG", "MGDG", "SM", "TAG")
+names(col_class) <- c("PC", "LPA", "LPE", "PG", "LPI", "LPS", "PA", "FFA", "LPG", "PE", "PI", "PS",
+                      "CER", "CAR", "DAG", "DGDG", "LPC", "MAG", "MGDG", "SM", "TAG")
 col_class[names(col_class) == "MAG"] <- "#FFD92F"
 col_class[names(col_class) == "PI"] <- "#FFD92F"
 #col_class[names(col_class) == "PE"] <- "#1F78B4"
@@ -33,47 +35,47 @@ plot(1,1)
 legend("topright", legend = names(col_class), col = col_class, pch = 16, ncol = 2)
 
 dt_AMIDE <- data.frame(rbind(c("FFA", 1, 350), 
-                           c("Lyso_PA", 13, 360),
-                           c("Lyso_PE", 11, 500),
-                           c("Lyso_PG", 8, 550),
-                           c("Lyso_PI", 13, 650),
-                           c("Lyso_PS", 14.5, 490),
+                           c("LPA", 13, 360),
+                           c("LPE", 11, 500),
+                           c("LPG", 8, 570),
+                           c("LPI", 13, 650),
+                           c("LPS", 14.5, 490),
                            c("PA", 11, 600),
-                           c("PC", 9, 800),
+                           c("PC", 8.5, 800),
                            c("PE", 9.5, 630),
                            c("PG", 4, 850),
-                           c("PI", 12.5, 850),
-                           c("PS", 9.5, 870),
+                           c("PI", 12.5, 900),
+                           c("PS", 9, 900),
                            c("CAR", 11, 350),
                            c("CER", 4.5, 550),
                            c("DAG", 1, 650),
-                           c("DGDG", 12.5, 980),
-                           c("Lyso_PC", 14, 550),
+                           c("DGDG", 13, 980),
+                           c("LPC", 14, 550),
                            c("MAG", 3.5, 410),
-                           c("MGDG", 5.5, 750),
-                           c("SM", 11, 750),
+                           c("MGDG", 6, 750),
+                           c("SM", 11, 800),
                            c("TAG", 1, 900)))
 colnames(dt_AMIDE) <- c("name", "RT", "mass")
 dt_AMIDE$color <- col_class[dt_AMIDE$name]
 
 
 dt_BEH <- data.frame(rbind(c("FFA", 15, 250), 
-                           c("Lyso_PA", 9, 360),
-                           c("Lyso_PE", 12.5, 470),
-                           c("Lyso_PG", 14, 540),
-                           c("Lyso_PI", 6, 650),
-                           c("Lyso_PS", 5, 450),
+                           c("LPA", 9, 360),
+                           c("LPE", 8.5, 560),
+                           c("LPG", 14, 550),
+                           c("LPI", 6, 650),
+                           c("LPS", 5, 450),
                            c("PA", 12, 650),
                            c("PC", 13, 800),
                            c("PE", 18, 630),
-                           c("PG", 19.5, 750),
-                           c("PI", 13, 850),
+                           c("PG", 19.8, 750),
+                           c("PI", 13.5, 900),
                            c("PS", 20, 870),
                            c("CAR", 3.5, 410),
                            c("CER", 14.5, 450),
                            c("DAG", 20, 500),
                            c("DGDG", 12, 950),
-                           c("Lyso_PC", 8.5, 590),
+                           c("LPC", 8.5, 590),
                            c("MAG", 12.5, 350),
                            c("MGDG", 12, 800),
                            c("SM", 13, 700),
@@ -82,22 +84,22 @@ colnames(dt_BEH) <- c("name", "RT", "mass")
 dt_BEH$color <- col_class[dt_BEH$name]
 
 dt_CSH <- data.frame(rbind(c("FFA", 15, 250), 
-                           c("Lyso_PA", 7, 360),
-                           c("Lyso_PE", 12.5, 450),
-                           c("Lyso_PG", 9, 550),
-                           c("Lyso_PI", 6, 650),
-                           c("Lyso_PS", 4, 550),
+                           c("LPA", 7, 360),
+                           c("LPE", 12.5, 450),
+                           c("LPG", 9, 560),
+                           c("LPI", 6, 650),
+                           c("LPS", 4, 550),
                            c("PA", 14, 600),
-                           c("PC", 20, 800),
+                           c("PC", 20, 820),
                            c("PE", 17, 600),
                            c("PG", 12.5, 700),
                            c("PI", 13, 800),
-                           c("PS", 20, 870),
+                           c("PS", 18, 920),
                            c("CAR", 3.5, 410),
                            c("CER", 18, 450),
                            c("DAG", 20, 550),
                            c("DGDG", 12.5, 950),
-                           c("Lyso_PC", 8.5, 590),
+                           c("LPC", 8.5, 610),
                            c("MAG", 13, 350),
                            c("MGDG", 12, 800),
                            c("SM", 13, 700),
@@ -106,7 +108,8 @@ colnames(dt_CSH) <- c("name", "RT", "mass")
 dt_CSH$color <- col_class[dt_CSH$name]
 
 
-for(clm in c("AMIDE", "BEH", "CSH")){
+par(mfrow = c(3, 2), mar = c(3,3,2,0.5))
+for(clm in c("AMIDE", "CSH", "BEH")){
   for(plr in c("POS", "NEG")){
     if(plr == "NEG"){
       ttl <- "Negative"
@@ -129,26 +132,35 @@ for(clm in c("AMIDE", "BEH", "CSH")){
     dt <- merge(dt, cmps, by = "ID")
     dt$mass <- NA
     for(i in seq(nrow(dt))){
-      dt$mass[i] <- MonoisotopicMass(formula = ListFormula(dt$formula[i]))
+      if(grepl("D", dt$formula[i])){
+        dt$mass[i] <- getMolecule(dt$formula[i])$exactmass
+      } else {
+        dt$mass[i] <- MonoisotopicMass(formula = ListFormula(dt$formula[i]))
+      }
     }
     
     if(clm == "AMIDE"){
-      rt <- 15
+      rt <- 24
+      if(plr == "POS"){
+        dt <- dt[dt$RT < 20, ]
+      }
     } else {
-      rt <- 26
+      rt <- 30
     }
     
     dt_clm <- get(paste0("dt_", clm))
     
     #par(mfrow = c(1, 2))
-    plot(dt$RT, dt$mass, pch = 21, xlab = "RT (min)", ylab = "m/z", xlim = c(0, rt), xaxt="n",
+    plot(dt$RT, dt$mass, pch = 21, xlab = "", ylab = "", xaxt="n",
          bg = paste0(col_class[dt$class]), cex = 1.2, lwd = 0.01, 
-         main = paste0(clm, " - ", ttl, " Analytes"))
-    axis(1, at = seq(0, rt), labels = seq(0, rt))
+         main = paste0(clm, " - ", ttl, " Analytes"), 
+         ylim = c(200, 1100), xlim = c(0, rt))
+    axis(1, at = seq(0, rt, by =2), labels = seq(0, rt, by = 2))
     grid()
     idx <- dt_clm$name %in% dt$class
     text(as.numeric(dt_clm$RT[idx]), as.numeric(dt_clm$mass[idx]), 
          labels = dt_clm$name[idx], col = dt_clm$color[idx])
+    title(xlab = "RT (min)", line = 2, cex.lab = 1.2, ylab = "m/z")
     
     #tmp_col <- col_class[names(col_class) %in% dt$class]
     #plot(1,1)
