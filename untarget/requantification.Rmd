@@ -109,7 +109,8 @@ for(s in c("tissues", "maturation")){
   
   for(i in seq(length(cmps))){
     if(!cmps[i] %in% c(
-      "PA36:2_FA18:0_18:2", "TAG56:6_FA18:3_18:3_20:0", "Unk-059 (I)", "Unk-109")){
+      #"PA36:2_FA18:0_18:2", "TAG56:6_FA18:3_18:3_20:0", "Unk-059 (I)", "Unk-109"
+      )){
       i.class <- ids$class[ids$compound == cmps[i]]
       if(i.class %in% c("PA", "mPA", "PE", "PI")){
         i.add <- "[M-H]-"

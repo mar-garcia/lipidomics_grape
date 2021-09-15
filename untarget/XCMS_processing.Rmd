@@ -18,7 +18,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "NEG" # specify "POS" or "NEG"
+polarity <- "POS" # specify "POS" or "NEG"
 study <- "maturation" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){

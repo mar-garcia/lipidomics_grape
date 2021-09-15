@@ -119,6 +119,13 @@ for(i in seq(nrow(ids))){
     }
   } else if(i.class == "CER"){
     i.ions <- c("[M+H]+", "[M-H+HCOOH]-")
+  } else if(i.class == "pCERhex"){
+    i.ions <- c("[M+H]+", "13C[M+H]+", 
+                "[M-H]-", "13C[M-H]-", "2(13C)[M-H]-", "[M+Cl]-", 
+                "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", "2(13C)[M-H+HCOOH]-")
+  } else if(i.class == "CERhex"){
+    i.ions <- c("[M+H]+", "13C[M+H]+", 
+                "[M-H]-", "13C[M-H]-", "[M-H+HCOOH]-", "13C[M-H+HCOOH]-")
   } else if(i.class == "Lyso_PC"){
     i.ions <- c("[M+H]+", #"13C[M+H]+", 
                 "[M-H+HCOOH]-"#, "13C[M-H+HCOOH]-", "[M-H-CH2]-"
@@ -349,19 +356,36 @@ idx <- which(paste(ions$compound, ions$adduct) %in%
                paste(ions.exclude[,1], ions.exclude[,2]))
 ions <- ions[-idx,]
 ions.include <- rbind(
+  c("FFA",  "FFA34:4", 19.1, 812.6163, "[-]", "NEG"),
   c("PA",  "PA34:2_FA16:0_18:2", 16.21, 692.5136, "2(13C)[M+NH4]+", "POS"),
+  c("PA",  "PA36:4_FA18:2_18:2", 15.68, 1409.0084, "[-]", "NEG"),
+  c("PA",  "PA36:4_FA18:2_18:2", 15.68, 1410.0113, "13C[-]", "NEG"),
+  c("PA",  "PA40:2_FA18:2_22:0", 18.66, 682.5988, "[-]", "NEG"),
   c("mPA", "mPA36:4_FA18:2_18:2", 15.72, 756.554330807, "[M+C2H8N]+", "POS"),
+  c("mPA", "mPA36:4_FA18:2_18:2", 15.72, 1423.0246, "[-]", "NEG"),
+  c("mPA", "mPA36:4_FA18:2_18:2", 15.72, 1424.0272, "13C[-]", "NEG"),
+  c("PC", "PC30:1", 15.77, 775.5313, "[-]", "NEG"),
+  c("PC", "PC30:1", 15.77, 776.5343, "13C[-]", "NEG"),
+  c("PG", "PG34:2_FA16:0_18:2", 15.84, 843.5288, "[-]", "NEG"),
+  c("DAG", "DAG34:2_FA16:0_18:2", 18.00, 638.5678, "[+]", "POS"),
   c("DAG", "DAG36:4_FA18:2_18:2", 17.60, 662.572349812, "[M+C2H8N]+", "POS"),
+  c("TAG", "TAG51:4", 21.07, 852.7948, "[+]", "POS"),
+  c("TAG", "TAG51:4", 21.07, 853.7982, "13C[+]", "POS"),
+  c("TAG", "TAG51:4", 21.07, 916.7913, "[+]", "POS"),
   c("TAG", "TAG54:3_FA18:1_18:1_18:1", 21.82, 100.3140, "[+]", "POS"),
   c("TAG", "TAG54:3_FA18:1_18:1_18:1", 21.82, 100.4249, "[+]", "POS"),
   c("TAG", "TAG54:4_FA18:1_18:1_18:2", 21.57, 100.0900, "[+]", "POS"),
   c("TAG", "TAG54:4_FA18:1_18:1_18:2", 21.57, 100.2015, "[+]", "POS"),
   c("TAG", "TAG54:6_FA18:2_18:2_18:2", 21.37, 896.7702, "[M+NH4]+", "POS"), #tail
   c("TAG", "TAG54:8_FA18:2_18:3_18:3", 20.40, 920.770715352, "[M+C2H8N]+", "POS"),
+  c("pCERhex", "pCERhex42:1_FA18:1_24:0", 18.55, 905.6667, "[-]", "NEG"),
+  c("pCERhex", "pCERhex42:1_FA18:1_24:0", 18.55, 956.6646, "[-]", "NEG"),
+  c("SM", "SM36:2_FA18:1_18:1_d9", 16.2, 1412.9924, "[+]", "POS"),
+  c("others", "Malic acid", 0.57, 321.0628, "[add]-", "NEG"),
   c("unknown", "Unk-003", 18.55, 878.6477, "[M+Cl]-", "NEG"),
   c("unknown", "Unk-037", 13.98, 221.1547, "[14:3-H]-", "NEG"),
   #c("unknown", "Unk-054", 15.39, 311.2956, "[20:0-H]-", "NEG"),
-  c("unknown", "Unk-109", 16.41, 339.3265, "[22:0-H]-", "NEG")
+  c("FFA", "FFA29:4_FA22:0_phenylacetic", 16.41, 339.3265, "[22:0-H]-", "NEG")
 )
 colnames(ions.include) <- colnames(ions)
 ions <- rbind(ions, ions.include)
@@ -460,7 +484,8 @@ for(i in seq(length(idx))){
 
 
 mydb$class <- factor(mydb$class, levels = c(
-  "FFA", "FFA_O", "CAR", "CER", "PA", "mPA", "dmPA", "Lyso_PC", "PC", "Lyso_PE", "PE", 
+  "FFA", "FFA_O", "CAR", "CER", "CERhex", "pCERhex", 
+  "PA", "mPA", "dmPA", "Lyso_PC", "PC", "Lyso_PE", "PE", 
   "PG", "PI", "PS", 
   "MGDG", "DGDG", "DAG", "TAG", "SM", "IS", 
   "others", "unknown"))
@@ -479,17 +504,20 @@ Classes of identified compounds:
 ```{r graphs}
 col_class_cmps <- c("#E41A1C", "pink", "#974661", "#4A72A6", "#3E8E93", "#48A462", 
                     "#5D995D", "#90CC90", "#7E6E85", "#A35390", "#D16948", 
-                    "#FF7F00", "#FFB716", "#FFF02D", "#E1C62F", "#B97B2A", 
+                    "#FF7F00", "#FFB716", "#FFF02D", "#E1C62F", 
+                    "#B97B2A", "#B97B2A", "#ea890b", 
                     "#B75F49", "#DB728C", "#EC83BA", "#C28EA9", "#999999", 
                     "#FFFFBF50", "tomato", "black", "white")
 names(col_class_cmps) <- c("FFA", "FFA_O", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", 
                            "PA", "mPA", "PC", "PE", "PG", 
-                           "PI", "PS", "CAR", "MAG", "CER", 
+                           "PI", "PS", "CAR", "MAG", 
+                           "CER", "CERhex", "pCERhex", 
                            "DAG", "DGDG", "Lyso_PC", "MGDG", "TAG", 
                            "X", "others", "unknown", "IS")
 mydb$class2 <- mydb$class
 mydb$class2[grepl("d", mydb$compound)] <- "IS"
 mydb$class2[grepl("dmPA", mydb$compound)] <- "dmPA"
+mydb$class2[mydb$compound %in% c("Disaccharide", "Kaempferol glucoside", "Malic acid")] <- "others"
 mydb$class2 <- droplevels(mydb$class2)
 slices <- data.frame(table(mydb$class2))$Freq
 lbls <- paste0(data.frame(table(mydb$class2))$Var1, " (n=", 
@@ -497,6 +525,21 @@ lbls <- paste0(data.frame(table(mydb$class2))$Var1, " (n=",
                round((data.frame(table(mydb$class2))$Freq/nrow(mydb))*100), "%)")
 pie(slices, lbls, 
     col = col_class_cmps[as.character(data.frame(table(mydb$class2))$Var1)])
+
+tmp <- mydb$class2
+tmp <- tmp[!tmp %in% c("IS", "unknown", "others")]
+tmp[grep("FFA", tmp)] <- "FFA"
+tmp[grep("CER", tmp)] <- "CERhex"
+tmp[grep("PA", tmp)] <- "PA"
+tmp[grep("PC", tmp)] <- "PC"
+tmp <- droplevels(tmp)
+slices <- data.frame(table(tmp))$Freq
+lbls <- paste0(data.frame(table(tmp))$tmp, " (n=", 
+               data.frame(table(tmp))$Freq, ", ",
+               round((data.frame(table(tmp))$Freq/length(tmp))*100), "%)")
+pie(slices, lbls, 
+    col = col_class_cmps[as.character(data.frame(table(tmp))$tmp)])
+
 
 fa <- mydb$compound[grepl("FA", mydb$compound) & mydb$class2 != "IS"]
 fa <- gsub(" .*", "", fa)
@@ -509,6 +552,27 @@ lbls <- paste0(data.frame(table(fa))$fa, "(n=",
                data.frame(table(fa))$Freq, ", ",
                round((data.frame(table(fa))$Freq/length(fa))*100), "%)")
 pie(slices, lbls)
+
+rt <- c()
+mz <- c()
+for(i in seq(nrow(mydb))){
+  rt <- c(rt, 
+          mean(c(as.numeric(mydb$RT_maturation[i]), 
+                 as.numeric(mydb$RT_tissues[i])), na.rm = T))
+  if(grepl("C", mydb$formula[i])){
+    mz <- c(mz, getMolecule(mydb$formula[i])$exactmass)
+  } else {
+    mz <- c(mz, as.numeric(mydb$formula[i]))
+  }
+}
+plot(rt, mz, pch = 19,
+     col = col_class_cmps[as.character(mydb$class)])
+
+rt <- rt[!mydb$class %in% c("IS", "unknown", "others")]
+mz <- mz[!mydb$class %in% c("IS", "unknown", "others")]
+plot(rt, mz, pch = 19,
+     col = col_class_cmps[as.character(
+       mydb$class[!mydb$class %in% c("IS", "unknown", "others")])])
 ```
 
 # Deviations
@@ -545,8 +609,8 @@ for(i in seq(length(clas))){
     C <- gsub("H.*", "", i.db$formula)
     C <- as.numeric(gsub("C", "", C))
     db <- as.numeric(
-      gsub("d7|d4", "", gsub(" .*", "", gsub(".*:", "", 
-                                             do.call(rbind, strsplit(i.db$compound, "_"))[,1]))))
+      gsub("d7|d4", "", gsub(" .*", "", gsub(
+        ".*:", "", do.call(rbind, strsplit(i.db$compound, "_"))[,1]))))
     rt <- as.numeric(i.db$RT)
     md <- lm(rt ~ C + db)
     plot(rt, C, col = "white", 
@@ -561,7 +625,8 @@ for(i in seq(length(clas))){
       text(rt[idx], C[idx], db[idx], col = "skyblue")
     }
     rm(idx)
-    idx <- which(abs(rt - (md$coefficients[1] + md$coefficients[2]*C + md$coefficients[3]*db)) > 1)
+    idx <- which(abs(rt - (md$coefficients[1] + md$coefficients[2]*C + 
+                             md$coefficients[3]*db)) > 1)
     if(length(idx) > 0){
       text(rt[idx], C[idx], db[idx], col = "red")
     }
