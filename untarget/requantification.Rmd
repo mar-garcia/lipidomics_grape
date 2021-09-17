@@ -65,7 +65,6 @@ for(s in c("tissues", "maturation")){
     assign(paste0("xdata_", p), xdata)
   }
   
-  data2 <- matrix(nrow = length(fileNames(xdata)), ncol = length(cmps))
   if(s == "tissues"){
     tmp <- unlist(substring(basename(fileNames(xdata)), 25, 40))
     tmp <- gsub("xx00_", "", tmp)
@@ -79,6 +78,7 @@ for(s in c("tissues", "maturation")){
     tmp <- gsub("Pt_", "Pt", tmp)
   }
   
+  data2 <- matrix(nrow = length(fileNames(xdata)), ncol = length(cmps))
   rownames(data2) <- tmp
   colnames(data2) <- cmps
   
@@ -108,31 +108,43 @@ for(s in c("tissues", "maturation")){
   col_smpl[grep("Pt_13", fileNames(xdata))] <- "#3F007D"
   
   for(i in seq(length(cmps))){
-    if(!cmps[i] %in% c(
-      #"PA36:2_FA18:0_18:2", "TAG56:6_FA18:3_18:3_20:0", "Unk-059 (I)", "Unk-109"
-      )){
+    if(!(s == "maturation" & cmps[i] %in% c("TAG51:4", "TAG56:6_FA18:3_18:3_20:0"))){
       i.class <- ids$class[ids$compound == cmps[i]]
-      if(i.class %in% c("PA", "mPA", "PE", "PI")){
+      if(cmps[i] %in% c(
+        "FFA20:0",
+        "(Epi)catechin", "Malic acid", "Hexose", "Disaccharide",
+        "Unk-006_hexose", "Unk-007", "Unk-008", "Unk-017", "Unk-028", "Unk-029", 
+        "Unk-032", "Unk-033", "Unk-036", "Unk-037", "Unk-039", "Unk-042", 
+        "Unk-044", "Unk-049", "Unk-053", "Unk-054", "Unk-060", "Unk-061 (I)", "Unk-061 (II)",
+        "Unk-065", "Unk-066", "Unk-069", "Unk-072", "Unk-074", "Unk-075", "Unk-082",
+        "Unk-083", "Unk-095", "Unk-096", "Unk-104", "Unk-120", "Unk-122", "Unk-109",
+        "Unk-134", "Unk-135", "Unk-138", "Unk-148", "Unk-161", "Unk-163", "Unk-171")){
         i.add <- "[M-H]-"
-      } else if(i.class %in% c("MGDG", "DGDG")){
+      } else if(cmps[i] %in% c(
+        "Unk-004", "Unk-009", "Unk-016", "Unk-018", "Unk-019 (I)", "Unk-019 (II)", 
+        "Unk-047", "Unk-067", "Unk-068", "Unk-076", "Unk-079", "Unk-097", "Unk-099", "Unk-113")){
+        i.add <- "[M-H+HCOOH]-"
+      } else if(cmps[i] %in% c("Unk-001 (22:1)", "Unk-002", "Unk-012", "Unk-013", 
+                               "Unk-014", "Unk-015 (23:2_24:1)")){
+        i.add <- "[M+H]+"
+      } else if(cmps[i] %in% c(
+        "Unk-010 (II)", "Unk-010 (III)", "Unk-010 (IV)", "Unk-011", 
+        "Unk-026 (II)", "Unk-026 (III)", "Unk-026 (IV)","Unk-030", "Unk-040", 
+        "Unk-043", "Unk-051", "Unk-055", "Unk-062", "Unk-088", "Unk-098", "Unk-123")){
+        i.add <- "[M+NH4]+"
+      } else if(cmps[i] == "FFA29:4_FA22:0_phenylacetic"){
+        i.add <- "[22:0-H]-"
+      } else if(cmps[i] %in% c("Unk-059 (I)", "Unk-059 (II)")){
+        i.add <- "[M+C2H8N]+"
+      }else if(cmps[i] == "Unk-041"){
+        i.add <- "[2M+NH4]+"
+      } else if(i.class %in% c("PA", "mPA", "PE", "PI")){
+        i.add <- "[M-H]-"
+      } else if(i.class %in% c("FFA", "FFA_O", "CER", "CERhex", "pCERhex", "MGDG", "DGDG")){
         i.add <- "[M-H+HCOOH]-"
       } else if(i.class %in% c("PC", "CAR")){
         i.add <- "[M+H]+"
       } else if(i.class %in% c("DAG", "TAG")){
-        i.add <- "[M+NH4]+"
-      } else if(cmps[i] %in% c(
-        "(Epi)catechin", "Malic acid",
-        "Unk-006", "Unk-007", "Unk-008", "Unk-017", "Unk-036", "Unk-037", 
-        "Unk-044", "Unk-054", "Unk-066", "Unk-109")){
-        i.add <- "[M-H]-"
-      } else if(cmps[i] %in% c(
-        "Unk-003", "Unk-004", "Unk-009", "Unk-016", "Unk-018", "Unk-019 (I)", 
-        "Unk-019 (II)", "Unk-113")){
-        i.add <- "[M-H+HCOOH]-"
-      } else if(cmps[i] %in% c("Unk-001 (22:1)", "Unk-002", "Unk-012", "Unk-013", 
-                               "Unk-014", "Unk-015 (23:2_24:1)	")){
-        i.add <- "[M+H]+"
-      } else if(cmps[i] %in% c("Unk-010", "Unk-011")){
         i.add <- "[M+NH4]+"
       } else if(i.class == "unknown"){
         i.add <- "[M+H]+"
@@ -161,8 +173,14 @@ for(s in c("tissues", "maturation")){
         ydata, features = gsub("P|N", "FT", rownames(tmp)[tmp$adduct == i.add]))
       if(i.add == "[M-H+HCOOH]-"){
         i.add <- "[M+CHO2]-"
+      } else if(i.add == "[22:0-H]-"){
+        i.add <- "[M-H]-"
+        i.mass <- 340.3341308
+      } else if(i.add == "[M+C2H8N]+"){
+        i.add <- "[M+H]+"
+        i.mass <- i.mass + Rdisop::getMolecule("C2H7N")$exactmass
       }
-      i.cmp <- matrix(c(unlist(mass2mz(i.mass, i.add) + 0.01 * c(-1, 1)),
+      i.cmp <- matrix(c(unlist(mass2mz(i.mass, as.character(i.add)) + 0.01 * c(-1, 1)),
                         min(chromPeaks(ft_chr)[,"rtmin"]),
                         max(chromPeaks(ft_chr)[,"rtmax"])), nrow = 1)
       if(!is.na(ids[ids$compound == cmps[i], paste0(substr(s, 1, 1), "_min")])){
