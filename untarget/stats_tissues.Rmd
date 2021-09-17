@@ -14,7 +14,8 @@ startpoint <- Sys.time()
 knitr::opts_chunk$set(echo = FALSE, warning = TRUE, message = TRUE)
 ```
 
-In this document we first do an unsupervised exploratory analysis and later we classify compounds by "tissue specificity" according to their abundances in identified compounds.
+In this document we first do an unsupervised exploratory analysis and 
+later we classify compounds by "tissue specificity" according to their abundances in identified compounds.
 
 
 # Libraries
