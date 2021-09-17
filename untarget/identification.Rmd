@@ -182,7 +182,7 @@ for(i in seq(nrow(ids))){
   } else if(i.class == "PS"){
     i.ions <- c("[M+H]+", "[M-H]-", "13C[M-H]-")
   } else if(i.class == "SM"){
-    i.ions <- c("[M+H]+"," 13C[M+H]+", "[M-H+HCOOH]-")
+    i.ions <- c("[M+H]+", "13C[M+H]+", "[M-H+HCOOH]-")
   } else if(i.class %in% c("MGDG", "DGDG")){
     i.ions <- c(
       #    "2(13C)[M+H]+", 
@@ -191,7 +191,7 @@ for(i in seq(nrow(ids))){
       #    "[M+C2H8N]+", "13C[M+C2H8N]+",
       #    "[2M+NH4]+", "13C[2M+NH4]+", "2(13C)[2M+NH4]+", 
       #    "[2M+Na]+", "13C[2M+Na]+", "2(13C)[2M+Na]+",
-      "[M-H]-", "13C[M-H]", 
+      "[M-H]-", "13C[M-H]-", 
       "[M-H+HCOOH]-", "13C[M-H+HCOOH]-", "2(13C)[M-H+HCOOH]-"#, "3(13C)[M-H+HCOOH]-"
     )
   } else if(i.class == "DAG"){
@@ -382,7 +382,6 @@ ions.include <- rbind(
   c("pCERhex", "pCERhex42:1_FA18:1_24:0", 18.55, 956.6646, "[-]", "NEG"),
   c("SM", "SM36:2_FA18:1_18:1_d9", 16.2, 1412.9924, "[+]", "POS"),
   c("others", "Malic acid", 0.57, 321.0628, "[add]-", "NEG"),
-  c("unknown", "Unk-003", 18.55, 878.6477, "[M+Cl]-", "NEG"),
   c("unknown", "Unk-037", 13.98, 221.1547, "[14:3-H]-", "NEG"),
   #c("unknown", "Unk-054", 15.39, 311.2956, "[20:0-H]-", "NEG"),
   c("FFA", "FFA29:4_FA22:0_phenylacetic", 16.41, 339.3265, "[22:0-H]-", "NEG")
