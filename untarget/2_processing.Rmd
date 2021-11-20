@@ -1,0 +1,496 @@
+---
+title: "Processing"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+
+# Preliminaries
+
+## Parameters
+
+```{r parameters}
+polarity <- "POS" # specify "POS" or "NEG"
+study <- "tissues" # specify "maturation" or "tissues"
+
+if(polarity == "NEG"){
+  if(study == "tissues"){
+    int <- 1e6 #6e5
+  } else if(study == "maturation"){
+    int <- 1e7 #3e5
+  }
+} else if(polarity == "POS"){
+  if(study == "tissues"){
+    int <- 1e7 #1e7
+  } else if(study == "maturation"){
+    int <- 3e8 #4e6
+  }
+}
+
+if(study == "maturation"){
+  v.class <- "type"
+} else if(study == "tissues"){
+  v.class <- "tissue"
+}
+```
+
+
+## Libraries
+
+```{r libraries, message = FALSE, warning = FALSE}
+library(xcms)
+library(Spectra)
+library(tidyverse)
+library(OrgMassSpecR)
+library(Rdisop)
+library(MetaboAnnotation)
+library(MetaboCoreUtils)
+
+.ppm <- function(x, ppm = 10) {
+  ppm * x / 1e6
+}
+matchWithPpm <- function(x, y, ppm = 0) {
+  lapply(x, function(z, ppm) {
+    which(abs(z - y) <= (.ppm(z, ppm)) + 1e-9)
+  }, ppm = force(ppm))
+}
+```
+
+
+# MS-1
+
+## Data import
+
+```{r data-import}
+#  Get filenames
+injections <- data.frame(
+  filename = list.files(paste0(study, "/data/", polarity, "_FS_fixed/"))
+)
+tmp <- strsplit(gsub(".mzData", "", injections$filename), "_")
+tmp <- data.frame(do.call(rbind, tmp))
+if(study == "maturation"){
+  colnames(tmp) <- c("order", "project", "pt", "time", "type", "rep", 
+                     "polarity", "mode")
+  tmp$mode[tmp$polarity == "FS"] <- tmp$polarity[tmp$polarity == "FS"] 
+  tmp$polarity[tmp$polarity == "FS"] <- tmp$rep[tmp$polarity == "FS"] 
+  tmp$polarity[tmp$polarity == "FS"] <- tmp$rep[tmp$polarity == "FS"] 
+  tmp$rep[tmp$rep == polarity] <- tmp$type[tmp$rep == polarity] 
+  idx <- tmp$time %in% c("solveq", "blank", "STDmix")
+  tmp$type[idx] <- tmp$time[idx]
+  tmp$time[idx] <- 0
+  idx <- grep("QC", tmp$pt)
+  tmp$type[idx] <- paste(tmp$pt[idx], tmp$time[idx], sep = "_")
+  tmp$pt[idx] <- "xx"
+  tmp$time[idx] <- 0
+  tmp$type[tmp$type == "Rep" | tmp$type == "MIX"] <- "study"
+} else if(study == "tissues"){
+  tmp$X2 <- paste(tmp$X2, tmp$X3, sep = "_")
+  tmp <- tmp[,-3]
+  colnames(tmp) <- c("order", "project", "pt", "tissue", "rep", "polarity", "mode")
+  tmp$tissue[grep("QC", tmp$pt)] <- paste(tmp$pt[grep("QC", tmp$pt)], 
+                                          tmp$tissue[grep("QC", tmp$pt)], sep = "_")
+  tmp$pt[grep("QC", tmp$pt)] <- "xx00"
+  #tmp$tissue[tmp$tissue == "entire" | tmp$tissue == "skin" | 
+  #             tmp$tissue == "pulp" | tmp$tissue == "seeds"] <- "study"
+}
+
+injections <- cbind(injections, tmp)
+rm(tmp)
+
+if(study == "maturation"){
+  injections <- injections[grep("slv_01", injections$filename):nrow(injections),]
+  injections <- injections[grepl("Pt", injections$filename), ]
+  injections$type <- paste0(injections$pt, injections$time)
+  injections <- injections[!grepl("MIX", injections$filename), ]
+} else if(study == "tissues"){
+  injections <- injections[grep("solv_rep1", injections$filename):nrow(injections),]
+  injections <- injections[grepl("skin|pulp|seeds", injections$tissue),]
+}
+
+# Read the data
+data_raw <- readMSData(
+  paste0(study, "/data/", polarity, "_FS_fixed/" , injections$filename),
+  pdata = as(AnnotatedDataFrame(injections),
+             "NAnnotatedDataFrame"), 
+  mode = "onDisk")
+```
+
+
+## Peak detection
+
+```{r peak-detection}
+cwp <- CentWaveParam(ppm = 20,
+                     peakwidth = c(2, 20),
+                     prefilter = c(5, int),
+                     snthresh = 5,
+                     noise = 1000,
+                     mzdiff = 0.001,
+                     integrate = 2)
+xdata <- findChromPeaks(data_raw, param = cwp)
+```
+
+
+### Filter low-intensity peaks
+
+```{r filter-intensity}
+xdata <- refineChromPeaks(xdata, 
+                          param = FilterIntensityParam(
+                            nValues = 5, threshold = int)
+)
+```
+
+## Aligment
+
+```{r aligment, eval=TRUE}
+# Define the hook peaks
+pdp <- PeakDensityParam(sampleGroups = pData(xdata)[,v.class],
+                        minFraction = 1,#0.75,
+                        binSize = 0.02,
+                        bw = 3)
+xdata <- groupChromPeaks(xdata, param = pdp)
+
+# Perform the aligment
+if(study == "tissues"){
+  minfra <- 0.3
+} else if(study == "maturation"){
+  minfra <- 0.05
+}
+pgp <- PeakGroupsParam(span = 0.3,
+                       minFraction = minfra)
+xdata <- adjustRtime(xdata, param = pgp)
+```
+
+
+
+## Correspondance
+
+```{r correspondance}
+pdp <- PeakDensityParam(sampleGroups = pData(xdata)[,v.class],
+                        minFraction = 1,#0.66,
+                        minSamples = 3,#1,
+                        binSize = 0.02,
+                        bw = 1)
+xdata <- groupChromPeaks(xdata, param = pdp)
+```
+
+
+## Peak filling
+
+```{r peak-filling}
+fcp <- ChromPeakAreaParam()
+xdata <- fillChromPeaks(xdata, param = fcp)
+```
+
+
+# MS-2
+
+```{r}
+load(paste0(study, "/data/RData/MS2_", polarity, ".RData"))
+ms2 <- ms2[!grepl("STDmix", basename(ms2@backend@spectraData$dataOrigin))]
+length(ms2)
+```
+
+## Flag low-quality spectra
+
+```{r}
+### Spectra whose MZ of main fragment > precursor
+table(ms2$mz_max > precursorMz(ms2))
+
+### There should be at least 1 fragment with an absolute intensity >100.000 counts
+table(ms2$intensity_max > int)
+
+ms2$good <- FALSE
+ms2$good[ms2$mz_max < precursorMz(ms2) &
+           ms2$intensity_max > int] <- TRUE
+table(ms2$good)
+ms2 <- ms2[ms2$good]
+```
+
+
+# MS-1 & MS-2
+
+```{r}
+fls <- list.files(paste0(study, "/data/", polarity, "_DDA_mzML/"))
+ydata <- readMSData(paste0(study, "/data/", polarity, "_DDA_mzML/" , fls), 
+                    mode = "onDisk")
+intx <- as.numeric(paste0(substr(
+  as.character(int), 1, nchar(as.character(int))-1), 
+  as.numeric(substr(as.character(int), nchar(as.character(int)), 
+                    nchar(as.character(int))))-1))
+cwp@prefilter[2] <- intx
+xchr <- findChromPeaks(ydata, param = cwp)
+xchr <- refineChromPeaks(xchr, 
+                         param = FilterIntensityParam(
+                           nValues = 5, threshold = intx)
+)
+cp <- chromPeaks(xchr)
+ft <- as.data.frame(featureDefinitions(xdata))
+ms2$FT <- "X"
+for(i in seq(nrow(ft))){
+  idx_ms2 <- unlist(matchWithPpm(ft$mzmed[i], precursorMz(ms2), ppm = 5))
+  idx_cp <- unlist(matchWithPpm(ft$mzmed[i], cp[,"mz"], ppm = 5))
+  cpx <- cp[idx_cp, ]
+  if(length(idx_ms2) > 0){
+    for(j in seq(length(idx_ms2))){
+      idy <- which(basename(fileNames(ydata)) ==
+                     basename(ms2@backend@spectraData$dataOrigin)[idx_ms2][j])
+      if(length(idx_cp) == 1 & cpx["sample"] == idy){
+        rtmin <- cpx["rtmin"]
+        rtmax <- cpx["rtmax"]
+      } else if(length(idx_cp) > 1){
+        if(idy %in% cpx[,"sample"]) {
+          rtmin <- min(cpx[cpx[,"sample"] == idy, "rtmin"])
+          rtmax <- max(cpx[cpx[,"sample"] == idy, "rtmax"])
+        }
+      }
+      if((length(idx_cp) == 1 & cpx["sample"] == idy) |
+         length(idx_cp) > 1){
+        if((rtime(ms2)[idx_ms2][j] > rtmin) & (rtime(ms2)[idx_ms2][j] < rtmax)){
+          ms2$FT[idx_ms2][j] <- rownames(ft)[i]
+        }
+      }
+    } # close idx "j"
+  }
+}
+table(ms2$FT != "X")
+ms2 <- ms2[ms2$FT != "X"]
+length(unique(ms2$FT))
+ft <- ft[rownames(ft) %in% unique(ms2$FT),]
+ft <- cbind(ft, "ms2" = rep(NA, nrow(ft)))
+for(i in seq(nrow(ft))){
+  ft$ms2[i] <- sum(ms2$FT == rownames(ft)[i]) 
+}
+sum(ft$ms2)
+```
+
+
+# Identification
+
+```{r}
+db_exp <- tibble(
+  FT = rownames(ft),
+  precursor = ft[, "mzmed"],
+  rtime = ft[, "rtmed"],
+  MS2_n = ft[,"ms2"]
+)
+
+cmps <- read.csv("compounds.csv")
+cmps$exactmass <- NA
+for(i in seq(nrow(cmps))){
+  if(grepl("D", cmps$formula[i])){
+    cmps$exactmass[i] <- getMolecule(cmps$formula[i])$exactmass
+  }else if(grepl("C", cmps$formula[i])){
+    cmps$exactmass[i] <- MonoisotopicMass(formula = ListFormula(
+      cmps$formula[i])) 
+  } else {
+    cmps$exactmass[i] <- as.numeric(cmps$formula[i])
+  }
+}
+cmps$rtime <- cmps$rtime*60
+
+adds <- data.frame(rbind(
+  c("[M-H]-",          -1.007276,              1, "NEG"), 
+  c("13C[M-H]-",       -1.007276 + 1.003355,   1, "NEG"), 
+  c("[M-H+HCOOH]-",    44.998200,              1, "NEG"),
+  c("13C[M-H+HCOOH]-", 44.998200 + 1.003355,   1, "NEG"),
+  
+  c("[M+H]+",           1.007276,              1, "POS"), 
+  c("[M+NH4]+",        18.033830,              1, "POS"),
+  c("13C[M+NH4]+",     18.033830 + 1.003355,   1, "POS"),
+  c("(2)13C[M+NH4]+",  18.033830 + 1.003355*2, 1, "POS")
+))
+colnames(adds) <- c("name", "mass_add", "mass_multi", "polarity")
+rownames(adds) <- adds$name
+adds$mass_add <- as.numeric(adds$mass_add)
+adds$mass_multi <- as.numeric(adds$mass_multi)
+
+parm <- Mass2MzRtParam(adducts = adds[adds$polarity == polarity, ], 
+                       ppm = 5, toleranceRt = 5)
+ft_match <- matchMz(as.data.frame(db_exp), cmps, parm, 
+                    mzColname = "precursor", rtColname = "rtime")
+ft_match_out <- as.data.frame(matchedData(ft_match))
+tmp <- ft_match_out[!is.na(ft_match_out$target_compound), ]
+tmp2 <- paste(round(tmp$precursor), round(tmp$rtime))
+if(any(duplicated(tmp2))){
+  noise <- c()
+  dpl <- unique(tmp2[duplicated(tmp2)])
+  for(i in unique(dpl)){
+    i.tmp <- tmp[tmp2 == i, ]
+    idx <- which(paste(round(ft_match_out$precursor), round(ft_match_out$rtime)) == i)
+    #if(length(unique(i.tmp$target_class)) == 1){
+    #  ft_match_out$target_compound[idx] <- paste0(
+    #    i.tmp$target_class[1], i.tmp$target_C[1], ":", i.tmp$target_db[1])
+    #} else {
+    ft_match_out$target_compound[idx] <- paste(i.tmp$target_compound, 
+                                               collapse = " - ")
+    #}
+  }
+}
+if(any(grep("\\.", rownames(ft_match_out)))){
+  ft_match_out <- ft_match_out[-grep("\\.", rownames(ft_match_out)),]
+}
+db_exp$compound <- ft_match_out$target_compound
+db_exp$adduct <- ft_match_out$adduct
+table(!is.na(db_exp$compound))
+```
+
+## Fragmentation patterns
+
+```{r}
+ids <- c()
+
+C <- seq(from = 16, to = 18, by = 2)
+db <- seq(from = 0, to = 3, by = 1)
+sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
+             sep = ":")
+
+cls <- c("PA", "PC", "PE", "PG", "PI", "PS", 
+         "CER", "CER-FA", "CERhex", "CERhex-FA", 
+         "MGDG", "MGDG-Na", "DGDG", "DGDG-Na", 
+         "DAG")
+for(i in cls){
+  ids <- c(ids, paste(i, expand.grid(sn, sn)[,"Var1"], 
+                      expand.grid(sn, sn)[,"Var2"], sep = "_"))
+}
+
+cls <- "TAG"
+sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], sep = ":")
+for(i in cls){
+  ids <- c(ids, paste(i, expand.grid(sn, sn, sn)[,"Var1"], 
+                      expand.grid(sn, sn, sn)[,"Var2"], 
+                      expand.grid(sn, sn, sn)[,"Var3"], sep = "_"))
+}
+
+
+source("tmp_20211103_stds_functions_grl.R")
+source("tmp_20211103_stds_functions_neg.R")
+source("tmp_20211103_stds_functions_pos.R")
+
+db_thr <- tibble(id = ids) %>% 
+  mutate(class = map_chr(id, function(x){unlist(strsplit(x, "_"))[1]})) %>%
+  mutate(sn = map(id, function(x){unlist(strsplit(x, "_"))[-1]})) %>%
+  mutate(C = map_dbl(sn, function(x){sum(as.numeric(gsub(":.*", "", x)))})) %>%
+  mutate(db = map_dbl(sn, function(x){sum(as.numeric(gsub(".*:", "", x)))})) %>% 
+  mutate(id2 = paste0(class, C, ":", db)) %>%
+  mutate(formula = pmap_chr(list(class = class, C = C, db = db), 
+                            function(class, C, db){
+                              fml_maker(class, C, db)})) %>%
+  mutate(neg_precursor = pmap_dbl(list(class = class, formula = formula),
+                                  function(class = class, formula = formula){
+                                    precursor_neg(class, formula)})) %>%
+  mutate(neg_ms2 = pmap(list(class = class, formula = formula, sn = sn),
+                        function(class = class, formula = formula, sn = sn){
+                          ms2_neg(class, formula, sn)
+                        })) %>%
+  mutate(pos_precursor = pmap_dbl(list(class = class, formula = formula),
+                                  function(class = class, formula = formula){
+                                    precursor_pos(class, formula)})) %>%
+  mutate(pos_ms2 = pmap(list(class = class, formula = formula, sn = sn),
+                        function(class = class, formula = formula, sn = sn){
+                          ms2_pos(class, formula, sn)
+                        }))
+
+
+
+db_exp$compound <- gsub(")", "", db_exp$compound)
+db_exp$compound <- gsub("\\(", "_", db_exp$compound)
+db_exp$compound <- gsub("/", "_", db_exp$compound)
+
+ms2sim <- function(compound, precursor, rtime){
+  idx <- which(db_thr$id %in% unlist(strsplit(compound, " - ")))
+  idx <- idx[unlist(matchWithPpm(
+    precursor, 
+    db_thr[idx, paste0(tolower(polarity), "_precursor")], ppm = 5))]
+  if(length(idx) > 0){
+    ms2sub <- filterPrecursorMz(ms2, precursor + 0.01 * c(-1, 1))
+    ms2sub <- filterRt(ms2sub, rtime + 10 * c(-1, 1))
+    ms2sub <- Spectra::combineSpectra(
+      ms2sub, intensityFun = base::sum, mzFun = base::mean, 
+      tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+      weighted = TRUE)
+    if(length(idx) == 1){
+      sim <- SpectrumSimilarity(
+        cbind("mz" = unlist(mz(ms2sub)),
+              "intensity" = unlist(intensity(ms2sub))), 
+        db_thr[[idx,paste0(tolower(polarity), "_ms2")]][[1]], 
+        print.graphic = FALSE, t = 0.01, b = 10)
+    } else if(length(idx) > 1){
+      sim <- list()
+      for(k in seq(length(idx))){
+        sim[[k]] <- SpectrumSimilarity(
+          cbind("mz" = unlist(mz(ms2sub)),
+                "intensity" = unlist(intensity(ms2sub))), 
+          db_thr[[idx[k],paste0(tolower(polarity), "_ms2")]][[1]], 
+          print.graphic = FALSE, t = 0.01, b = 10)
+        names(sim)[k] <- db_thr$id[idx[k]]
+      }
+      #sim <- unlist(sim[which.max(lapply(sim, mean))])
+    }
+  }else{
+    sim <- 0
+  }
+  sim
+}
+
+db_exp <- db_exp %>%
+  filter(MS2_n > 0) %>%
+  filter(!is.na(compound)) %>%
+  mutate(sim = pmap(list(compound, precursor, rtime),
+                    function(compound, precursor, rtime){
+                      ms2sim(compound, precursor, rtime)
+                    }))
+
+db_exp <- db_exp %>%
+  filter(grepl(" - ", compound) & !grepl("13C", adduct)) %>%
+  mutate(compound = map_chr(sim, function(x){
+    names(which.max(x))
+  }))  %>%
+  mutate(sim = map(sim, function(x){
+    x[which.max(x)]
+  })) %>%
+  rbind(
+    db_exp %>%
+      filter(MS2_n > 0) %>%
+      filter(!is.na(compound)) %>%
+      filter(!grepl(" - ", compound) | grepl("13C", adduct))
+  ) %>%
+  mutate(sim = map_dbl(sim, function(x) unlist(x)))
+
+length(unique(unlist(strsplit(db_exp$compound, " - ")))) - length(grep(" - ", db_exp$compound))
+unique(db_exp$compound)
+```
+
+# Output
+
+```{r}
+db_exp$precursor <- sprintf("%.4f", db_exp$precursor)
+db_exp$rtime <- sprintf("%.2f", db_exp$rtime/60)
+db_exp$sim <- sprintf("%.2f", db_exp$sim)
+db_exp <- db_exp[order(db_exp$compound),]
+DT::datatable(db_exp, rownames = FALSE, options = list(
+  pageLength = nrow(db_exp), dom = "t"))
+```
+
+
+# Save data
+
+```{r save, eval=FALSE}
+save(xdata, file = paste0(study, "/data/RData/data_XCMS_", polarity, ".RData"))
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
+

@@ -17,4 +17,5 @@
 !feature_selection_identification.html
 !test.csv
 *.jpeg
+*.png
 tmp*

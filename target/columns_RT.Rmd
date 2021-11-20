@@ -9,7 +9,7 @@ library(OrgMassSpecR)
 library(RColorBrewer)
 library(Rdisop)
 
-fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics_shared/new_rt.xlsx"
+fl <- "C:/Users/garciaalom/Google Drive/projectes/lipidomics/target/lipidomics_shared/new_rt.xlsx"
 cmps <- readxl::read_xlsx(fl, sheet = "FORMULE")
 cmps_IS <- readxl::read_xlsx(fl, sheet = "IS")
 cmps_IS <- cmps_IS[!is.na(cmps_IS$formula),]
@@ -21,45 +21,58 @@ for(i in seq(nrow(cmps_IS))){
 
 cmps <- rbind(cmps[,c("ID", "formula", "class")], cmps_IS[,c("ID", "formula", "class")])
 cmps$class <- gsub("Lyso_", "L", cmps$class)
+cmps$class <- gsub("FFA", "FA", cmps$class)
+cmps$class <- gsub("MAG", "MG", cmps$class)
+cmps$class <- gsub("DAG", "DG", cmps$class)
+cmps$class <- gsub("TAG", "TG", cmps$class)
+
+excl <- readxl::read_xlsx("data/MRMeliminati_dopoKMD.xlsx", col_names = FALSE)
+colnames(excl) <- "ID"
+excl$ID <- gsub("TAG\\(", "TAG", excl$ID)
+excl$ID <- gsub("-FA", "_FA", excl$ID)
+idx <- grep("TAG", excl$ID)
+excl$ID[idx] <- gsub(")", "", excl$ID[idx])
+table(excl$ID %in% cmps$ID)
+cmps <- cmps[!cmps$ID %in% excl$ID, ]
 
 #col_class <- colorRampPalette(brewer.pal(12, "Paired"))(length(unique(cmps$class)))
 col_class <- c(brewer.pal(12, "Paired"), brewer.pal(9, "Set1"))
 #names(col_class) <- levels(factor((cmps$class)))
-names(col_class) <- c("PC", "LPA", "LPE", "PG", "LPI", "LPS", "PA", "FFA", "LPG", "PE", "PI", "PS",
-                      "CER", "CAR", "DAG", "DGDG", "LPC", "MAG", "MGDG", "SM", "TAG")
-col_class[names(col_class) == "MAG"] <- "#FFD92F"
+names(col_class) <- c("PC", "LPA", "LPE", "PG", "LPI", "LPS", "PA", "FA", "LPG", "PE", "PI", "PS",
+                      "CER", "CAR", "DG", "DGDG", "LPC", "MG", "MGDG", "SM", "TG")
+col_class[names(col_class) == "MG"] <- "#FFD92F"
 col_class[names(col_class) == "PI"] <- "#FFD92F"
 #col_class[names(col_class) == "PE"] <- "#1F78B4"
 #col_class[names(col_class) == "PG"] <- "#1F78B4"
 plot(1,1)
 legend("topright", legend = names(col_class), col = col_class, pch = 16, ncol = 2)
 
-dt_AMIDE <- data.frame(rbind(c("FFA", 1, 350), 
-                           c("LPA", 13, 360),
-                           c("LPE", 11, 500),
-                           c("LPG", 8, 570),
-                           c("LPI", 13, 650),
-                           c("LPS", 14.5, 490),
-                           c("PA", 11, 600),
-                           c("PC", 8.5, 800),
-                           c("PE", 9.5, 630),
-                           c("PG", 4, 850),
-                           c("PI", 12.5, 900),
-                           c("PS", 9, 900),
-                           c("CAR", 11, 350),
-                           c("CER", 4.5, 550),
-                           c("DAG", 1, 650),
-                           c("DGDG", 13, 980),
-                           c("LPC", 14, 550),
-                           c("MAG", 3.5, 410),
-                           c("MGDG", 6, 750),
-                           c("SM", 11, 800),
-                           c("TAG", 1, 900)))
+dt_AMIDE <- data.frame(rbind(c("FA", 1, 350), 
+                             c("LPA", 13, 360),
+                             c("LPE", 11, 500),
+                             c("LPG", 8, 570),
+                             c("LPI", 13, 650),
+                             c("LPS", 14.5, 490),
+                             c("PA", 11, 600),
+                             c("PC", 8.5, 800),
+                             c("PE", 9.5, 630),
+                             c("PG", 4, 850),
+                             c("PI", 12.5, 900),
+                             c("PS", 9, 900),
+                             c("CAR", 11, 350),
+                             c("CER", 4.5, 550),
+                             c("DG", 1, 650),
+                             c("DGDG", 13, 980),
+                             c("LPC", 14, 550),
+                             c("MG", 3.5, 410),
+                             c("MGDG", 6, 750),
+                             c("SM", 11, 800),
+                             c("TG", 1, 900)))
 colnames(dt_AMIDE) <- c("name", "RT", "mass")
 dt_AMIDE$color <- col_class[dt_AMIDE$name]
 
 
-dt_BEH <- data.frame(rbind(c("FFA", 15, 250), 
+dt_BEH <- data.frame(rbind(c("FA", 15, 250), 
                            c("LPA", 9, 360),
                            c("LPE", 8.5, 560),
                            c("LPG", 14, 550),
@@ -73,17 +86,17 @@ dt_BEH <- data.frame(rbind(c("FFA", 15, 250),
                            c("PS", 20, 870),
                            c("CAR", 3.5, 410),
                            c("CER", 14.5, 450),
-                           c("DAG", 20, 500),
+                           c("DG", 20, 500),
                            c("DGDG", 12, 950),
                            c("LPC", 8.5, 590),
-                           c("MAG", 12.5, 350),
+                           c("MG", 12.5, 350),
                            c("MGDG", 12, 800),
                            c("SM", 13, 700),
-                           c("TAG", 23.5, 850)))
+                           c("TG", 23.5, 850)))
 colnames(dt_BEH) <- c("name", "RT", "mass")
 dt_BEH$color <- col_class[dt_BEH$name]
 
-dt_CSH <- data.frame(rbind(c("FFA", 15, 250), 
+dt_CSH <- data.frame(rbind(c("FA", 15, 250), 
                            c("LPA", 7, 360),
                            c("LPE", 12.5, 450),
                            c("LPG", 9, 560),
@@ -97,13 +110,13 @@ dt_CSH <- data.frame(rbind(c("FFA", 15, 250),
                            c("PS", 18, 920),
                            c("CAR", 3.5, 410),
                            c("CER", 18, 450),
-                           c("DAG", 20, 550),
+                           c("DG", 20, 550),
                            c("DGDG", 12.5, 950),
                            c("LPC", 8.5, 610),
-                           c("MAG", 13, 350),
+                           c("MG", 13, 350),
                            c("MGDG", 12, 800),
                            c("SM", 13, 700),
-                           c("TAG", 23, 820)))
+                           c("TG", 23, 820)))
 colnames(dt_CSH) <- c("name", "RT", "mass")
 dt_CSH$color <- col_class[dt_CSH$name]
 
@@ -151,6 +164,7 @@ for(clm in c("AMIDE", "CSH", "BEH")){
     dt_clm <- get(paste0("dt_", clm))
     
     #par(mfrow = c(1, 2))
+    print(dim(dt))
     plot(dt$RT, dt$mass, pch = 21, xlab = "", ylab = "", xaxt="n",
          bg = paste0(col_class[dt$class]), cex = 1.2, lwd = 0.01, 
          main = paste0(clm, " - ", ttl, " Analytes"), 
@@ -174,9 +188,9 @@ for(clm in c("AMIDE", "CSH", "BEH")){
 text(dt_names$RT, dt_names$mass, dt_names$class, col = dt_names$col)
 
 
-text(mean(dt$RT[dt$class == "FFA"])+0.5,
-     mean(dt$mass[dt$class == "FFA"]),
-     "FFA", col = col_class["FFA"])
+text(mean(dt$RT[dt$class == "FA"])+0.5,
+     mean(dt$mass[dt$class == "FA"]),
+     "FA", col = col_class["FA"])
 
 
 plot(dt$RT, dt$mass, pch = 21, xlab = "RT (min)", ylab = "m/z", xlim = c(0, 15), xaxt="n",
@@ -187,5 +201,110 @@ grid()
 
 plot(1,1)
 legend("topright", legend=names(col_class), pch=20, col=col_class,bty='n')
+```
+
+
+
+# KMD
+
+```{r, fig.width=20, fig.height=15}
+library(MetaboCoreUtils)
+library(RColorBrewer)
+
+ref <- c(12, 1, 16, 14, 31, 32)
+names(ref) <- c("C", "H", "O", "N", "P", "S")
+
+for(clm in c("AMIDE", "CSH", "BEH")){
+  for(plr in c("POS", "NEG")){
+    if(plr == "NEG"){
+      ttl <- "Negative"
+    } else if(plr == "POS"){
+      ttl <- "Positive"
+    }
+    
+    
+    dt <- read.table(
+      paste0(pth, "20210505_GRAPE_", clm, "_", plr, "_RT.txt"), 
+      sep = "\t", na.strings = "N/A", skip = 3, row.names = 1)
+    colnames(dt) <- "RT"
+    dt$ID <- rownames(dt)
+    dt  <- dt[!is.na(dt$RT),]
+    
+    dt$ID <- gsub("CER-H2O", "CER", dt$ID)
+    dt$ID <- gsub("PC-COO", "PC", dt$ID)
+    dt$ID <- gsub("_Na", "", dt$ID)
+    
+    dt <- merge(dt, cmps, by = "ID")
+    dt$mass <- NA
+    for(i in seq(nrow(dt))){
+      if(grepl("D", dt$formula[i])){
+        dt$mass[i] <- getMolecule(dt$formula[i])$exactmass
+      } else {
+        dt$mass[i] <- MonoisotopicMass(formula = ListFormula(dt$formula[i]))
+      }
+    }
+    
+    if(clm == "AMIDE"){
+      rt <- 24
+      if(plr == "POS"){
+        dt <- dt[dt$RT < 20, ]
+      }
+    } else {
+      rt <- 30
+    }
+    
+    dt_clm <- get(paste0("dt_", clm))
+    
+    
+    dt$NM <- NA
+    for(i in seq(nrow(dt))){
+      myform <- countElements(dt$formula[i])
+      pippo <- ref[names(myform)]
+      dt$NM[i] <- t(pippo) %*% myform
+    }
+    dt$KMD_CH2 <- dt$NM - (
+      dt$mass * (as.numeric(t(ref[names(countElements("CH2"))]) %*% countElements("CH2")) / 
+                   MonoisotopicMass(formula = ListFormula("CH2"))))
+    
+    dt <- dt[!dt$ID %in% cmps_IS$ID, ]
+    dt$ID <- gsub("Lyso_", "L", dt$ID)
+    dt$C <- NA
+    dt$db <- NA
+    idx <- which(dt$class %in% c("FA", "LPA", "LPC", "LPE", "LPG", "LPI", "CER", "MG"))
+    dt$C[idx] <- as.numeric(gsub(":.*", "", gsub(".*_", "", dt$ID[idx])))
+    dt$db[idx] <- as.numeric(gsub(".*:", "", gsub(".*_", "", dt$ID[idx])))
+    idx <- which(dt$class %in% c("PA", "PC", "PE", "PG", "PI", "PS", "DG", "MGDG", "DGDG"))
+    dt$C[idx] <- unlist(lapply(strsplit(gsub(
+      ")", "", gsub(".*\\(", "", dt$ID[idx])), "/"), function(x) 
+        sum(as.numeric(gsub(":.*", "", x)))))
+    dt$db[idx] <- unlist(lapply(strsplit(gsub(
+      ")", "", gsub(".*\\(", "", dt$ID[idx])), "/"), function(x) 
+        sum(as.numeric(gsub(".*:", "", x)))))
+    idx <- which(dt$class == "CAR")
+    dt$C[idx] <- as.numeric(gsub("C", "", gsub(":.*", "", dt$ID[idx])))
+    dt$db[idx] <- as.numeric(gsub(".*:", "", gsub("-.*", "", dt$ID[idx])))
+    idx <- which(dt$class == "TG")
+    dt$C[idx] <- as.numeric(gsub("TAG", "", gsub(":.*", "", dt$ID[idx])))
+    dt$db[idx] <- as.numeric(gsub(".*:", "", gsub("_.*", "", dt$ID[idx])))
+    
+    par(mfrow = c(ceiling(length(unique(dt$class))/4), 4), mar = c(3, 2, 1, 1))
+    for(cl in unique(dt$class)){
+      dtx <- dt[dt$class == cl, ]
+      dbcols <- colorRampPalette(c("#9E0142", "#FF7F00", "#33A02C", "#3288BD", "#5E4FA2"))(length(unique(dtx$C)))
+      names(dbcols) <- unique(dtx$C)
+      print(plot(dtx$RT, dtx$KMD_CH2, col = "white", bty = "l", 
+                 xlab = "RT", ylab = "KMD(CH2)", main = paste0(clm, " - ", cl)))
+      text(dtx$RT, dtx$KMD_CH2, paste0(dtx$C, ":", dtx$db), 
+           col = dbcols[as.factor(dtx$C)])
+      for(j in seq(length(unique(dtx$C)))){
+        dty <- dtx[dtx$C == unique(dtx$C)[j], ]
+        if(nrow(dty) > 1){
+          abline(lm(dty$KMD_CH2~dty$RT), col = dbcols[as.character(unique(dty$C))])
+        }
+      }
+    }
+  }}
+
+
 ```
 

@@ -1,0 +1,44 @@
+---
+title: "MS2 Spectra"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+```{r}
+library(Spectra)
+s <- "maturation"
+#for(s in c("tissues", "maturation")){
+  for(p in c("NEG", "POS")){
+    fls <- list.files(paste0(s, "/data/", p, "_DDA_mzML/"))
+    ms2 <- Spectra(paste0(s, "/data/", p, "_DDA_mzML/", fls), 
+                   backend = MsBackendDataFrame())
+    ms2 <- ms2[msLevel(ms2) == 2]
+    length(ms2)
+    ms2$mz_max <- NA
+    ms2$intensity_max <- NA
+    for(i in seq(length(ms2))){
+      idx <- which.max(unlist(intensity(ms2[i])))
+      ms2$mz_max[i] <- unlist(mz(ms2[i]))[idx]
+      ms2$intensity_max[i] <- unlist(intensity(ms2[i]))[idx]
+    }
+    save(ms2, file = paste0(s, "/data/RData/MS2_", p, ".RData"))
+  }
+#}
+```
+
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
