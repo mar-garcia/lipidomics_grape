@@ -18,7 +18,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "POS" # specify "POS" or "NEG"
+polarity <- "NEG" # specify "POS" or "NEG"
 study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
@@ -206,11 +206,16 @@ length(ms2)
 table(ms2$mz_max > precursorMz(ms2))
 
 ### There should be at least 1 fragment with an absolute intensity >100.000 counts
-table(ms2$intensity_max > int)
+intx <- as.numeric(paste0(substr(
+  as.character(int), 1, nchar(as.character(int))-1), 
+  as.numeric(substr(as.character(int), nchar(as.character(int)), 
+                    nchar(as.character(int))))-1))
+table(precursorIntensity(ms2) > int, ms2$intensity_max > intx)
 
 ms2$good <- FALSE
 ms2$good[ms2$mz_max < precursorMz(ms2) &
-           ms2$intensity_max > int] <- TRUE
+           precursorIntensity(ms2) > int &
+           ms2$intensity_max > intx] <- TRUE
 table(ms2$good)
 ms2 <- ms2[ms2$good]
 ```
@@ -222,10 +227,6 @@ ms2 <- ms2[ms2$good]
 fls <- list.files(paste0(study, "/data/", polarity, "_DDA_mzML/"))
 ydata <- readMSData(paste0(study, "/data/", polarity, "_DDA_mzML/" , fls), 
                     mode = "onDisk")
-intx <- as.numeric(paste0(substr(
-  as.character(int), 1, nchar(as.character(int))-1), 
-  as.numeric(substr(as.character(int), nchar(as.character(int)), 
-                    nchar(as.character(int))))-1))
 cwp@prefilter[2] <- intx
 xchr <- findChromPeaks(ydata, param = cwp)
 xchr <- refineChromPeaks(xchr, 
@@ -335,7 +336,7 @@ adds$mass_add <- as.numeric(adds$mass_add)
 adds$mass_multi <- as.numeric(adds$mass_multi)
 
 parm <- Mass2MzRtParam(adducts = adds[adds$polarity == polarity, ], 
-                       ppm = 5, toleranceRt = 10)
+                       ppm = 10, toleranceRt = 10)
 ft_match <- matchMz(as.data.frame(db_exp), cmps, parm, 
                     mzColname = "precursor", rtColname = "rtime")
 ft_match_out <- as.data.frame(matchedData(ft_match))
@@ -358,6 +359,7 @@ if(any(grep("\\.", rownames(ft_match_out)))){
 db_exp$compound <- ft_match_out$target_compound
 db_exp$adduct <- ft_match_out$adduct
 table(!is.na(db_exp$compound))
+length(unique(db_exp$compound[!is.na(db_exp$compound)]))
 ```
 
 ## Fragmentation patterns
