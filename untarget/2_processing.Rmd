@@ -25,13 +25,13 @@ if(polarity == "NEG"){
   if(study == "tissues"){
     int <- 5e5 #6e5
   } else if(study == "maturation"){
-    int <- 1e7 #3e5
+    int <- 5e6 #3e5
   }
 } else if(polarity == "POS"){
   if(study == "tissues"){
-    int <- 2e6 #1e7
+    int <- 5e6 #1e7
   } else if(study == "maturation"){
-    int <- 3e8 #4e6
+    int <- 1e7 #4e6
   }
 }
 
@@ -193,7 +193,7 @@ dim(featureDefinitions(xdata))
 
 # MS-2
 
-```{r}
+```{r ms2-import}
 load(paste0(study, "/data/RData/MS2_", polarity, ".RData"))
 ms2 <- ms2[!grepl("STDmix", basename(ms2@backend@spectraData$dataOrigin))]
 length(ms2)
@@ -201,7 +201,7 @@ length(ms2)
 
 ## Flag low-quality spectra
 
-```{r}
+```{r ms2-flag}
 ### Spectra whose MZ of main fragment > precursor
 table(ms2$mz_max > precursorMz(ms2))
 
@@ -223,7 +223,7 @@ ms2 <- ms2[ms2$good]
 
 # MS-1 & MS-2
 
-```{r}
+```{r ms2-filter}
 fls <- list.files(paste0(study, "/data/", polarity, "_DDA_mzML/"))
 ydata <- readMSData(paste0(study, "/data/", polarity, "_DDA_mzML/" , fls), 
                     mode = "onDisk")
@@ -286,7 +286,7 @@ sum(ft$ms2)
 
 # Identification
 
-```{r}
+```{r identification}
 db_exp <- tibble(
   FT = rownames(ft),
   precursor = ft[, "mzmed"],
@@ -318,6 +318,7 @@ adds <- data.frame(rbind(
   c("[M-H+HCOOH]-",      44.998200,              1, "NEG"),
   c("13C[M-H+HCOOH]-",   44.998200 + 1.003355,   1, "NEG"),
   c("(2)13C[M-H+HCOOH]-",44.998200 + 1.003355*2, 1, "NEG"),  
+  c("[2M-H]-",           -1.007276,              2, "NEG"),
   c("[2M+Na-2H]-",       20.974668,              2, "NEG"), 
   c("13C[2M+Na-2H]-",    20.974668 + 1.003355,   2, "NEG"), 
   c("[M-CH3]-",        - 15.023475105,           1, "NEG"),
@@ -364,7 +365,7 @@ length(unique(db_exp$compound[!is.na(db_exp$compound)]))
 
 ## Fragmentation patterns
 
-```{r}
+```{r fragmentation}
 ids <- c()
 
 C <- seq(from = 16, to = 18, by = 2)
@@ -489,9 +490,83 @@ length(unique(db_exp$compound))
 unique(db_exp$compound)
 ```
 
+
+# Feature grouping
+
+```{r ft-group}
+feats <- as.data.frame(featureDefinitions(xdata))
+feats <- feats[rownames(feats) %in% db_exp$FT, ]
+db_exp <- db_exp[order(db_exp$FT),]
+all(rownames(feats) == db_exp$FT)
+db_exp$mean <- NA
+for(i in seq(nrow(feats))){
+  db_exp$mean[i] <- mean(chromPeaks(xdata)[unlist(feats$peakidx[i]),"into"])
+}
+db_exp <- db_exp[order(db_exp$mean, decreasing = TRUE),]
+db_exp$precursor <- as.numeric(db_exp$precursor)
+db_exp$rtime <- as.numeric(db_exp$rtime)
+data <- as.data.frame(t(featureValues(xdata, method = "sum", value = "into")))
+db_exp$FG <- NA
+fgn <- 0
+for(i in seq(nrow(db_exp))){
+  if(is.na(db_exp$FG[i])){
+    fgn <- fgn + 1
+    ft <- db_exp[db_exp$rtime > (db_exp$rtime[i] - 0.1) & 
+                   db_exp$rtime < (db_exp$rtime[i] + 0.1), ]
+    ft <- ft[is.na(ft$FG), ]
+    if(nrow(ft) > 1){
+      dt <- data[,colnames(data) %in% ft$FT]
+      dt <- apply(dt, 2, myimputer)
+      cori <- cor(log10(dt[,db_exp$FT[i]]), log10(dt))
+      if(length(which(cori > 0.7)) > 1){
+        dt <- dt[,cori > 0.7]
+        ft <- ft[ft$FT %in% colnames(dt), ]
+        chr <- chromatogram(xdata, 
+                            mz = db_exp$precursor[i] + 0.01 * c(-1, 1), 
+                            rt = db_exp$rtime[i]*60 + 15 * c(-1, 1),
+                            aggregationFun = "max")
+        chrcor <- rep(NA, nrow(ft))
+        for(j in seq(nrow(ft))){
+          chrj <- chromatogram(xdata, 
+                               mz = ft$precursor[j] + 0.01 * c(-1, 1), 
+                               rt = ft$rtime[j]*60 + 15 * c(-1, 1),
+                               aggregationFun = "max")
+          chrcorx <- rep(NA, length(chr))
+          for(k in seq(length(chr))){
+            chrcorx[k] <- correlate(chr[[k]], chrj[[k]])
+          }
+          chrcor[j] <- mean(chrcorx)
+          names(chrcor)[j] <- ft$FT[j]
+        }
+        chrcor[is.na(chrcor)] <- 0
+        if(length(which(chrcor > 0.9)) > 1){
+          ft <- ft[chrcor > 0.9, ]
+          db_exp$FG[db_exp$FT %in% ft$FT] <- fgn
+        } else {
+          db_exp$FG[i] <- fgn
+        }
+        } else {
+        db_exp$FG[i] <- fgn
+      }
+    }else {
+      db_exp$FG[i] <- fgn
+    }
+    print(paste0("Complete ", round((i/nrow(db_exp))*100), "%"))
+  }
+}
+for(i in unique(db_exp$FG)){
+  if(length(unique(db_exp$compound[db_exp$FG == i])) > 1){
+    print(i)
+    print(db_exp[db_exp$FG == i, c("precursor", "compound", "adduct", "FG")])
+    print("------------------------------------------------------")
+  }
+}
+```
+
+
 # Output
 
-```{r}
+```{r output}
 db_exp$precursor <- sprintf("%.4f", db_exp$precursor)
 db_exp$rtime <- sprintf("%.2f", db_exp$rtime/60)
 db_exp$sim <- sprintf("%.2f", db_exp$sim)
@@ -504,7 +579,8 @@ DT::datatable(db_exp, rownames = FALSE, options = list(
 # Save data
 
 ```{r save, eval=FALSE}
-save(xdata, file = paste0(study, "/data/RData/data_XCMS_", polarity, ".RData"))
+save(xdata, ms2, db_exp, 
+     file = paste0(study, "/data/RData/data_", polarity, ".RData"))
 ```
 
 
