@@ -23,7 +23,7 @@ study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   if(study == "tissues"){
-    int <- 3e5 #6e5
+    int <- 5e5 #6e5
   } else if(study == "maturation"){
     int <- 1e7 #3e5
   }
