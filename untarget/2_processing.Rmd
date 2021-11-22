@@ -23,13 +23,13 @@ study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   if(study == "tissues"){
-    int <- 1e6 #6e5
+    int <- 3e5 #6e5
   } else if(study == "maturation"){
     int <- 1e7 #3e5
   }
 } else if(polarity == "POS"){
   if(study == "tissues"){
-    int <- 1e7 #1e7
+    int <- 2e6 #1e7
   } else if(study == "maturation"){
     int <- 3e8 #4e6
   }
@@ -187,6 +187,7 @@ xdata <- groupChromPeaks(xdata, param = pdp)
 ```{r peak-filling}
 fcp <- ChromPeakAreaParam()
 xdata <- fillChromPeaks(xdata, param = fcp)
+dim(featureDefinitions(xdata))
 ```
 
 
@@ -238,6 +239,14 @@ for(i in seq(nrow(ft))){
   idx_ms2 <- unlist(matchWithPpm(ft$mzmed[i], precursorMz(ms2), ppm = 5))
   idx_cp <- unlist(matchWithPpm(ft$mzmed[i], cp[,"mz"], ppm = 5))
   cpx <- cp[idx_cp, ]
+  if(length(idx_cp) > 1){
+    idx_cp <- which(abs(cpx[,"rt"] - ft$rtmed[i]) < 10)
+    cpx <- cpx[idx_cp, ]
+  } else if(length(idx_cp) == 1){
+    if(abs(cpx["rt"] - ft$rtmed[i]) > 10){
+      idx_cp <- NULL
+    }
+  }
   if(length(idx_ms2) > 0){
     for(j in seq(length(idx_ms2))){
       idy <- which(basename(fileNames(ydata)) ==
@@ -249,6 +258,8 @@ for(i in seq(nrow(ft))){
         if(idy %in% cpx[,"sample"]) {
           rtmin <- min(cpx[cpx[,"sample"] == idy, "rtmin"])
           rtmax <- max(cpx[cpx[,"sample"] == idy, "rtmax"])
+        } else {
+          idx_cp <-NULL
         }
       }
       if((length(idx_cp) == 1 & cpx["sample"] == idy) |
@@ -283,6 +294,9 @@ db_exp <- tibble(
 )
 
 cmps <- read.csv("compounds.csv")
+cmps <- cmps[!cmps$compound %in% c(
+  "FFA(22:0)", "PA(18:1/18:3)", "PC(18:1/18:3)", 
+  "PE(18:1/18:1)", "PE(18:1/18:3)"),]
 cmps$exactmass <- NA
 for(i in seq(nrow(cmps))){
   if(grepl("D", cmps$formula[i])){
@@ -297,15 +311,23 @@ for(i in seq(nrow(cmps))){
 cmps$rtime <- cmps$rtime*60
 
 adds <- data.frame(rbind(
-  c("[M-H]-",          -1.007276,              1, "NEG"), 
-  c("13C[M-H]-",       -1.007276 + 1.003355,   1, "NEG"), 
-  c("[M-H+HCOOH]-",    44.998200,              1, "NEG"),
-  c("13C[M-H+HCOOH]-", 44.998200 + 1.003355,   1, "NEG"),
+  c("[M-H]-",            -1.007276,              1, "NEG"), 
+  c("13C[M-H]-",         -1.007276 + 1.003355,   1, "NEG"), 
+  c("(2)13C[M-H]-",      -1.007276 + 1.003355*2, 1, "NEG"), 
+  c("[M-H+HCOOH]-",      44.998200,              1, "NEG"),
+  c("13C[M-H+HCOOH]-",   44.998200 + 1.003355,   1, "NEG"),
+  c("(2)13C[M-H+HCOOH]-",44.998200 + 1.003355*2, 1, "NEG"),  
+  c("[2M+Na-2H]-",       20.974668,              2, "NEG"), 
+  c("13C[2M+Na-2H]-",    20.974668 + 1.003355,   2, "NEG"), 
+  c("[M-CH3]-",        - 15.023475105,           1, "NEG"),
   
-  c("[M+H]+",           1.007276,              1, "POS"), 
-  c("[M+NH4]+",        18.033830,              1, "POS"),
-  c("13C[M+NH4]+",     18.033830 + 1.003355,   1, "POS"),
-  c("(2)13C[M+NH4]+",  18.033830 + 1.003355*2, 1, "POS")
+  c("[M+H]+",             1.007276,              1, "POS"), 
+  c("13C[M+H]+",          1.007276 + 1.003355,   1, "POS"), 
+  c("[M+NH4]+",          18.033830,              1, "POS"),
+  c("13C[M+NH4]+",       18.033830 + 1.003355,   1, "POS"),
+  c("(2)13C[M+NH4]+",    18.033830 + 1.003355*2, 1, "POS"),
+  c("[M+C2H8N]+",        46.065674,              1, "POS"),
+  c("13C[M+C2H8N]+",     46.065674 + 1.003355,   1, "POS")
 ))
 colnames(adds) <- c("name", "mass_add", "mass_multi", "polarity")
 rownames(adds) <- adds$name
@@ -313,7 +335,7 @@ adds$mass_add <- as.numeric(adds$mass_add)
 adds$mass_multi <- as.numeric(adds$mass_multi)
 
 parm <- Mass2MzRtParam(adducts = adds[adds$polarity == polarity, ], 
-                       ppm = 5, toleranceRt = 5)
+                       ppm = 5, toleranceRt = 10)
 ft_match <- matchMz(as.data.frame(db_exp), cmps, parm, 
                     mzColname = "precursor", rtColname = "rtime")
 ft_match_out <- as.data.frame(matchedData(ft_match))
@@ -324,14 +346,10 @@ if(any(duplicated(tmp2))){
   dpl <- unique(tmp2[duplicated(tmp2)])
   for(i in unique(dpl)){
     i.tmp <- tmp[tmp2 == i, ]
-    idx <- which(paste(round(ft_match_out$precursor), round(ft_match_out$rtime)) == i)
-    #if(length(unique(i.tmp$target_class)) == 1){
-    #  ft_match_out$target_compound[idx] <- paste0(
-    #    i.tmp$target_class[1], i.tmp$target_C[1], ":", i.tmp$target_db[1])
-    #} else {
-    ft_match_out$target_compound[idx] <- paste(i.tmp$target_compound, 
-                                               collapse = " - ")
-    #}
+    #idx <- which(paste(round(ft_match_out$precursor), round(ft_match_out$rtime)) == i)
+    #ft_match_out$target_compound[idx] <- paste(i.tmp$target_compound, 
+    #                                           collapse = " - ")
+    i.tmp <- i.tmp[which.min(abs(i.tmp$rtime - i.tmp$target_rtime)),]
   }
 }
 if(any(grep("\\.", rownames(ft_match_out)))){
@@ -404,14 +422,13 @@ db_exp$compound <- gsub(")", "", db_exp$compound)
 db_exp$compound <- gsub("\\(", "_", db_exp$compound)
 db_exp$compound <- gsub("/", "_", db_exp$compound)
 
-ms2sim <- function(compound, precursor, rtime){
+ms2sim <- function(compound, precursor, FT){
   idx <- which(db_thr$id %in% unlist(strsplit(compound, " - ")))
   idx <- idx[unlist(matchWithPpm(
     precursor, 
     db_thr[idx, paste0(tolower(polarity), "_precursor")], ppm = 5))]
   if(length(idx) > 0){
-    ms2sub <- filterPrecursorMz(ms2, precursor + 0.01 * c(-1, 1))
-    ms2sub <- filterRt(ms2sub, rtime + 10 * c(-1, 1))
+    ms2sub <- ms2[ms2$FT == FT]
     ms2sub <- Spectra::combineSpectra(
       ms2sub, intensityFun = base::sum, mzFun = base::mean, 
       tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
@@ -440,12 +457,13 @@ ms2sim <- function(compound, precursor, rtime){
   sim
 }
 
+
 db_exp <- db_exp %>%
   filter(MS2_n > 0) %>%
   filter(!is.na(compound)) %>%
-  mutate(sim = pmap(list(compound, precursor, rtime),
-                    function(compound, precursor, rtime){
-                      ms2sim(compound, precursor, rtime)
+  mutate(sim = pmap(list(compound, precursor, FT),
+                    function(compound, precursor, FT){
+                      ms2sim(compound, precursor, FT)
                     }))
 
 db_exp <- db_exp %>%
@@ -464,7 +482,8 @@ db_exp <- db_exp %>%
   ) %>%
   mutate(sim = map_dbl(sim, function(x) unlist(x)))
 
-length(unique(unlist(strsplit(db_exp$compound, " - ")))) - length(grep(" - ", db_exp$compound))
+#length(unique(unlist(strsplit(db_exp$compound, " - ")))) - length(grep(" - ", db_exp$compound))
+length(unique(db_exp$compound))
 unique(db_exp$compound)
 ```
 
