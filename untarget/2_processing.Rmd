@@ -22,17 +22,19 @@ polarity <- "NEG" # specify "POS" or "NEG"
 study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
-  if(study == "tissues"){
-    int <- 5e5 #6e5
-  } else if(study == "maturation"){
-    int <- 5e6 #3e5
-  }
+  int <- 1e6
+  #if(study == "tissues"){
+  #  int <- 2e5 #6e5
+  #} else if(study == "maturation"){
+  #  int <- 1e5 #3e5
+  #}
 } else if(polarity == "POS"){
-  if(study == "tissues"){
-    int <- 5e6 #1e7
-  } else if(study == "maturation"){
-    int <- 1e7 #4e6
-  }
+  int <- 1e7
+  #if(study == "tissues"){
+  #  int <- 2e6 #1e7
+  #} else if(study == "maturation"){
+  #  int <- 2e6 #4e6
+  #}
 }
 
 if(study == "maturation"){
@@ -61,6 +63,22 @@ matchWithPpm <- function(x, y, ppm = 0) {
   lapply(x, function(z, ppm) {
     which(abs(z - y) <= (.ppm(z, ppm)) + 1e-9)
   }, ppm = force(ppm))
+}
+myimputer <- function(v){
+  set.seed(123)
+  if (sum(is.na(v)) == 0) {
+    return(v)
+  } else {
+    napos <- which(is.na(v))
+    if(min(v, na.rm = TRUE) > 2){
+      newval <- runif(length(napos), 1, min(v, na.rm = TRUE)/10)
+    } else {
+      newval <- runif(length(napos), 0, min(v, na.rm = TRUE)/10)
+    }
+    out <- v
+    out[napos] <- newval
+    return(out)
+  }
 }
 ```
 
@@ -237,8 +255,8 @@ cp <- chromPeaks(xchr)
 ft <- as.data.frame(featureDefinitions(xdata))
 ms2$FT <- "X"
 for(i in seq(nrow(ft))){
-  idx_ms2 <- unlist(matchWithPpm(ft$mzmed[i], precursorMz(ms2), ppm = 5))
-  idx_cp <- unlist(matchWithPpm(ft$mzmed[i], cp[,"mz"], ppm = 5))
+  idx_ms2 <- unlist(matchWithPpm(ft$mzmed[i], precursorMz(ms2), ppm = 10))
+  idx_cp <- unlist(matchWithPpm(ft$mzmed[i], cp[,"mz"], ppm = 10))
   cpx <- cp[idx_cp, ]
   if(length(idx_cp) > 1){
     idx_cp <- which(abs(cpx[,"rt"] - ft$rtmed[i]) < 10)
@@ -321,10 +339,13 @@ adds <- data.frame(rbind(
   c("[2M-H]-",           -1.007276,              2, "NEG"),
   c("[2M+Na-2H]-",       20.974668,              2, "NEG"), 
   c("13C[2M+Na-2H]-",    20.974668 + 1.003355,   2, "NEG"), 
-  c("[M-CH3]-",        - 15.023475105,           1, "NEG"),
+  c("[M-H-H2O]-",       -1.007276 - 18.0105647,  1, "NEG"), 
+  c("[M-CH3]-",         -15.023475105,           1, "NEG"),
+  c("[14:3-H]-",        -219.174076,             1, "NEG"),
   
   c("[M+H]+",             1.007276,              1, "POS"), 
   c("13C[M+H]+",          1.007276 + 1.003355,   1, "POS"), 
+  c("(2)13C[M+H]+",       1.007276 + 1.003355*2, 1, "POS"), 
   c("[M+NH4]+",          18.033830,              1, "POS"),
   c("13C[M+NH4]+",       18.033830 + 1.003355,   1, "POS"),
   c("(2)13C[M+NH4]+",    18.033830 + 1.003355*2, 1, "POS"),
@@ -429,7 +450,7 @@ ms2sim <- function(compound, precursor, FT){
   idx <- which(db_thr$id %in% unlist(strsplit(compound, " - ")))
   idx <- idx[unlist(matchWithPpm(
     precursor, 
-    db_thr[idx, paste0(tolower(polarity), "_precursor")], ppm = 5))]
+    db_thr[idx, paste0(tolower(polarity), "_precursor")], ppm = 10))]
   if(length(idx) > 0){
     ms2sub <- ms2[ms2$FT == FT]
     ms2sub <- Spectra::combineSpectra(
@@ -511,8 +532,8 @@ fgn <- 0
 for(i in seq(nrow(db_exp))){
   if(is.na(db_exp$FG[i])){
     fgn <- fgn + 1
-    ft <- db_exp[db_exp$rtime > (db_exp$rtime[i] - 0.1) & 
-                   db_exp$rtime < (db_exp$rtime[i] + 0.1), ]
+    ft <- db_exp[db_exp$rtime > (db_exp$rtime[i] - 10) & 
+                   db_exp$rtime < (db_exp$rtime[i] + 10), ]
     ft <- ft[is.na(ft$FG), ]
     if(nrow(ft) > 1){
       dt <- data[,colnames(data) %in% ft$FT]
@@ -523,13 +544,13 @@ for(i in seq(nrow(db_exp))){
         ft <- ft[ft$FT %in% colnames(dt), ]
         chr <- chromatogram(xdata, 
                             mz = db_exp$precursor[i] + 0.01 * c(-1, 1), 
-                            rt = db_exp$rtime[i]*60 + 15 * c(-1, 1),
+                            rt = db_exp$rtime[i] + 15 * c(-1, 1),
                             aggregationFun = "max")
         chrcor <- rep(NA, nrow(ft))
         for(j in seq(nrow(ft))){
           chrj <- chromatogram(xdata, 
                                mz = ft$precursor[j] + 0.01 * c(-1, 1), 
-                               rt = ft$rtime[j]*60 + 15 * c(-1, 1),
+                               rt = ft$rtime[j] + 15 * c(-1, 1),
                                aggregationFun = "max")
           chrcorx <- rep(NA, length(chr))
           for(k in seq(length(chr))){
@@ -551,11 +572,18 @@ for(i in seq(nrow(db_exp))){
     }else {
       db_exp$FG[i] <- fgn
     }
-    print(paste0("Complete ", round((i/nrow(db_exp))*100), "%"))
+    #print(paste0("Complete ", round((i/nrow(db_exp))*100), "%"))
   }
 }
 for(i in unique(db_exp$FG)){
   if(length(unique(db_exp$compound[db_exp$FG == i])) > 1){
+    print(i)
+    print(db_exp[db_exp$FG == i, c("precursor", "compound", "adduct", "FG")])
+    print("------------------------------------------------------")
+  }
+}
+for(i in unique(db_exp$compound)){
+  if(length(unique(db_exp$FG[db_exp$compound == i])) > 1){
     print(i)
     print(db_exp[db_exp$FG == i, c("precursor", "compound", "adduct", "FG")])
     print("------------------------------------------------------")
@@ -578,7 +606,7 @@ DT::datatable(db_exp, rownames = FALSE, options = list(
 
 # Save data
 
-```{r save, eval=FALSE}
+```{r save}
 save(xdata, ms2, db_exp, 
      file = paste0(study, "/data/RData/data_", polarity, ".RData"))
 ```
