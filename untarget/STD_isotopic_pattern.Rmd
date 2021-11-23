@@ -76,6 +76,8 @@ foo <- function (...)
   colnames(out) <- all.names
   out
 }
+ref <- c(12, 1, 16, 14, 31, 32)
+names(ref) <- c("C", "H", "O", "N", "P", "S")
 ```
 
 # Main code
@@ -159,8 +161,7 @@ for(pol in c("POS"#, "NEG"
                          "others", "not_formula", "not_i1", "not_i2", "not_i3")
   dt_cmps$cmp <- cmpsx
   
-  for(i in seq(20#length(cmpsx)
-  )){
+  for(i in seq(length(cmpsx))){
     #fml <- unique(cmps$formula[cmps$compound %in% unlist(strsplit(cmpsx[i], " - "))])
     fml <- cmps$formula[cmps$compound == cmpsx[i]]
     dt_cmps$formula[i] <- fml
@@ -270,6 +271,17 @@ for(pol in c("POS"#, "NEG"
     myform <- myform[myform$P <= 1,]
     myform$DBE <- myform$C - 1/2*(myform$H) + 1/2*(myform$N + myform$P) + 1
     myform <- myform[myform$DBE%%1 == 0 & myform$DBE > 0,]
+    myform <- myform[myform$H <= (2*myform$C + myform$N + 2),]
+    myform$exactmass <- NA
+    myform$NM <- NA
+    for(j in seq(nrow(myform))){
+      myform$exactmass[j] <- getMolecule(myform$formula[j])$exactmass
+      myformx <- countElements(myform$formula[j])
+      pippo <- ref[names(myformx)]
+      myform$NM[j] <- t(pippo) %*% myformx
+    }
+    myform <- myform[myform$N %% 2 == myform$NM %% 2,]
+    
     myform <- myform$formula[!myform$formula %in% cmps$formula[cmps$compound == cmpsx[i]]]
     
     dt_cmps$others[i] <- length(myform)
@@ -306,9 +318,9 @@ for(pol in c("POS"#, "NEG"
   dt_cmps$not_i3 <- round(dt_cmps$not_i3, 3)
   #dt_cmps <- dt_cmps[order(dt_cmps$cmp),]
   print(dt_cmps[seq(i),])
-  print(dt_cmps[dt_cmps$i1[seq(i)] > dt_cmps$not_i1[seq(i)],])
-  print(dt_cmps[dt_cmps$i2[seq(i)] > dt_cmps$not_i2[seq(i)],])
-  print(dt_cmps[dt_cmps$i3[seq(i)] > dt_cmps$not_i3[seq(i)],])
+  print(dt_cmps[(dt_cmps$i1[seq(i)] > dt_cmps$not_i1[seq(i)]) | 
+                  (dt_cmps$i2[seq(i)] > dt_cmps$not_i2[seq(i)]) |
+                  (dt_cmps$i3[seq(i)] > dt_cmps$not_i3[seq(i)]),])
 }
 ```
 
