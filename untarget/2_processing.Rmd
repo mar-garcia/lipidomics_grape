@@ -18,18 +18,18 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "NEG" # specify "POS" or "NEG"
-study <- "tissues" # specify "maturation" or "tissues"
+polarity <- "POS" # specify "POS" or "NEG"
+study <- "maturation" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
-  int <- 1e6
+  int <- 4e6#1e6
   #if(study == "tissues"){
   #  int <- 2e5 #6e5
   #} else if(study == "maturation"){
   #  int <- 1e5 #3e5
   #}
 } else if(polarity == "POS"){
-  int <- 1e7
+  int <- 5e7#1e7
   #if(study == "tissues"){
   #  int <- 2e6 #1e7
   #} else if(study == "maturation"){
@@ -253,6 +253,7 @@ xchr <- refineChromPeaks(xchr,
 )
 cp <- chromPeaks(xchr)
 ft <- as.data.frame(featureDefinitions(xdata))
+ft$ms2 <- NA
 ms2$FT <- "X"
 for(i in seq(nrow(ft))){
   idx_ms2 <- unlist(matchWithPpm(ft$mzmed[i], precursorMz(ms2), ppm = 10))
@@ -284,21 +285,46 @@ for(i in seq(nrow(ft))){
       if((length(idx_cp) == 1 & cpx["sample"] == idy) |
          length(idx_cp) > 1){
         if((rtime(ms2)[idx_ms2][j] > rtmin) & (rtime(ms2)[idx_ms2][j] < rtmax)){
-          ms2$FT[idx_ms2][j] <- rownames(ft)[i]
+          ms2$FT[idx_ms2][j] <- gsub("X-", "", 
+                                     paste(ms2$FT[idx_ms2][j], 
+                                           rownames(ft)[i], sep = "-"))
+          
         }
       }
     } # close idx "j"
   }
+  ft$ms2[i] <- sum(grepl(rownames(ft)[i], ms2$FT))
 }
 table(ms2$FT != "X")
 ms2 <- ms2[ms2$FT != "X"]
-length(unique(ms2$FT))
-ft <- ft[rownames(ft) %in% unique(ms2$FT),]
-ft <- cbind(ft, "ms2" = rep(NA, nrow(ft)))
-for(i in seq(nrow(ft))){
-  ft$ms2[i] <- sum(ms2$FT == rownames(ft)[i]) 
-}
+length(unique(unlist(strsplit(ms2$FT, "-"))))
+ft <- ft[rownames(ft) %in% unique(unlist(strsplit(ms2$FT, "-"))),]
+#ft <- cbind(ft, "ms2" = rep(NA, nrow(ft)))
+#for(i in seq(nrow(ft))){
+#  ft$ms2[i] <- sum(ms2$FT == rownames(ft)[i]) 
+#}
+length(ms2)
 sum(ft$ms2)
+
+ft$ms2_sim <- NA
+for(i in which(ft$ms2 > 1 & ft$ms2 < 5)){
+  ms2sub <- ms2[grep(rownames(ft)[i], ms2$FT), ]
+  mypairs <- t(combn(seq(length(ms2sub)), 2))
+  pippo <- mypairs %>%
+    as_tibble() %>% 
+    mutate(mylist = map2(V1,V2, function(x,y) c(x,y))) %>% pull(mylist)
+  pluto <- lapply(pippo, function(x) {
+    list(ms2sub[x[1]], ms2sub[x[2]])
+  }) 
+  myf <- function(x){
+    Spectra::compareSpectra(x[[1]], x[[2]], ppm = 10)
+  }
+  if(length(ms2sub) == 2){
+    ft$ms2_sim[i] <- sprintf("%.3f", unlist(lapply(pluto, myf)))
+  } else {
+    ft$ms2_sim[i] <- paste(sprintf("%.3f", range(unlist(lapply(pluto, myf)))), collapse = "-")
+  }
+}
 ```
 
 
@@ -309,7 +335,8 @@ db_exp <- tibble(
   FT = rownames(ft),
   precursor = ft[, "mzmed"],
   rtime = ft[, "rtmed"],
-  MS2_n = ft[,"ms2"]
+  MS2_n = ft[,"ms2"],
+  MS2_sim = ft[,"ms2_sim"]
 )
 
 cmps <- read.csv("compounds.csv")
@@ -363,12 +390,12 @@ ft_match <- matchMz(as.data.frame(db_exp), cmps, parm,
                     mzColname = "precursor", rtColname = "rtime")
 ft_match_out <- as.data.frame(matchedData(ft_match))
 tmp <- ft_match_out[!is.na(ft_match_out$target_compound), ]
-tmp2 <- paste(round(tmp$precursor), round(tmp$rtime))
+tmp2 <- gsub("\\..*", "", rownames(tmp)[grep("\\.", rownames(tmp))])
 if(any(duplicated(tmp2))){
-  noise <- c()
+  #noise <- c()
   dpl <- unique(tmp2[duplicated(tmp2)])
   for(i in unique(dpl)){
-    i.tmp <- tmp[tmp2 == i, ]
+    i.tmp <- tmp[gsub("\\..*", "", rownames(tmp)) == i, ]
     #idx <- which(paste(round(ft_match_out$precursor), round(ft_match_out$rtime)) == i)
     #ft_match_out$target_compound[idx] <- paste(i.tmp$target_compound, 
     #                                           collapse = " - ")
@@ -452,7 +479,7 @@ ms2sim <- function(compound, precursor, FT){
     precursor, 
     db_thr[idx, paste0(tolower(polarity), "_precursor")], ppm = 10))]
   if(length(idx) > 0){
-    ms2sub <- ms2[ms2$FT == FT]
+    ms2sub <- ms2[grep(FT, ms2$FT)]
     ms2sub <- Spectra::combineSpectra(
       ms2sub, intensityFun = base::sum, mzFun = base::mean, 
       tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
@@ -566,7 +593,7 @@ for(i in seq(nrow(db_exp))){
         } else {
           db_exp$FG[i] <- fgn
         }
-        } else {
+      } else {
         db_exp$FG[i] <- fgn
       }
     }else {
@@ -585,7 +612,7 @@ for(i in unique(db_exp$FG)){
 for(i in unique(db_exp$compound)){
   if(length(unique(db_exp$FG[db_exp$compound == i])) > 1){
     print(i)
-    print(db_exp[db_exp$FG == i, c("precursor", "compound", "adduct", "FG")])
+    print(db_exp[db_exp$compound == i, c("precursor", "compound", "adduct", "FG")])
     print("------------------------------------------------------")
   }
 }
