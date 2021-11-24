@@ -83,8 +83,8 @@ names(ref) <- c("C", "H", "O", "N", "P", "S")
 # Main code
 
 ```{r}
-for(pol in c("POS"#, "NEG"
-)){
+for(pol in c("POS", "NEG")){
+  ips_others <- c()
   fls <- list.files(paste0("tissues/data/", pol, "_FS_fixed/"))
   fls <- fls[grep("STDmix", fls)]
   xdata <- readMSData(
@@ -133,22 +133,23 @@ for(pol in c("POS"#, "NEG"
   tmp2 <- gsub("\\..*", "",rownames(tmp)) #paste(round(tmp$mz), round(tmp$rt))
   any(duplicated(tmp2))
   if(any(duplicated(tmp2))){
-    noise <- c()
+    #noise <- c()
     dpl <- unique(tmp2[duplicated(tmp2)])
     for(i in unique(dpl)){
       #    i.tmp <- tmp[tmp2 == i, ]
       i.tmp <- tmp[grep(i, gsub("\\..*", "",rownames(tmp))),]
-      idx <- which(gsub("\\..*", "",rownames(tmp)) == i)
+      #idx <- which(gsub("\\..*", "",rownames(tmp)) == i)
       #if(length(unique(i.tmp$target_class)) == 1){
       #  ft_match_out$target_compound[idx] <- paste0(
       #    i.tmp$target_class[1], i.tmp$target_C[1], ":", i.tmp$target_db[1])
       #} else {
-      ft_match_out$target_compound[idx] <- paste(i.tmp$target_compound, 
-                                                 collapse = " - ")
+      #ft_match_out$target_compound[idx] <- paste(i.tmp$target_compound, 
+      #                                           collapse = " - ")
+      i.tmp <- i.tmp[which.min(abs(i.tmp$rt - i.tmp$target_rtime)),]
       #}
     }
   }
-  #ft_match_out <- ft_match_out[-grep("\\.", rownames(ft_match_out)),]
+  ft_match_out <- ft_match_out[-grep("\\.", rownames(ft_match_out)),]
   cp$compound <- ft_match_out$target_compound
   cp$adduct <- ft_match_out$adduct
   cp <- cp[!is.na(cp$compound),]
@@ -156,9 +157,9 @@ for(pol in c("POS"#, "NEG"
   
   
   cmpsx <- unique(cp$compound)
-  dt_cmps <- data.frame(matrix(ncol = 11, nrow = length(cmpsx)))
-  colnames(dt_cmps) <- c("cmp", "formula", "adduct", "i1", "i2", "i3", 
-                         "others", "not_formula", "not_i1", "not_i2", "not_i3")
+  dt_cmps <- data.frame(matrix(ncol = 9, nrow = length(cmpsx)))
+  colnames(dt_cmps) <- c("cmp", "formula", "adduct", "i1d", "i2d", "i3d", "ips", 
+                         "others", "ips_others")
   dt_cmps$cmp <- cmpsx
   
   for(i in seq(length(cmpsx))){
@@ -250,9 +251,9 @@ for(pol in c("POS"#, "NEG"
     m_exp <- m_exp[complete.cases(m_exp),]
     
     iso_exp_r <- as.data.frame(iso_exp / rowSums(iso_exp))#as.data.frame(t(apply(iso_exp, 1, function(x) x/max(x))))
-    iso_exp_r$i1d <- abs(iso_thr[1,2] - iso_exp_r$i1) / iso_thr[1,2]
-    iso_exp_r$i2d <- abs(iso_thr[2,2] - iso_exp_r$i2) / iso_thr[2,2]
-    iso_exp_r$i3d <- abs(iso_thr[3,2] - iso_exp_r$i3) / iso_thr[3,2]
+    iso_exp_r$i1d <- abs(iso_thr[1,2] - iso_exp_r$i1) #/ iso_thr[1,2]
+    iso_exp_r$i2d <- abs(iso_thr[2,2] - iso_exp_r$i2) #/ iso_thr[2,2]
+    iso_exp_r$i3d <- abs(iso_thr[3,2] - iso_exp_r$i3) #/ iso_thr[3,2]
     
     #dt_cmps$i2pf[i] <- (iso_thr[2,"i"] - median(iso_exp_r[,"i2"])) / 
     #  (quantile(iso_exp_r[,"i2"], 0.95) - quantile(iso_exp_r[,"i2"], 0.05))
@@ -260,6 +261,9 @@ for(pol in c("POS"#, "NEG"
     #  (quantile(iso_exp_r[,"i3"], 0.95) - quantile(iso_exp_r[,"i3"], 0.05))
     
     dt_cmps[i, 4:6] <- apply(iso_exp_r[, 4:6], 2, median)
+    dt_cmps$ips[i] <- median((1-(abs(iso_thr[1,2] - iso_exp_r$i1) + 
+                                   abs(iso_thr[2,2] - iso_exp_r$i2)  + 
+                                   abs(iso_thr[3,2] - iso_exp_r$i3)))*100)
     mzneutral <- getmzneut(mean(m1), ad)
     myform <- data.frame(formula = getform(mzval = mzneutral, ppm = 10, elements = "CHNOP"))
     myform <- cbind(myform, as.data.frame(do.call(foo, lapply(myform$formula, countElements))))
@@ -287,40 +291,71 @@ for(pol in c("POS"#, "NEG"
     dt_cmps$others[i] <- length(myform)
     
     if(length(myform) > 0){
-      dev <- matrix(ncol = 3, nrow = length(myform))
+      #dev <- matrix(ncol = 3, nrow = length(myform))
+      dev <- rep(NA, length(myform))
       for(j in seq(length(myform))){
         iso_thrx <- t(getMolecule(myform[j], maxisotopes = 3)$isotopes[[1]][,1:3]) 
         colnames(iso_thrx) <- c("mz", "i")
-        dev[j, 1] <- median(abs(iso_thrx[1,2] - iso_exp_r$i1) / iso_thrx[1,2])
-        dev[j, 2] <- median(abs(iso_thrx[2,2] - iso_exp_r$i2) / iso_thrx[2,2])
-        dev[j, 3] <- median(abs(iso_thrx[3,2] - iso_exp_r$i3) / iso_thrx[3,2])
+        #dev[j, 1] <- median(abs(iso_thrx[1,2] - iso_exp_r$i1) / iso_thrx[1,2])
+        #dev[j, 2] <- median(abs(iso_thrx[2,2] - iso_exp_r$i2) / iso_thrx[2,2])
+        #dev[j, 3] <- median(abs(iso_thrx[3,2] - iso_exp_r$i3) / iso_thrx[3,2])
+        dev[j] <- median((1-(abs(iso_thrx[1,2] - iso_exp_r$i1) + 
+                               abs(iso_thrx[2,2] - iso_exp_r$i2)  + 
+                               abs(iso_thrx[3,2] - iso_exp_r$i3)))*100)
       }
-      idx <- which.min(rowSums(dev))
-      dt_cmps$not_formula[i] <- myform[idx]
-      dt_cmps$not_i1[i] <- dev[idx,1]
-      dt_cmps$not_i2[i] <- dev[idx,2]
-      dt_cmps$not_i3[i] <- dev[idx,3]
+      dt_cmps$ips_others[i] <- paste(round(dev[order(dev)]), collapse = ", ")
+      ips_others <- c(ips_others, dev)
+      #idx <- which.min(rowSums(dev))
+      #dt_cmps$not_formula[i] <- myform[idx]
+      #dt_cmps$not_i1[i] <- dev[idx,1]
+      #dt_cmps$not_i2[i] <- dev[idx,2]
+      #dt_cmps$not_i3[i] <- dev[idx,3]
     } else {
-      dt_cmps$not_formula[i] <- "X"
-      dt_cmps$not_i1[i] <- 9999
-      dt_cmps$not_i2[i] <- 9999
-      dt_cmps$not_i3[i] <- 9999
+      #dt_cmps$not_formula[i] <- "X"
+      #dt_cmps$not_i1[i] <- 9999
+      #dt_cmps$not_i2[i] <- 9999
+      #dt_cmps$not_i3[i] <- 9999
+      dt_cmps$ips_others[i] <- "-"
     }
   }
   
+  par(mfrow = c(1, 3))
+  for(j in seq(3)){
+    print(plot(dt_cmps$ips[seq(i)], 
+               dt_cmps[seq(i), paste0("i", j, "d")]*100, 
+               xlab = "Isotopic Pattern Similarity (%)", 
+               ylab = "Isotope Deviance (%)", 
+               main = paste0("Isotope ", j, 
+                             "\ncor = ", sprintf(
+                               "%.3f", cor(
+                                 dt_cmps$ips[seq(i)], 
+                                 dt_cmps[seq(i), paste0("i", j, "d")]*100
+                               )))))
+    abline(lm(dt_cmps[seq(i), paste0("i", j, "d")]*100 ~ 
+                dt_cmps$ips[seq(i)]), col = "grey", lty = 2)
+  }
+  par(mfrow = c(1, 1))
+  hist(ips_others, 
+       breaks = seq(min(c(dt_cmps$ips, ips_others)), 
+                    max(c(dt_cmps$ips, ips_others)), length.out = 11))
+  hist(dt_cmps$ips, add = TRUE, col = "#E41A1C60", 
+       breaks = seq(min(c(dt_cmps$ips, ips_others)), 
+                    max(c(dt_cmps$ips, ips_others)), length.out = 11))
+  write.csv(dt_cmps, paste0("STD_ip_", pol, ".csv"))
   #print(DT::datatable(dt_cmps, rownames = FALSE, options = list(
   #  pageLength = nrow(dt_cmps), dom = "t")))
-  dt_cmps$i1 <- round(dt_cmps$i1, 3)
-  dt_cmps$i2 <- round(dt_cmps$i2, 3)
-  dt_cmps$i3 <- round(dt_cmps$i3, 3)
-  dt_cmps$not_i1 <- round(dt_cmps$not_i1, 3)
-  dt_cmps$not_i2 <- round(dt_cmps$not_i2, 3)
-  dt_cmps$not_i3 <- round(dt_cmps$not_i3, 3)
+  dt_cmps$ips <- round(dt_cmps$ips)
+  dt_cmps$i1d <- round(dt_cmps$i1*100, 3)
+  dt_cmps$i2d <- round(dt_cmps$i2*100, 3)
+  dt_cmps$i3d <- round(dt_cmps$i3*100, 3)
+  #dt_cmps$not_i1 <- round(dt_cmps$not_i1, 3)
+  #dt_cmps$not_i2 <- round(dt_cmps$not_i2, 3)
+  #dt_cmps$not_i3 <- round(dt_cmps$not_i3, 3)
   #dt_cmps <- dt_cmps[order(dt_cmps$cmp),]
   print(dt_cmps[seq(i),])
-  print(dt_cmps[(dt_cmps$i1[seq(i)] > dt_cmps$not_i1[seq(i)]) | 
-                  (dt_cmps$i2[seq(i)] > dt_cmps$not_i2[seq(i)]) |
-                  (dt_cmps$i3[seq(i)] > dt_cmps$not_i3[seq(i)]),])
+  #print(dt_cmps[(dt_cmps$i1[seq(i)] > dt_cmps$not_i1[seq(i)]) | 
+  #                (dt_cmps$i2[seq(i)] > dt_cmps$not_i2[seq(i)]) |
+  #                (dt_cmps$i3[seq(i)] > dt_cmps$not_i3[seq(i)]),])
 }
 ```
 
