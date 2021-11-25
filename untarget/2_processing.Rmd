@@ -649,6 +649,19 @@ DT::datatable(db_exp, rownames = FALSE, options = list(
   pageLength = nrow(db_exp), dom = "t"))
 ```
 
+# MS2 to exclude to pseudo-manually flag
+
+```{r ms2-to-flag}
+ms2_excl <- readxl::read_xlsx("MS2_exclude.xlsx")
+ms2_excl <- ms2_excl[ms2_excl$polarity == polarity & ms2_excl$study == study, ]
+excl <- unique(paste(ms2_excl$compound, ms2_excl$adduct))
+if(study == "tissues" & polarity == "NEG"){
+  excl <- c(excl, "PA_18:2_18:2 [M-H]-", "mPA_16:0_18:2 [M-H]-")
+}
+todo <- paste(db_exp$compound, db_exp$adduct)
+todo <- todo[!grepl("13C", todo)]
+todo[!todo %in% excl]
+```
 
 # Save data
 
