@@ -215,6 +215,23 @@ dim(featureDefinitions(xdata))
 load(paste0(study, "/data/RData/MS2_", polarity, ".RData"))
 ms2 <- ms2[!grepl("STDmix", basename(ms2@backend@spectraData$dataOrigin))]
 length(ms2)
+
+ms2_excl <- readxl::read_xlsx("MS2_exclude.xlsx")
+intx <- as.numeric(paste0(substr(
+  as.character(int), 1, nchar(as.character(int))-1), 
+  as.numeric(substr(as.character(int), nchar(as.character(int)), 
+                    nchar(as.character(int))))-1))
+ms2_excl <- ms2_excl[ms2_excl$counts > intx, ]
+ms2_excl <- ms2_excl[ms2_excl$polarity == polarity, ]
+ms2_excl <- ms2_excl[ms2_excl$study == study, ]
+noise <- c()
+for(i in seq(nrow(ms2_excl))){
+  noise <- c(noise,  which(
+    basename(ms2@backend@spectraData$dataOrigin) == ms2_excl$File[i] & 
+      ms2@backend@spectraData$scanIndex == ms2_excl$scan[i]))
+}
+ms2 <- ms2[-noise]
+length(ms2)
 ```
 
 ## Flag low-quality spectra
@@ -224,10 +241,6 @@ length(ms2)
 table(ms2$mz_max > precursorMz(ms2))
 
 ### There should be at least 1 fragment with an absolute intensity >100.000 counts
-intx <- as.numeric(paste0(substr(
-  as.character(int), 1, nchar(as.character(int))-1), 
-  as.numeric(substr(as.character(int), nchar(as.character(int)), 
-                    nchar(as.character(int))))-1))
 table(precursorIntensity(ms2) > int, ms2$intensity_max > intx)
 
 ms2$good <- FALSE
