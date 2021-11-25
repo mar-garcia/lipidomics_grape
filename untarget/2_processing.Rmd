@@ -19,7 +19,7 @@ startpoint <- Sys.time()
 
 ```{r parameters}
 polarity <- "POS" # specify "POS" or "NEG"
-study <- "maturation" # specify "maturation" or "tissues"
+study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   int <- 4e6#1e6
@@ -322,7 +322,8 @@ for(i in which(ft$ms2 > 1 & ft$ms2 < 5)){
   if(length(ms2sub) == 2){
     ft$ms2_sim[i] <- sprintf("%.3f", unlist(lapply(pluto, myf)))
   } else {
-    ft$ms2_sim[i] <- paste(sprintf("%.3f", range(unlist(lapply(pluto, myf)))), collapse = "-")
+    ft$ms2_sim[i] <- paste(sprintf("%.3f", 
+                                   range(unlist(lapply(pluto, myf)))), collapse = "-")
   }
 }
 ```
@@ -396,10 +397,11 @@ if(any(duplicated(tmp2))){
   dpl <- unique(tmp2[duplicated(tmp2)])
   for(i in unique(dpl)){
     i.tmp <- tmp[gsub("\\..*", "", rownames(tmp)) == i, ]
-    #idx <- which(paste(round(ft_match_out$precursor), round(ft_match_out$rtime)) == i)
+    idx <- which(gsub("\\..*", "", rownames(tmp))  == i)[1]
     #ft_match_out$target_compound[idx] <- paste(i.tmp$target_compound, 
     #                                           collapse = " - ")
     i.tmp <- i.tmp[which.min(abs(i.tmp$rtime - i.tmp$target_rtime)),]
+    ft_match_out[idx,] <- i.tmp
   }
 }
 if(any(grep("\\.", rownames(ft_match_out)))){
