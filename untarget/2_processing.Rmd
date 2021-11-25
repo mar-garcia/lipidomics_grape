@@ -19,7 +19,7 @@ startpoint <- Sys.time()
 
 ```{r parameters}
 polarity <- "NEG" # specify "POS" or "NEG"
-study <- "tissues" # specify "maturation" or "tissues"
+study <- "maturation" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   int <- 4e6#1e6
@@ -224,14 +224,16 @@ intx <- as.numeric(paste0(substr(
 ms2_excl <- ms2_excl[ms2_excl$counts > intx, ]
 ms2_excl <- ms2_excl[ms2_excl$polarity == polarity, ]
 ms2_excl <- ms2_excl[ms2_excl$study == study, ]
-noise <- c()
-for(i in seq(nrow(ms2_excl))){
-  noise <- c(noise,  which(
-    basename(ms2@backend@spectraData$dataOrigin) == ms2_excl$File[i] & 
-      ms2@backend@spectraData$scanIndex == ms2_excl$scan[i]))
+if(nrow(ms2_excl) > 0){
+  noise <- c()
+  for(i in seq(nrow(ms2_excl))){
+    noise <- c(noise,  which(
+      basename(ms2@backend@spectraData$dataOrigin) == ms2_excl$File[i] & 
+        ms2@backend@spectraData$scanIndex == ms2_excl$scan[i]))
+  }
+  ms2 <- ms2[-noise]
+  length(ms2)
 }
-ms2 <- ms2[-noise]
-length(ms2)
 ```
 
 ## Flag low-quality spectra
@@ -654,13 +656,18 @@ DT::datatable(db_exp, rownames = FALSE, options = list(
 ```{r ms2-to-flag}
 ms2_excl <- readxl::read_xlsx("MS2_exclude.xlsx")
 ms2_excl <- ms2_excl[ms2_excl$polarity == polarity & ms2_excl$study == study, ]
-excl <- unique(paste(ms2_excl$compound, ms2_excl$adduct))
-if(study == "tissues" & polarity == "NEG"){
-  excl <- c(excl, "PA_18:2_18:2 [M-H]-", "mPA_16:0_18:2 [M-H]-")
-}
 todo <- paste(db_exp$compound, db_exp$adduct)
 todo <- todo[!grepl("13C", todo)]
-todo[!todo %in% excl]
+if(nrow(ms2_excl) > 0){
+  excl <- unique(paste(ms2_excl$compound, ms2_excl$adduct))
+  if(study == "tissues" & polarity == "NEG"){
+    excl <- c(excl, "PA_18:2_18:2 [M-H]-", "mPA_16:0_18:2 [M-H]-")
+  }
+  todo[!todo %in% excl]
+} else{
+  todo
+}
+
 ```
 
 # Save data
