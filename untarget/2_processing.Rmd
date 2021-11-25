@@ -18,7 +18,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "NEG" # specify "POS" or "NEG"
+polarity <- "POS" # specify "POS" or "NEG"
 study <- "maturation" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
@@ -322,7 +322,7 @@ length(ms2)
 sum(ft$ms2)
 
 ft$ms2_sim <- NA
-for(i in which(ft$ms2 > 1 & ft$ms2 < 5)){
+for(i in which(ft$ms2 > 1 & ft$ms2 < 10)){
   ms2sub <- ms2[grep(rownames(ft)[i], ms2$FT), ]
   mypairs <- t(combn(seq(length(ms2sub)), 2))
   pippo <- mypairs %>%
@@ -334,7 +334,9 @@ for(i in which(ft$ms2 > 1 & ft$ms2 < 5)){
   myf <- function(x){
     Spectra::compareSpectra(x[[1]], x[[2]], ppm = 10)
   }
-  if(length(ms2sub) == 2){
+  if(length(ms2sub) == 1){
+    ft$ms2_sim[i] <- "-"
+  } else if(length(ms2sub) == 2){
     ft$ms2_sim[i] <- sprintf("%.3f", unlist(lapply(pluto, myf)))
   } else {
     ft$ms2_sim[i] <- paste(sprintf("%.3f", 
@@ -418,6 +420,7 @@ if(any(duplicated(tmp2))){
     i.tmp <- i.tmp[!grepl("\\(2)13C", i.tmp$adduct),]
     if(nrow(i.tmp) > 1){
       i.tmp <- i.tmp[!grepl("CH3", i.tmp$adduct),]
+      i.tmp <- i.tmp[!grepl("C2H8N", i.tmp$adduct),]
     }
     i.tmp <- i.tmp[which.min(abs(i.tmp$rtime - i.tmp$target_rtime)),]
     ft_match_out[idx,] <- i.tmp
@@ -647,9 +650,24 @@ db_exp$precursor <- sprintf("%.4f", db_exp$precursor)
 db_exp$rtime <- sprintf("%.2f", db_exp$rtime/60)
 db_exp$sim <- sprintf("%.2f", db_exp$sim)
 db_exp <- db_exp[order(db_exp$compound),]
-DT::datatable(db_exp, rownames = FALSE, options = list(
-  pageLength = nrow(db_exp), dom = "t"))
+cmp <- db_exp$compound[!grepl("13C", db_exp$adduct)]
 ```
+
+## Main
+
+```{r}
+idx <- db_exp$compound %in% cmp
+DT::datatable(db_exp[idx,], rownames = FALSE, options = list(
+  pageLength = sum(idx), dom = "t"))
+```
+
+## Others
+
+```{r}
+DT::datatable(db_exp[!idx,], rownames = FALSE, options = list(
+  pageLength = sum(!idx), dom = "t"))
+```
+
 
 # MS2 to exclude to pseudo-manually flag
 
@@ -663,11 +681,11 @@ if(nrow(ms2_excl) > 0){
   if(study == "tissues" & polarity == "NEG"){
     excl <- c(excl, "PA_18:2_18:2 [M-H]-", "mPA_16:0_18:2 [M-H]-")
   }
-  todo[!todo %in% excl]
-} else{
-  todo
-}
-
+  todo <- todo[!todo %in% excl]
+} 
+idx <- which(paste(db_exp$compound, db_exp$adduct) == todo)
+DT::datatable(db_exp[idx, ], rownames = FALSE, options = list(
+  pageLength = length(idx), dom = "t"))
 ```
 
 # Save data
