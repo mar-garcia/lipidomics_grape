@@ -19,7 +19,7 @@ startpoint <- Sys.time()
 
 ```{r parameters}
 polarity <- "NEG" # specify "POS" or "NEG"
-study <- "maturation" # specify "maturation" or "tissues"
+study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   int <- 4e6#1e6
@@ -401,6 +401,9 @@ if(any(duplicated(tmp2))){
     #ft_match_out$target_compound[idx] <- paste(i.tmp$target_compound, 
     #                                           collapse = " - ")
     i.tmp <- i.tmp[!grepl("\\(2)13C", i.tmp$adduct),]
+    if(nrow(i.tmp) > 1){
+      i.tmp <- i.tmp[!grepl("CH3", i.tmp$adduct),]
+    }
     i.tmp <- i.tmp[which.min(abs(i.tmp$rtime - i.tmp$target_rtime)),]
     ft_match_out[idx,] <- i.tmp
   }
