@@ -18,8 +18,8 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "POS" # specify "POS" or "NEG"
-study <- "tissues" # specify "maturation" or "tissues"
+polarity <- "NEG" # specify "POS" or "NEG"
+study <- "maturation" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   int <- 4e6#1e6
@@ -391,15 +391,16 @@ ft_match <- matchMz(as.data.frame(db_exp), cmps, parm,
                     mzColname = "precursor", rtColname = "rtime")
 ft_match_out <- as.data.frame(matchedData(ft_match))
 tmp <- ft_match_out[!is.na(ft_match_out$target_compound), ]
-tmp2 <- gsub("\\..*", "", rownames(tmp)[grep("\\.", rownames(tmp))])
+tmp2 <- gsub("\\..*", "", rownames(tmp))
 if(any(duplicated(tmp2))){
   #noise <- c()
   dpl <- unique(tmp2[duplicated(tmp2)])
   for(i in unique(dpl)){
     i.tmp <- tmp[gsub("\\..*", "", rownames(tmp)) == i, ]
-    idx <- which(gsub("\\..*", "", rownames(tmp))  == i)[1]
+    idx <- which(rownames(tmp)  == i)
     #ft_match_out$target_compound[idx] <- paste(i.tmp$target_compound, 
     #                                           collapse = " - ")
+    i.tmp <- i.tmp[!grepl("\\(2)13C", i.tmp$adduct),]
     i.tmp <- i.tmp[which.min(abs(i.tmp$rtime - i.tmp$target_rtime)),]
     ft_match_out[idx,] <- i.tmp
   }
