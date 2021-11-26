@@ -18,8 +18,8 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-polarity <- "POS" # specify "POS" or "NEG"
-study <- "maturation" # specify "maturation" or "tissues"
+polarity <- "NEG" # specify "POS" or "NEG"
+study <- "tissues" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   int <- 4e6#1e6
@@ -272,6 +272,18 @@ ft$ms2 <- NA
 ms2$FT <- "X"
 for(i in seq(nrow(ft))){
   idx_ms2 <- unlist(matchWithPpm(ft$mzmed[i], precursorMz(ms2), ppm = 10))
+  if(study == "tissues" & polarity == "POS"){
+    if(length(unlist(matchWithPpm(638.5718, ft$mzmed, ppm = 10))) > 1){
+      rt <- round(ft$rtmed[unlist(matchWithPpm(638.5718, ft$mzmed, ppm = 10))])
+      if(rt[which.max(rt)] == round(ft$rtmed[i])){
+        idx_ms2 <- idx_ms2[- which(
+          idx_ms2 == which(basename(
+            ms2@backend@spectraData@listData$dataOrigin) ==
+              "x008_lipidgrape_tissues_pt11_seeds_rep3_POS_DDA.mzML" & 
+              ms2@backend@spectraData@listData$scanIndex == 2188))]
+      }
+    }
+  }
   idx_cp <- unlist(matchWithPpm(ft$mzmed[i], cp[,"mz"], ppm = 10))
   cpx <- cp[idx_cp, ]
   if(length(idx_cp) > 1){
@@ -498,7 +510,7 @@ db_exp$compound <- gsub("\\(", "_", db_exp$compound)
 db_exp$compound <- gsub("/", "_", db_exp$compound)
 
 ms2sim <- function(compound, precursor, FT){
-  idx <- which(db_thr$id %in% unlist(strsplit(compound, " - ")))
+  idx <- gsub(" .*", "", which(db_thr$id %in% unlist(strsplit(compound, " - "))))
   idx <- idx[unlist(matchWithPpm(
     precursor, 
     db_thr[idx, paste0(tolower(polarity), "_precursor")], ppm = 10))]
@@ -648,7 +660,7 @@ for(i in unique(db_exp$compound)){
 ```{r output}
 db_exp$precursor <- sprintf("%.4f", db_exp$precursor)
 db_exp$rtime <- sprintf("%.2f", db_exp$rtime/60)
-db_exp$sim <- sprintf("%.2f", db_exp$sim)
+db_exp$sim <- sprintf("%.3f", db_exp$sim)
 db_exp <- db_exp[order(db_exp$compound),]
 cmp <- db_exp$compound[!grepl("13C", db_exp$adduct)]
 ```
@@ -683,7 +695,7 @@ if(nrow(ms2_excl) > 0){
   }
   todo <- todo[!todo %in% excl]
 } 
-idx <- which(paste(db_exp$compound, db_exp$adduct) == todo)
+idx <- which(paste(db_exp$compound, db_exp$adduct) %in% todo)
 DT::datatable(db_exp[idx, ], rownames = FALSE, options = list(
   pageLength = length(idx), dom = "t"))
 ```
