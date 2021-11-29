@@ -19,7 +19,7 @@ startpoint <- Sys.time()
 
 ```{r parameters}
 polarity <- "NEG" # specify "POS" or "NEG"
-study <- "tissues" # specify "maturation" or "tissues"
+study <- "maturation" # specify "maturation" or "tissues"
 
 if(polarity == "NEG"){
   int <- 4e6#1e6
@@ -457,7 +457,7 @@ db <- seq(from = 0, to = 3, by = 1)
 sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
              sep = ":")
 
-cls <- c("PA", "PC", "PE", "PG", "PI", "PS", 
+cls <- c("PA", "mPA", "PC", "PE", "PG", "PI", "PS", 
          "CER", "CER-FA", "CERhex", "CERhex-FA", 
          "MGDG", "MGDG-Na", "DGDG", "DGDG-Na", 
          "DAG")
@@ -478,6 +478,8 @@ for(i in cls){
 source("tmp_20211103_stds_functions_grl.R")
 source("tmp_20211103_stds_functions_neg.R")
 source("tmp_20211103_stds_functions_pos.R")
+source("tmp_20211126_cmp_functions_neg.R")
+source("tmp_20211126_cmp_functions_pos.R")
 
 db_thr <- tibble(id = ids) %>% 
   mutate(class = map_chr(id, function(x){unlist(strsplit(x, "_"))[1]})) %>%
@@ -491,17 +493,25 @@ db_thr <- tibble(id = ids) %>%
   mutate(neg_precursor = pmap_dbl(list(class = class, formula = formula),
                                   function(class = class, formula = formula){
                                     precursor_neg(class, formula)})) %>%
-  mutate(neg_ms2 = pmap(list(class = class, formula = formula, sn = sn),
-                        function(class = class, formula = formula, sn = sn){
-                          ms2_neg(class, formula, sn)
-                        })) %>%
+  mutate(neg_ms2_std = pmap(list(class = class, formula = formula, sn = sn),
+                            function(class = class, formula = formula, sn = sn){
+                              ms2_neg_std(class, formula, sn)
+                            })) %>%
+  mutate(neg_ms2_smp = pmap(list(class = class, formula = formula, sn = sn),
+                            function(class = class, formula = formula, sn = sn){
+                              ms2_neg_smp(class, formula, sn)
+                            }))  %>%
   mutate(pos_precursor = pmap_dbl(list(class = class, formula = formula),
                                   function(class = class, formula = formula){
                                     precursor_pos(class, formula)})) %>%
-  mutate(pos_ms2 = pmap(list(class = class, formula = formula, sn = sn),
-                        function(class = class, formula = formula, sn = sn){
-                          ms2_pos(class, formula, sn)
-                        }))
+  mutate(pos_ms2_std = pmap(list(class = class, formula = formula, sn = sn),
+                            function(class = class, formula = formula, sn = sn){
+                              ms2_pos_std(class, formula, sn)
+                            }))%>%
+  mutate(pos_ms2_smp = pmap(list(class = class, formula = formula, sn = sn),
+                            function(class = class, formula = formula, sn = sn){
+                              ms2_pos_smp(class, formula, sn)
+                            }))
 
 
 
@@ -509,8 +519,8 @@ db_exp$compound <- gsub(")", "", db_exp$compound)
 db_exp$compound <- gsub("\\(", "_", db_exp$compound)
 db_exp$compound <- gsub("/", "_", db_exp$compound)
 
-ms2sim <- function(compound, precursor, FT){
-  idx <- gsub(" .*", "", which(db_thr$id %in% unlist(strsplit(compound, " - "))))
+ms2sim_std <- function(compound, precursor, FT){
+  idx <- which(db_thr$id %in% unlist(strsplit(compound, " - ")))
   idx <- idx[unlist(matchWithPpm(
     precursor, 
     db_thr[idx, paste0(tolower(polarity), "_precursor")], ppm = 10))]
@@ -524,7 +534,7 @@ ms2sim <- function(compound, precursor, FT){
       sim <- SpectrumSimilarity(
         cbind("mz" = unlist(mz(ms2sub)),
               "intensity" = unlist(intensity(ms2sub))), 
-        db_thr[[idx,paste0(tolower(polarity), "_ms2")]][[1]], 
+        db_thr[[idx,paste0(tolower(polarity), "_ms2_std")]][[1]], 
         print.graphic = FALSE, t = 0.01, b = 10)
     } else if(length(idx) > 1){
       sim <- list()
@@ -532,7 +542,7 @@ ms2sim <- function(compound, precursor, FT){
         sim[[k]] <- SpectrumSimilarity(
           cbind("mz" = unlist(mz(ms2sub)),
                 "intensity" = unlist(intensity(ms2sub))), 
-          db_thr[[idx[k],paste0(tolower(polarity), "_ms2")]][[1]], 
+          db_thr[[idx[k],paste0(tolower(polarity), "_ms2_std")]][[1]], 
           print.graphic = FALSE, t = 0.01, b = 10)
         names(sim)[k] <- db_thr$id[idx[k]]
       }
@@ -544,30 +554,68 @@ ms2sim <- function(compound, precursor, FT){
   sim
 }
 
+ms2sim_smp <- function(compound, precursor, FT){
+  idx <- which(db_thr$id %in% unlist(strsplit(compound, " - ")))
+  idx <- idx[unlist(matchWithPpm(
+    precursor, 
+    db_thr[idx, paste0(tolower(polarity), "_precursor")], ppm = 10))]
+  if(length(idx) > 0){
+    ms2sub <- ms2[grep(FT, ms2$FT)]
+    ms2sub <- Spectra::combineSpectra(
+      ms2sub, intensityFun = base::sum, mzFun = base::mean, 
+      tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+      weighted = TRUE)
+    if(length(idx) == 1){
+      sim <- SpectrumSimilarity(
+        cbind("mz" = unlist(mz(ms2sub)),
+              "intensity" = unlist(intensity(ms2sub))), 
+        db_thr[[idx,paste0(tolower(polarity), "_ms2_smp")]][[1]], 
+        print.graphic = FALSE, t = 0.01, b = 10)
+    } else if(length(idx) > 1){
+      sim <- list()
+      for(k in seq(length(idx))){
+        sim[[k]] <- SpectrumSimilarity(
+          cbind("mz" = unlist(mz(ms2sub)),
+                "intensity" = unlist(intensity(ms2sub))), 
+          db_thr[[idx[k],paste0(tolower(polarity), "_ms2_smp")]][[1]], 
+          print.graphic = FALSE, t = 0.01, b = 10)
+        names(sim)[k] <- db_thr$id[idx[k]]
+      }
+      #sim <- unlist(sim[which.max(lapply(sim, mean))])
+    }
+  }else{
+    sim <- 0
+  }
+  sim
+}
 
 db_exp <- db_exp %>%
   filter(MS2_n > 0) %>%
   filter(!is.na(compound)) %>%
-  mutate(sim = pmap(list(compound, precursor, FT),
-                    function(compound, precursor, FT){
-                      ms2sim(compound, precursor, FT)
-                    }))
+  mutate(sim_std = pmap(list(compound, precursor, FT),
+                        function(compound, precursor, FT){
+                          ms2sim_std(compound, precursor, FT)
+                        })) %>%
+  mutate(sim_smp = pmap(list(compound, precursor, FT),
+                        function(compound, precursor, FT){
+                          ms2sim_smp(compound, precursor, FT)
+                        }))
 
-db_exp <- db_exp %>%
-  filter(grepl(" - ", compound) & !grepl("13C", adduct)) %>%
-  mutate(compound = map_chr(sim, function(x){
-    names(which.max(x))
-  }))  %>%
-  mutate(sim = map(sim, function(x){
-    x[which.max(x)]
-  })) %>%
-  rbind(
-    db_exp %>%
-      filter(MS2_n > 0) %>%
-      filter(!is.na(compound)) %>%
-      filter(!grepl(" - ", compound) | grepl("13C", adduct))
-  ) %>%
-  mutate(sim = map_dbl(sim, function(x) unlist(x)))
+#db_exp <- db_exp %>%
+#  filter(grepl(" - ", compound) & !grepl("13C", adduct)) %>%
+#  mutate(compound = map_chr(sim, function(x){
+#    names(which.max(x))
+#  }))  %>%
+#  mutate(sim = map(sim, function(x){
+#    x[which.max(x)]
+#  })) %>%
+#  rbind(
+#    db_exp %>%
+#      filter(MS2_n > 0) %>%
+#      filter(!is.na(compound)) %>%
+#       filter(!grepl(" - ", compound) | grepl("13C", adduct))
+#  ) %>%
+#  mutate(sim = map_dbl(sim, function(x) unlist(x)))
 
 #length(unique(unlist(strsplit(db_exp$compound, " - ")))) - length(grep(" - ", db_exp$compound))
 length(unique(db_exp$compound))
@@ -660,7 +708,8 @@ for(i in unique(db_exp$compound)){
 ```{r output}
 db_exp$precursor <- sprintf("%.4f", db_exp$precursor)
 db_exp$rtime <- sprintf("%.2f", db_exp$rtime/60)
-db_exp$sim <- sprintf("%.3f", db_exp$sim)
+db_exp$sim_std <- sprintf("%.3f", db_exp$sim_std)
+db_exp$sim_smp <- sprintf("%.3f", db_exp$sim_smp)
 db_exp <- db_exp[order(db_exp$compound),]
 cmp <- db_exp$compound[!grepl("13C", db_exp$adduct)]
 ```
