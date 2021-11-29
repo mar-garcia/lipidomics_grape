@@ -1,2 +1,3 @@
 # Lipidomics
-Development of a lipidomics-based analytical method
+
+Repository containing the R codes used for the analysis of data from the lipidomics-based experiments of grape samples.
