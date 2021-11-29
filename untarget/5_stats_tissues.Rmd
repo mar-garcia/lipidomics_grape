@@ -1,0 +1,557 @@
+---
+title: "Stats - Tissues"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = TRUE)
+```
+
+In this document we first do an unsupervised exploratory analysis and 
+later we classify compounds by "tissue specificity" according to their abundances in identified compounds.
+
+
+# Libraries
+
+```{r, message=FALSE, warning=FALSE, echo = TRUE}
+library(pander)
+library(effectsize)
+library(ggplot2)
+library(gridExtra)
+library(pheatmap)
+library(RColorBrewer)
+
+
+myimputer <- function(v){
+  set.seed(123)
+  if (sum(is.na(v)) == 0) {
+    return(v)
+  } else {
+    napos <- which(is.na(v))
+    if(min(v, na.rm = TRUE) > 2){
+      newval <- runif(length(napos), 1, min(v, na.rm = TRUE)/10)
+    } else {
+      newval <- runif(length(napos), 0, min(v, na.rm = TRUE)/10)
+    }
+    out <- v
+    out[napos] <- newval
+    return(out)
+  }
+}
+```
+
+# Colours 
+
+```{r, echo = TRUE}
+col_cmps <- c(
+  "#E41A1C", "pink", "#974661", "#4A72A6", "#3E8E93", "#48A462", 
+  "#5D995D", "#90CC90", "#7E6E85", "#A35390", "#D16948", "#FF7F00", "#FFB716", 
+  "#FFF02D", "#E1C62F", "#B97B2A", "#B97B2A", "#ea890b", 
+  "#B75F49", "#DB728C", "#EC83BA", "#C28EA9", "#999999", "grey",
+  "#FFFFBF50", "tomato", "tomato", "black", "white")
+names(col_cmps) <- c(
+  "FFA", "FFA_O", "Lyso_PA", "Lyso_PE", "Lyso_PG", "Lyso_PI", 
+  "PA", "mPA", "PC", "PE", "PG", "PI", "PS", 
+  "CAR", "MAG", "CER", "CERhex", "pCERhex", 
+  "DAG", "DGDG", "Lyso_PC", "MGDG", "TAG", "unk_NL325",
+  "X", "others", "non_FA", "unknown", "IS")
+
+class_col <- c("#377EB8", "#4DAF4A", "#E41A1C", "#984EA3", "grey")
+names(class_col) <- c("skin", "pulp", "seeds", "entire", "QC")
+```
+
+
+# Data import
+
+```{r import, echo = TRUE}
+bygrgrape <- TRUE # specify "TRUE" or "FALSE"
+
+data <- read.csv("output/data_tissues.csv", row.names = 1)
+data <- data[!grepl("rw|dl", rownames(data)),]
+
+class <- gsub("_rep.*", "", gsub("pt11_", "", rownames(data)))
+
+cmps <- read.csv("compounds.csv")
+cmps$id <- cmps$compound
+cmps$id <- gsub(")", "", cmps$id)
+cmps$id <- gsub("\\(", "_", cmps$id)
+cmps$id <- gsub("/", "_", cmps$id)
+cmps$id <- gsub(":", ".", cmps$id)
+cmps$id <- gsub("^_", "X_", cmps$id)
+
+cmps <- cmps[cmps$id %in% colnames(data), ]
+cmps <- cmps[!duplicated(cmps$compound),]
+cmps <- cmps[order(factor(cmps$id, levels = colnames(data))),]
+all(colnames(data) == cmps$id)
+```
+
+The dataset contains information about n=`r ncol(data)` compounds in n=`r nrow(data)` samples of the following classes: `r paste0(aggregate(class, list(class), function(x){sum(class == x)})[,1], " (n=", aggregate(class, list(class), function(x){sum(class == x)})[,2], ")", collapse = "; ")`.   
+
+The samples used in this analysis are: 
+
+```{r}
+pandoc.table(as.data.frame(rownames(data)[order(rownames(data))]), 
+             style = "rmarkdown", caption = "Samples used in this analysis")
+```
+
+
+Identified compounds are from the following classes:
+
+```{r}
+pandoc.table(as.data.frame(table(cmps$class)), style = "rmarkdown")
+```
+
+
+
+# Exploratory analysis
+
+```{r}
+par(mfrow = c(2, 3), mar = c(0, 0, 1, 0))
+for(p in c("POS", "NEG")){
+  for(i in c("seeds", "pulp", "skin")){
+    tmp <- data.frame(t(data[class == i, ]))
+    if(p == "POS"){
+      tmp <- tmp[rownames(tmp) %in% cmps$id[cmps$class %in% c("DAG", "TAG")], ]
+    } else if(p == "NEG"){
+      tmp <- tmp[rownames(tmp) %in% c(cmps$id[
+        cmps$class %in% c("PA", "mPA", "PC", "PE", "PI", "MGDG", "DGDG")], 
+        "X_Epicatechin"), ]
+    }
+    tmp$mean <- rowMeans(tmp)
+    quanti <- aggregate(tmp$mean, list(cmps$class[cmps$id %in% rownames(tmp)]), 
+                        function(x){sum(x, na.rm=T)})
+    #quanti <- quanti[!quanti$Group.1 %in% c("IS"), ]
+    slices <- quanti$x
+    lbls <- quanti$Group.1
+    pie(slices, lbls, main = i, col = col_cmps[as.character(lbls)])
+  }
+}
+
+for(p in c("POS", "NEG")){
+  for(i in c("seeds", "pulp", "skin")){
+    tmp <- data.frame(t(data[class == i, ]))
+    if(p == "POS"){
+      tmp <- tmp[rownames(tmp) %in% cmps$id[cmps$class %in% c("DAG", "TAG")], ]
+    } else if(p == "NEG"){
+      tmp <- tmp[rownames(tmp) %in% c(cmps$id[
+        cmps$class %in% c("PA", "mPA", "PC", "PE", "PI", "MGDG", "DGDG")], 
+        "X_Epicatechin"), ]
+    }
+    tmp$mean <- rowMeans(tmp)
+    quanti <- aggregate(tmp$mean, list(cmps$class[cmps$id %in% rownames(tmp)]), 
+                        function(x){sum(x, na.rm=T)})
+    quanti <- quanti[!quanti$Group.1 %in% c("IS", "unknown", "others", "non_FA"), ]
+    slices <- quanti$x
+    lbls <- quanti$Group.1
+    pie(slices, lbls, main = i, col = col_cmps[as.character(lbls)])
+  }
+}
+```
+
+From the pie charts it can be seen that the most abundant lipids in all 3 tissues are `TAGs`, whereas the second most abundant class is most tissue-specific: it is `DAG` for `seeds` and `PC` for both `pulp` and `seeds`. On the other hand, it can also be seen that `skin` seems to be more diversity rich tissue.  
+
+Missing values (n=`r sum(is.na(data))`) in the dataset are replaced by a random value between the range obtained by dividing by 1000 and 100 of the smallest measured concentration for the corresponding compound.  
+
+Principal component analysis (PCA) is performed on log-transformed and Pareto-scaled abundances.
+
+```{r pca, fig.width=10}
+sum(is.na(data))
+set.seed(123)
+dt <- apply(data, 2, myimputer)
+dt <- log10(dt)
+scaling.pareto <- BioMark::scalefun(sc.p="pareto")
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 0.5))
+pca_s <- data.frame(pca$x)
+plot(pca_s$PC1, pca_s$PC2, 
+     xlab = paste0("PC1 (", sprintf("%.1f", 
+                                    summary(pca)$importance[2,1]*100), "%)"), 
+     ylab = paste0("PC2 (", sprintf("%.1f", 
+                                    summary(pca)$importance[2,2]*100), "%)"), 
+     main = "Exploratory PCA", col = "white", bty = "l")
+text(pca_s$PC1, pca_s$PC2, gsub("rep", "", gsub("pt11_", "", rownames(data))))
+abline(v = 0, h = 0, lty = 2, col = "grey")
+
+pca_l <- data.frame(pca$rotation)
+plot(pca_l$PC1, pca_l$PC2, xlab = "PC1", ylab = "PC2", bty = "l")
+abline(v = 0, h = 0, lty = 2, col = "grey")
+#plot_ly(x = tmp$PC1, y = tmp$PC2, text = colnames(data))
+
+plot(pca_s$PC1, pca_s$PC2, 
+     xlab = paste0("PC1 (", sprintf("%.1f", summary(pca)$importance[2,1]*100), "%)"), 
+     ylab = paste0("PC2 (", sprintf("%.1f", summary(pca)$importance[2,2]*100), "%)"), 
+     main = "Exploratory PCA", col = class_col[class], bty = "l", pch = 16)
+text(pca_s$PC1, pca_s$PC2, 
+     gsub("rep", "", gsub("pt11_", "", rownames(data))), pos = 1, cex = 0.6)
+abline(v = 0, h = 0, lty = 2, col = "grey")
+
+plot(pca_l$PC1, pca_l$PC2, xlab = "PC1", ylab = "PC2", bty = "l",
+     col = col_cmps[cmps$class], pch = 16)
+abline(v = 0, h = 0, lty = 2, col = "grey")
+text(pca_l$PC1, pca_l$PC2, cmps$compound, pos = 1, cex = 0.6)
+```
+
+Injections from the same biological/technical replicates cluster together.   
+The PCA shows a separation of `seed` samples from `skin` and `pulp` samples along PC1 (explaining `r round(summary(pca)$importance[2,1]*100, 1)`% of the total variance), whereas the PC2 (`r round(summary(pca)$importance[2,2]*100, 1)` % of total variance) separates `skin` samples from `pulp` ones. 
+
+```{r pca2, fig.height=7, fig.width=20}
+par(mfrow = c(1, 2))
+
+biplot(pca)
+
+plot(pca_s$PC1, pca_s$PC2, 
+     xlab = paste0("PC1 (", sprintf("%.1f", summary(pca)$importance[2,1]*100), "%)"), 
+     ylab = paste0("PC2 (", sprintf("%.1f", summary(pca)$importance[2,2]*100), "%)"), 
+     col = "white", bty = "l")
+points(pca_s$PC1, pca_s$PC2, pch = 19, cex = 1.5, col = class_col[class])
+text(pca_s$PC1, pca_s$PC2, gsub("rep", "", gsub("pt11_", "", rownames(data))), 
+     pos = 1, cex = 0.6)
+text(pca_l$PC1*min(range(pca_s$PC1) / range(pca_l$PC1)), 
+     pca_l$PC2*min(range(pca_s$PC2) / range(pca_l$PC2)), 
+     cmps$compound, cex = 0.5, col = col_cmps[cmps$class])
+grid()
+abline(v = 0, h = 0, lty = 2, col = "grey", lwd = 2)
+```
+
+`r if(!bygrgrape){"Biplot shows that it seems that, as expected, *pulp* samples are the ones with less abundance of compounds. This is expected since is the tissue with a higher proportion of water, which could act as a 'dilution' factor and samples are expressed as gr/tissue."}` 
+
+`r if(!bygrgrape){"Biplot also suggest, also as expected, that *TAGs* seem to be characteristic of *seed* samples and *FFA* of *skin* samples."}`
+
+`r if(bygrgrape){"Biplot suggest that *FFAs* seem to be characteristic of *skin* samples."}`
+
+
+The subsequent analyses will be applied only to samples of the classes `seeds`, `pulp` and `skin`. Therefore, below the samples from the classes `QC` and `entire` are excluded from the dataset:
+
+```{r subset}
+data <- data[grep("seeds|pulp|skin", rownames(data)),]
+class <- gsub("_rep.*", "", gsub("pt11_", "", rownames(data)))
+
+if(bygrgrape){
+  # Transform the data according to the proportion of each tissue in 1 gr of grape
+  class_prop <- c(0.02974026, 0.821298701, 0.148961039)
+  names(class_prop) <- c("seeds", "pulp", "skin")
+  dt <- data * class_prop[class]
+  rownames(dt) <- rownames(data)
+  data <- dt
+}
+
+sum(is.na(data))
+set.seed(123)
+dt <- apply(data, 2, myimputer)
+dt <- log10(dt)
+dt <- data.frame(scaling.pareto(dt))
+pca <- prcomp(dt, center = FALSE, scale. = FALSE)
+
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 0.5))
+pca_s <- data.frame(pca$x)
+plot(pca_s$PC1, pca_s$PC2, 
+     xlab = paste0("PC1 (", sprintf("%.1f", summary(pca)$importance[2,1]*100), "%)"), 
+     ylab = paste0("PC2 (", sprintf("%.1f", summary(pca)$importance[2,2]*100), "%)"), 
+     main = "Exploratory PCA", col = class_col[class], bty = "l", pch = 16)
+text(pca_s$PC1, pca_s$PC2, 
+     gsub("rep", "", gsub("pt11_", "", rownames(data))), pos = 1, cex = 0.6)
+abline(v = 0, h = 0, lty = 2, col = "grey")
+
+plot(pca_l$PC1, pca_l$PC2, xlab = "PC1", ylab = "PC2", bty = "l",
+     col = col_cmps[cmps$class], pch = 16)
+abline(v = 0, h = 0, lty = 2, col = "grey")
+text(pca_l$PC1, pca_l$PC2, cmps$compound, pos = 1, cex = 0.6)
+
+par(mfrow = c(1, 2))
+
+biplot(pca)
+
+plot(pca_s$PC1, pca_s$PC2, 
+     xlab = paste0("PC1 (", sprintf("%.1f", 
+                                    summary(pca)$importance[2,1]*100), "%)"), 
+     ylab = paste0("PC2 (", sprintf("%.1f", 
+                                    summary(pca)$importance[2,2]*100), "%)"), 
+     col = "white", bty = "l")
+points(pca_s$PC1, pca_s$PC2, pch = 19, cex = 1.5, col = class_col[class])
+text(pca_s$PC1, pca_s$PC2, gsub("rep", "", gsub("pt11_", "", rownames(data))), 
+     pos = 1, cex = 0.6)
+text(pca_l$PC1*min(range(pca_s$PC1) / range(pca_l$PC1)), 
+     pca_l$PC2*min(range(pca_s$PC2) / range(pca_l$PC2)), 
+     cmps$compound, cex = 0.5, col = col_cmps[cmps$class])
+grid()
+abline(v = 0, h = 0, lty = 2, col = "grey", lwd = 2)
+```
+
+
+
+# Differential abundance analysis: Hedges'g
+
+Pairwise comparisons are estimated by calculating the Hedges'g d effect size (we use it instead of Cohen's d due to the small sample size), considering as benchmark value an absolute value > 2 to select relevant differences among tissues.   
+Effect size tells you how much one group differs from another.    
+A g of 1 indicates the two groups differ by 1 standard deviation, a g of 2 indicates they differ by 2 standard deviations, and so on. 
+
+```{r}
+set.seed(123)
+dt <- apply(data, 2, myimputer)
+dt <- log10(dt)
+class_pair <- combn(c("seeds", "pulp", "skin"), 2)
+for(i in seq(ncol(class_pair))){
+  a <- class_pair[1,i]
+  b <- class_pair[2,i]
+  dt_a <- dt[class == a, ]
+  dt_b <- dt[class == b,]
+  hg <- c()
+  for(j in seq(ncol(dt))){
+    hg <- c(hg, (hedges_g(dt_a[,j], dt_b[,j]))$Hedges_g)
+  }
+  cmps <- cbind(cmps, hg)
+  colnames(cmps)[ncol(cmps)] <- paste("hedge", a, b, sep = "_")
+}
+hist(abs(c(cmps$hedge_seeds_pulp, cmps$hedge_seeds_skin, cmps$hedge_pulp_skin)), 
+     main = "hist of abs(Hedge'g) > 2", xlab = "abs(Hedge'g)")
+```
+
+Out of `r 3*ncol(data)` pairwise comparisons done (3x`r ncol(data)` compounds), `r sum(abs(c(cmps$hedge_seeds_pulp, cmps$hedge_seeds_skin, cmps$hedge_pulp_skin)) > 2)` resulted with a g value >2. They correspond to a total of n=`r sum(apply(cmps[,grep("hedge_", colnames(cmps))], 1, function(x){max(abs(x), na.rm = T)}) > 2)` compounds (`r round((sum(apply(cmps[,grep("hedge_", colnames(cmps))], 1, function(x){max(abs(x), na.rm = T)}) > 2)/ncol(data))*100)`%).  
+
+The relationships between the different batches for each compound are then automatically established:
+
+```{r, fig.width=10}
+beh <- c()
+for(i in seq(ncol(dt))){
+  x <- sum(abs(c(cmps$hedge_seeds_pulp[i], cmps$hedge_seeds_skin[i], 
+                 cmps$hedge_pulp_skin[i])) > 2)
+  tmp <- data.frame(aggregate(data[,i], by = list(class), function(x){
+    mean(x, na.rm = T)}))
+  tmp[is.na(tmp)] <- 0
+  high <- tmp$Group.1[which.max(tmp$x)]
+  low <- tmp$Group.1[which.min(tmp$x)]
+  med <- unique(class)[!unique(class) %in% c(high, low)]
+  if(x == 3){
+    beh <- c(beh, paste(high, med, low, sep = " > "))
+  } else if(x == 2) {
+    tmp <- gsub("hedge_", "", names(cmps[i,(ncol(cmps)-2):ncol(cmps)])[which(
+      abs(cmps[i,(ncol(cmps)-2):ncol(cmps)]) < 2)])
+    if(high %in% unlist(strsplit(tmp, "_"))){
+      beh <- c(beh, paste0("(", gsub("_", " & ", tmp), ") > ", low))
+    } else if(low %in% unlist(strsplit(tmp, "_"))){
+      beh <- c(beh, paste0(high, " > (", gsub("_", " & ", tmp), ")"))
+    } else(print(i))
+  } else if (x == 1){
+    tmp <- gsub("hedge_", "", names(cmps[i,(ncol(cmps)-2):ncol(cmps)])[which(
+      abs(cmps[i,(ncol(cmps)-2):ncol(cmps)]) < 2)])
+    if(high %in% unlist(strsplit(tmp, "_")) &
+       low %in% unlist(strsplit(tmp, "_"))){
+      beh <- c(beh, paste(high, low, sep = " > "))
+    } else {print(i)}
+  } else {
+    beh <- c(beh, "ND")
+  }
+}
+names(beh) <- cmps$compound
+beh <- factor(beh, levels = c(
+  "seeds > (pulp & skin)", "seeds > pulp", "seeds > pulp > skin", 
+  "seeds > skin", "seeds > skin > pulp",
+  "(pulp & skin) > seeds",
+  "pulp > (seeds & skin)", "pulp > seeds", "pulp > seeds > skin", 
+  "pulp > skin", "pulp > skin > seeds",
+  "(seeds & skin) > pulp",
+  "skin > (seeds & pulp)", "skin > pulp", "skin > pulp > seeds", 
+  "skin > seeds", "skin > seeds > pulp",
+  "(seeds & pulp) > skin",
+  "ND"
+))
+cmps$beh <- beh
+table(beh)
+
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 0.5))
+plot(pca_s$PC1, pca_s$PC2, 
+     xlab = paste0("PC1 (", sprintf("%.1f", 
+                                    summary(pca)$importance[2,1]*100), "%)"), 
+     ylab = paste0("PC2 (", sprintf("%.1f", 
+                                    summary(pca)$importance[2,2]*100), "%)"), 
+     bty = "l", pch = 19, col = class_col[class])
+abline(v = 0, h = 0, lty = 2, col = "grey")
+
+plot(pca_l$PC1, pca_l$PC2, xlab = "PC1", ylab = "PC2", bty = "l")
+abline(v = 0, h = 0, lty = 2, col = "grey")
+
+idx <- which(beh %in% c(
+  "seeds > (pulp & skin)", "seeds > pulp > skin", "seeds > pulp", 
+  "seeds > skin", "seeds > skin > pulp"))
+points(pca_l$PC1[idx], pca_l$PC2[idx], col = "#377EB8", pch = 16)
+
+idx <- which(beh %in% c(
+  "skin > (seeds & pulp)", "skin > pulp", "skin > pulp > seeds", 
+  "skin > seeds", "skin > seeds > pulp"
+))
+points(pca_l$PC1[idx], pca_l$PC2[idx], col = "#4DAF4A", pch = 16)
+
+idx <- which(beh %in% c(
+  "pulp > (seeds & skin)", "pulp > seeds > skin", "pulp > skin > seeds", 
+  "pulp > seeds", "pulp > skin"
+))
+points(pca_l$PC1[idx], pca_l$PC2[idx], col = "#E41A1C", pch = 16)
+
+idx <- which(beh == "(pulp & skin) > seeds")
+points(pca_l$PC1[idx], pca_l$PC2[idx], col = "#A6CEE3", pch = 16)
+
+idx <- which(beh == "(seeds & skin) > pulp")
+points(pca_l$PC1[idx], pca_l$PC2[idx], col = "#FB9A99", pch = 16)
+
+idx <- which(beh == "(seeds & pulp) > skin")
+points(pca_l$PC1[idx], pca_l$PC2[idx], col = "#B2DF8A", pch = 16)
+```
+
+Dark colors in the loading plot indicate compounds associated with the corresponding tissue, whereas light colors indicate compounds for which the corresponding tissue is the one showing the lowest abundances.  
+
+As almost all compounds are characteristic of one (or two) particular tissue(s), we will now assess in general terms whether there is a class of compounds that is specific to a certain tissue.  
+For that we check the distribution of tissue-source according to compound class.
+
+```{r}
+beh <- beh[order(beh)]
+p <- list()
+for(i in seq(length(beh))){
+  dt <- data.frame(
+    value = data[,cmps$compound == names(beh)[i]],
+    class = class
+  )
+  dt <- dt[order(dt$class),]
+  dt$na <- is.na(dt$value)
+  dt$value[is.na(dt$value)] <- 1
+  dt$class_n <- as.numeric(factor(dt$class)) + rep(seq(-0.1, 0.1, by = 0.07), 3)
+  p[[i]] <- ggplot(data = dt, aes(x = class_n, y = value)) + 
+    geom_point(aes(color = class, pch = na), size = 2) +
+    #geom_segment(aes(x=class_n, xend=class_n, y=0, yend=value, color = class)) +
+    ggtitle(paste(names(beh)[i]), beh[i]) +
+    xlab("") + ylab("") + theme_bw()+ theme(legend.position = "none") +
+    #scale_color_manual(values=c("#FFD92F", "#E41A1C", "#4DAF4A")) + 
+    scale_y_log10() + 
+    #scale_y_log10(limits = c(1, NA)) + 
+    scale_shape_manual(values = c(19,1)) +
+    scale_x_continuous(breaks = c(1,2,3), labels = c("pulp", "seeds", "skin")) 
+}
+if(bygrgrape){
+  fl <- "output/tissues_boxplots_gr_grape.pdf"
+} else{
+  fl <- "output/tissues_boxplots_gr_tissue.pdf"
+}
+ggsave(
+  filename = fl,
+  plot = marrangeGrob(p, nrow = 4, ncol = 4),
+  width = 15, height = 12
+)
+
+cmps$beh2 <- "ND"
+cmps$beh2[cmps$beh %in% c(
+  "seeds > (pulp & skin)", "seeds > pulp", "seeds > pulp > skin", "seeds > skin", 
+  "seeds > skin > pulp")] <- "seeds"
+cmps$beh2[cmps$beh %in% c(
+  "pulp > (seeds & skin)", "pulp > seeds", "pulp > seeds > skin", "pulp > skin", 
+  "pulp > skin > seeds")] <- "pulp"
+cmps$beh2[cmps$beh %in% c(
+  "skin > (seeds & pulp)", "skin > pulp", "skin > pulp > seeds", 
+  "skin > seeds", "skin > seeds > pulp")] <- "skin"
+cmps$beh2[cmps$beh == "(pulp & skin) > seeds"] <- "pulp & skin"
+cmps$beh2[cmps$beh == "(seeds & skin) > pulp"] <- "seeds & skin"
+cmps$beh2[cmps$beh == "(seeds & pulp) > skin"] <- "seeds & pulp"
+
+cmps$beh2 <- factor(cmps$beh2, levels = c(
+  "seeds", "pulp", "skin", "seeds & pulp", "seeds & skin", "pulp & skin", "ND"
+))
+pandoc.table(table(cmps$class, cmps$beh2), 
+             style = "rmarkdown", split.table = Inf)
+tmp2 <- prop.table(table(cmps$class, cmps$beh2), 1)*100
+pandoc.table(round(tmp2), style = "rmarkdown", split.table = Inf)
+```
+
+The following heatmap shows the distribution of tissue-sources by compound class.  
+Proportions of compounds in different tissues are depicted with a color scale where dark blue represents the categories with higher proportions and light blue / white the lowest ones.
+
+```{r}
+pheatmap(tmp2, color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100), 
+         cutree_cols = 4, cutree_rows = 4)
+pheatmap(tmp2[,c("seeds", "pulp", "skin")], 
+         color = colorRampPalette(brewer.pal(n = 9, name ="Blues"))(100), 
+         cutree_cols = 3, cutree_rows = 3)
+```
+
+`r if(!bygrgrape){"Heatmap clearly shows that all *FFA* identified are characteristic of *skin* samples, whereas most of *PA* and half of *pCERhex* compounds are also particular of this tissue, when evaluating the abudance detected by gr/tissue."}`
+
+`r if(!bygrgrape){"On the other hand, all identified *FFA_O* and most of *DAG*, *TAG* and, to lesser extend, *PE* are particular of *seed* samples. Also the only *Lyso_PC* indentified presented the highest abundances in this type of samples."}`  
+
+`r if(!bygrgrape){"Finally, it also confirms that *pulp* samples seems that are not particular of any compound. But here it is also necessary to keep in mind that these analyses are done by gr/tissue and it is a tissue with much higher proportions of water, which acts as a 'dilution' factor."}`
+
+`r if(bygrgrape){"Heatmap clearly shows that all *FFA* and most *mPA* are characteristic of *skin* samples."}`
+
+`r if(bygrgrape){"It also shows that *pulp* is the tissue that provides the highest amount of most of identified compounds, probably because it is the tissues high a highest amount by a grape berry (it is important to remember that this data is corrected by the proportion of each tissue in a grape berry). This situation is precissely mostly the oposite when evaluating the abundances of compounds by gr/tissue instead of by gr/grape, because in that case the pulp is the tissue with the highest amount of water, which probably is acting as a diluting factor. Specifically the output of the heatmap shows that all *CERhex*, *PA*, *PE* and *PI. Also the only *Lyso_PC* and *PS* indentified presented the highest abundances in this type of samples. Also most of *pCERhex*, *PC*, *PG*, *MGDG*, *DGDG* and *TAG* are more provided with higher amounts in *pulp*."}`
+
+`r if(bygrgrape){"Finally, regarding *seeds* it seems that they are providing the highest amounts of *DAG*, alghouth for few of them the tissue with the higesth proportions is *pulp*."}`
+
+```{r new-approach}
+for(i in seq(length(unique(class)))){
+  tmp <- colMeans(data[class == unique(class)[i],], na.rm = T)
+  cmps <- cbind(cmps, tmp)
+  colnames(cmps)[ncol(cmps)] <- unique(class)[i]
+  cmps <- cbind(cmps, as.integer(cut(tmp, quantile(tmp, probs = 0:4/4, na.rm = T),
+                                     include.lowest=TRUE)))
+  colnames(cmps)[ncol(cmps)] <- paste(unique(class)[i], "q", sep = "_")
+  cmps[is.na(cmps[,ncol(cmps)]),ncol(cmps)] <- 1
+}
+cmps$sd_q <- apply(cmps[,c("seeds_q", "pulp_q", "skin_q")], 1, sd)
+
+set.seed(123)
+dt <- apply(data, 2, myimputer)
+dt <- log10(dt)
+cmps$r2 <- NA
+for(i in seq(ncol(dt))){
+  cmps$r2[i] <- summary(lm(dt[,i]~class))$r.squared
+}
+```
+
+# ANOVA
+
+```{r}
+all(colnames(data) == cmps$id)
+set.seed(123)
+dt <- apply(data, 2, myimputer)
+dt <- log10(dt)
+cmps$aov <- NA
+cmps$seeds_pulp <- NA
+cmps$skin_pulp <- NA
+cmps$skin_seeds <- NA
+for(i in seq(nrow(cmps))){
+  cmps$aov[i] <- summary(aov(dt[,i]~class))[[1]][1,"Pr(>F)"]
+  cmps$seeds_pulp[i] <- TukeyHSD(aov(dt[,i]~class))$class["seeds-pulp","p adj"]
+  cmps$skin_pulp[i] <- TukeyHSD(aov(dt[,i]~class))$class["skin-pulp","p adj"]
+  cmps$skin_seeds[i] <- TukeyHSD(aov(dt[,i]~class))$class["skin-seeds","p adj"]
+}
+cmps$padj <- p.adjust(cmps$aov, "BH")
+nrow(cmps)
+sum(cmps$padj < 0.05 & apply(cmps[, c("hedge_seeds_pulp", "hedge_seeds_skin", "hedge_pulp_skin")], 1, function(x) max(abs(x))) > 2)
+
+rownames(dt) <- gsub("rep", "", gsub("pt11_", "", rownames(dt)))
+dt_class <- data.frame(class = class)
+rownames(dt_class) <- rownames(dt)
+dt_cmp <- data.frame(cmp = cmps$class)
+rownames(dt_cmp) <- colnames(dt)
+mycols <- list(class = class_col,
+                 cmp = col_cmps)
+pheatmap(data.frame(scaling.pareto(dt)),
+         annotation_row = dt_class, cutree_rows = 3, 
+         annotation_colors = mycols,
+         annotation_col = dt_cmp, cutree_cols = 3)
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
+
+
