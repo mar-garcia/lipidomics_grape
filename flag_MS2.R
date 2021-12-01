@@ -16,10 +16,10 @@ matchWithPpm <- function(x, y, ppm = 0) {
 
 s <- "tissues"
 p <- "POS"
-cmp <- "TAG_16:0_16:0_18:2"
-prec <- 848.7702
-rt <- 21.50
-frag <- 831.743617
+cmp <- "PE_16:0_18:2 _I"
+prec <- 716.5180
+rt <- 16.62
+frag <- 575.503387
 
 
 load(paste0("data/RData/data_", s, "_", p, ".RData"))
@@ -61,7 +61,7 @@ table(round(ms2sub$mz_max))
 idx <- unlist(matchWithPpm(frag, ms2sub$mz_max, ppm = 10))
 idx <- seq(length(ms2sub))[!seq(length(ms2sub)) %in% idx]
 # TAGs ----
-idx <- unlist(matchWithPpm(c(831.743617, 551.503387, 575.503387), ms2sub$mz_max, ppm = 10))
+idx <- unlist(matchWithPpm(c(601.5195, 575.5034), ms2sub$mz_max, ppm = 10))
 table(round(ms2sub$mz_max[idx]))
 idx <- seq(length(ms2sub))[!seq(length(ms2sub)) %in% idx]
 #length(ms2sub)
@@ -72,10 +72,23 @@ write.csv(data.frame(
   "scan" = ms2sub@backend@spectraData@listData$scanIndex[idx],
   "compound" = rep(cmp, length(idx)),
   "adduct" = rep(ad, length(idx)),
-  "observations" = #rep("X", length(idx)),
-    paste0("Main ion should be ", sprintf("%.5f", frag), 
-           " instead of ", sprintf("%.5f", ms2sub$mz_max[idx])),
+  "observations" = rep("X", length(idx)),
+    #paste0("Main ion should be ", sprintf("%.5f", frag), 
+     #      " instead of ", sprintf("%.5f", ms2sub$mz_max[idx])),
   "counts" = ms2sub$intensity_max[idx],
   "polarity" = rep(p, length(idx)),
   "study" = rep(s, length(idx))
 ), "x.csv")
+
+
+ms2subx <- ms2sub
+table(round(ms2subx$mz_max))
+ms2sub <- ms2subx[round(ms2subx$mz_max) == 602]
+ms2comb <- Spectra::combineSpectra(
+  ms2sub, intensityFun = base::sum, mzFun = base::mean, 
+  tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+  weighted = TRUE)
+dt <- as.data.frame(cbind("mz" = unlist(mz(ms2comb)),
+                          "intensity" = unlist(intensity(ms2comb))))
+plotms2(dt$mz, dt$intensity)
+
