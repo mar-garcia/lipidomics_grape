@@ -18,13 +18,13 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-p <- "NEG" # specify "POS" or "NEG"
-s <- "tissues" # specify "maturation" or "tissues"
+p <- "POS" # specify "POS" or "NEG"
+s <- "maturation" # specify "maturation" or "tissues"
 
 if(p == "NEG"){
-  int <- 3e6
+  int <- 1e6
 } else if(p == "POS"){
-  int <- 5e7
+  int <- 1e7
 }
 
 if(s == "maturation"){
@@ -699,7 +699,37 @@ todo <- todo[!grepl("13C", todo)]
 if(nrow(ms2_excl) > 0){
   excl <- unique(paste(ms2_excl$compound, ms2_excl$adduct))
   if(s == "tissues" & p == "NEG"){
-    excl <- c(excl, "PA_18:2_18:2 [M-H]-", "mPA_16:0_18:2 [M-H]-")
+    excl <- c(
+      excl, 
+      "PA_16:0_18:1 [M-H]-", "PA_16:0_18:2 [2M-H]-", "PA_18:1_18:2 [M-H]-", 
+      "PA_18:2_18:2 [M-H]-", "PA_18:3_18:3 [M-H]-",
+      "mPA_16:0_18:1 [M-H]-", "mPA_16:0_18:2 [M-H]-", "mPA_18:1_18:2 [M-H]-",
+      "mPA_18:2_18:3 [M-H]-",
+      "dmPA_16:0_18:2 [M-H]-", "dmPA_18:2_18:2 [M-H]-", 
+      "PE_18:2_18:2 [M-H]-", 
+      "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-", "PG_16:0_18:2 [M-H]-",
+      "FFA_32:4 [M-H+HCOOH]-", "FFA_PA_20:0 [M-H]-", 
+      "FFA_red_21:1 [M-H+HCOOH]-", "FFA_red_22:1 [M-H+HCOOH]-", "FFA_red_23:1 [M-H+HCOOH]-",
+      "CER_hex_dihydroxy_16:0_18:1 [M-H]-", "CER_hex_dihydroxy_18:1_22:0 [M-H]-",
+      "CER_hex_dihydroxy_18:1_24:0 [M-H]-", "CER_hex_hydroxy_34:1 [M-H+HCOOH]-",
+      "CER_hex_hydroxy_34:2 [M-H+HCOOH]-", "CER_hex_hydroxy_34:2 [M-H]-",
+      "MGDG_18:1_18:2 [M-H+HCOOH]-", "MGDG_18:2_18:2 [M-H+HCOOH]-")
+  } else if(s == "maturation" & p == "NEG"){
+    excl <- c(
+      excl, 
+      "PA_18:1_18:2 [M-H]-",
+      "mPA_16:0_18:2 [M-H]-", "mPA_18:2_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
+      "PE_16:0_18:3 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-",
+      "PG_16:0_16:0 [M-H]-","PG_16:0_18:1 [M-H]-",
+      "CER_hex_dihydroxy_18:1_22:0 [M-H]-", "CER_hex_dihydroxy_18:1_24:0 [M-H]-")
+  } else if(s == "tissues" & p == "POS"){
+    excl <- c(
+      excl, 
+      "PE_16:0_18:2 _I [M+H]+", "PE_18:1_18:2 [M+H]+", "PE_18:2_18:2 [M+H]+")
+  }else if(s == "maturation" & p == "POS"){
+    excl <- c(
+      excl, 
+      "DAG_18:2_18:3 [M+NH4]+", "DAG_18:2_20:0 [M+NH4]+")
   }
   todo <- todo[!todo %in% excl]
 } 
