@@ -412,6 +412,8 @@ if(any(duplicated(tmp2))){
     if(nrow(i.tmp) > 1){
       i.tmp <- i.tmp[!grepl("CH3", i.tmp$adduct),]
       i.tmp <- i.tmp[!grepl("C2H8N", i.tmp$adduct),]
+    } else if(nrow(i.tmp) == 0){
+      i.tmp <- tmp[gsub("\\..*", "", rownames(tmp)) == i, ]
     }
     i.tmp <- i.tmp[which.min(abs(i.tmp$rtime - i.tmp$target_rtime)),]
     ft_match_out[idx,] <- i.tmp
@@ -725,11 +727,11 @@ if(nrow(ms2_excl) > 0){
   } else if(s == "tissues" & p == "POS"){
     excl <- c(
       excl, 
-      "PE_16:0_18:2 _I [M+H]+", "PE_18:1_18:2 [M+H]+", "PE_18:2_18:2 [M+H]+",
+      "PE_18:1_18:2 [M+H]+", "PE_18:2_18:2 [M+H]+",
       "TAG_16:0_16:2_18:3 [M+NH4]+")
   }else if(s == "maturation" & p == "POS"){
     excl <- c(
-      excl, 
+      excl, "PE_16:0_18:2 _I [M+H]+", 
       "DAG_18:2_18:3 [M+NH4]+", "DAG_18:2_20:0 [M+NH4]+")
   }
   todo <- todo[!todo %in% excl]
