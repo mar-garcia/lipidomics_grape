@@ -725,7 +725,8 @@ if(nrow(ms2_excl) > 0){
   } else if(s == "tissues" & p == "POS"){
     excl <- c(
       excl, 
-      "PE_16:0_18:2 _I [M+H]+", "PE_18:1_18:2 [M+H]+", "PE_18:2_18:2 [M+H]+")
+      "PE_16:0_18:2 _I [M+H]+", "PE_18:1_18:2 [M+H]+", "PE_18:2_18:2 [M+H]+",
+      "TAG_16:0_16:2_18:3 [M+NH4]+")
   }else if(s == "maturation" & p == "POS"){
     excl <- c(
       excl, 
