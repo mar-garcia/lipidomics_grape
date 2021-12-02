@@ -197,6 +197,7 @@ length(ms2)
 
 # Exclude manually flagged MS2 spectras:
 ms2_excl <- readxl::read_xlsx("MS2_exclude.xlsx")
+int <- formatC(int, format = "e", digits = 1)
 intx <- as.numeric(paste0(substr(
   as.character(int), 1, nchar(as.character(int))-1), 
   as.numeric(substr(as.character(int), nchar(as.character(int)), 
@@ -223,11 +224,11 @@ if(nrow(ms2_excl) > 0){
 table(ms2$mz_max > precursorMz(ms2))
 
 ### There should be at least 1 fragment with an absolute intensity >100.000 counts
-table(precursorIntensity(ms2) > int, ms2$intensity_max > intx)
+table(precursorIntensity(ms2) > as.numeric(int), ms2$intensity_max > intx)
 
 ms2$good <- FALSE
 ms2$good[ms2$mz_max < precursorMz(ms2) &
-           precursorIntensity(ms2) > int &
+           precursorIntensity(ms2) > as.numeric(int) &
            ms2$intensity_max > intx] <- TRUE
 table(ms2$good)
 ms2 <- ms2[ms2$good]
@@ -729,16 +730,26 @@ if(nrow(ms2_excl) > 0){
   } else if(s == "maturation" & p == "NEG"){
     excl <- c(
       excl, 
-      "PA_18:1_18:2 [M-H]-",
-      "mPA_16:0_18:2 [M-H]-", "mPA_18:2_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
-      "PE_16:0_18:3 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-",
+      "PA_16:0_18:1 [M-H]-", "PA_18:1_18:2 [M-H]-",
+      "mPA_16:0_18:2 [M-H]-", "mPA_16:0_18:3 [M-H]-",
+      "mPA_18:2_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
+      "LPC_18:1d7 [M-H+HCOOH]-", "LPE_18:1d7 [M-H]-",
+      "PE_16:0_18:3 [M-H]-", 
+      "PE_18:0_18:3[M-H]-", "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-", 
+      "PE_20:0_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-",
       "PG_16:0_16:0 [M-H]-","PG_16:0_18:1 [M-H]-",
+      "PI_16:0_18:1 [M-H]-",
       "CER_hex_dihydroxy_18:1_22:0 [M-H]-", "CER_hex_dihydroxy_18:1_24:0 [M-H]-")
   } else if(s == "tissues" & p == "POS"){
     excl <- c(
       excl, 
+      "LPC_16:0 [M+H]+",
       "PE_18:1_18:2 [M+H]+", "PE_18:2_18:2 [M+H]+",
-      "DAG_18:2_18:3 [M+NH4]+", "DAG_18:2_20:0 [M+NH4]+", "TAG_16:0_16:2_18:3 [M+NH4]+")
+      "CER_dihydroxy_16:0_26:1 [M+H]+",
+      "DAG_18:2_18:3 [M+NH4]+", "DAG_18:2_20:0 [M+NH4]+", 
+      "TAG_16:0_16:0_16:0 [M+NH4]+", "TAG_16:0_16:2_18:3 [M+NH4]+", 
+      "TAG_18:3_18:3_20:0 [M+NH4]+",
+      "Unk-010 _I [M+C2H8N]+")
   }else if(s == "maturation" & p == "POS"){
     excl <- c(
       excl, "PE_16:0_18:2 _I [M+H]+")
