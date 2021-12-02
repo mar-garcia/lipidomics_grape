@@ -18,13 +18,13 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-p <- "POS" # specify "POS" or "NEG"
-s <- "maturation" # specify "maturation" or "tissues"
+p <- "NEG" # specify "POS" or "NEG"
+s <- "tissues" # specify "maturation" or "tissues"
 
 if(p == "NEG"){
-  int <- 1e6
+  int <- 5e5
 } else if(p == "POS"){
-  int <- 1e7
+  int <- 5e6
 }
 
 if(s == "maturation"){
@@ -326,7 +326,7 @@ for(i in which(ft$ms2 > 1 & ft$ms2 < 10)){
   }) 
   myf <- function(x){
     #Spectra::compareSpectra(x[[1]], x[[2]], ppm = 10)
-    SpectrumSimilarity(x[[1]], x[[2]], print.graphic = FALSE, t = 0.01, b = 10)
+    SpectrumSimilarity(x[[1]], x[[2]], print.graphic = FALSE, t = 0.005, b = 10)
   }
   if(length(ms2sub) == 1){
     ft$ms2_sim[i] <- "-"
@@ -510,14 +510,14 @@ ms2sim_std <- function(compound, precursor, FT){
     ms2sub <- ms2[grep(FT, ms2$FT)]
     ms2sub <- Spectra::combineSpectra(
       ms2sub, intensityFun = base::sum, mzFun = base::mean, 
-      tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+      tolerance = 0.005, minProp = 0.5, peaks = "intersect", 
       weighted = TRUE)
     if(length(idx) == 1){
       sim <- SpectrumSimilarity(
         cbind("mz" = unlist(mz(ms2sub)),
               "intensity" = unlist(intensity(ms2sub))), 
         db_thr[[idx,paste0(tolower(p), "_ms2_std")]][[1]], 
-        print.graphic = FALSE, t = 0.01, b = 10)
+        print.graphic = FALSE, t = 0.005, b = 10)
     } else if(length(idx) > 1){
       sim <- list()
       for(k in seq(length(idx))){
@@ -525,7 +525,7 @@ ms2sim_std <- function(compound, precursor, FT){
           cbind("mz" = unlist(mz(ms2sub)),
                 "intensity" = unlist(intensity(ms2sub))), 
           db_thr[[idx[k],paste0(tolower(p), "_ms2_std")]][[1]], 
-          print.graphic = FALSE, t = 0.01, b = 10)
+          print.graphic = FALSE, t = 0.005, b = 10)
         names(sim)[k] <- db_thr$id[idx[k]]
       }
     }
@@ -544,14 +544,14 @@ ms2sim_smp <- function(compound, precursor, FT){
     ms2sub <- ms2[grep(FT, ms2$FT)]
     ms2sub <- Spectra::combineSpectra(
       ms2sub, intensityFun = base::sum, mzFun = base::mean, 
-      tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+      tolerance = 0.005, minProp = 0.5, peaks = "intersect", 
       weighted = TRUE)
     if(length(idx) == 1){
       sim <- SpectrumSimilarity(
         cbind("mz" = unlist(mz(ms2sub)),
               "intensity" = unlist(intensity(ms2sub))), 
         db_thr[[idx,paste0(tolower(p), "_ms2_smp")]][[1]], 
-        print.graphic = FALSE, t = 0.01, b = 10)
+        print.graphic = FALSE, t = 0.005, b = 10)
     } else if(length(idx) > 1){
       sim <- list()
       for(k in seq(length(idx))){
@@ -559,7 +559,7 @@ ms2sim_smp <- function(compound, precursor, FT){
           cbind("mz" = unlist(mz(ms2sub)),
                 "intensity" = unlist(intensity(ms2sub))), 
           db_thr[[idx[k],paste0(tolower(p), "_ms2_smp")]][[1]], 
-          print.graphic = FALSE, t = 0.01, b = 10)
+          print.graphic = FALSE, t = 0.005, b = 10)
         names(sim)[k] <- db_thr$id[idx[k]]
       }
     }
@@ -705,17 +705,27 @@ if(nrow(ms2_excl) > 0){
       excl, 
       "PA_16:0_18:1 [M-H]-", "PA_16:0_18:2 [2M-H]-", "PA_18:1_18:2 [M-H]-", 
       "PA_18:2_18:2 [M-H]-", "PA_18:3_18:3 [M-H]-",
-      "mPA_16:0_18:1 [M-H]-", "mPA_16:0_18:2 [M-H]-", "mPA_18:1_18:2 [M-H]-",
-      "mPA_18:2_18:3 [M-H]-",
-      "dmPA_16:0_18:2 [M-H]-", "dmPA_18:2_18:2 [M-H]-", 
-      "PE_18:2_18:2 [M-H]-", 
-      "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-", "PG_16:0_18:2 [M-H]-",
+      "mPA_16:0_18:1 [M-H]-", "mPA_16:0_18:2 [M-H]-", 
+      "mPA_18:0_18:1 [M-H]-", "mPA_18:1_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
+      "dmPA_16:0_18:1 [M-H]-", "dmPA_16:0_18:2 [M-H]-", "dmPA_18:2_18:2 [M-H]-", 
+      "PC_15:0_18:1d7 [M-H+HCOOH]-",
+      "PE_15:0_18:1d7 [M-H]-", "PE_16:0_18:1 _II [M-H]-", "PE_18:2_18:2 [M-H]-", 
+      "PG_15:0_18:1d7 [M-H]-", "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-", 
+      "PG_16:0_18:2 [M-H]-",
       "FFA_32:4 [M-H+HCOOH]-", "FFA_PA_20:0 [M-H]-", 
       "FFA_red_21:1 [M-H+HCOOH]-", "FFA_red_22:1 [M-H+HCOOH]-", "FFA_red_23:1 [M-H+HCOOH]-",
-      "CER_hex_dihydroxy_16:0_18:1 [M-H]-", "CER_hex_dihydroxy_18:1_22:0 [M-H]-",
-      "CER_hex_dihydroxy_18:1_24:0 [M-H]-", "CER_hex_hydroxy_34:1 [M-H+HCOOH]-",
+      "CER_dihydroxy_16:0_26:1 [M-H]-", 
+      "CER_dihydroxy_18:0_22:0 [M-H]-", "CER_dihydroxy_18:0_22:0 [M-H+HCOOH]-",
+      "CER_dihydroxy_18:0_24:0 [M-H]-","CER_dihydroxy_41:1 [M-H+HCOOH]-",
+      "CER_hex_hydroxy_34:1 [M-H+HCOOH]-", "CER_hex_hydroxy_34:1 [M-H]-",
       "CER_hex_hydroxy_34:2 [M-H+HCOOH]-", "CER_hex_hydroxy_34:2 [M-H]-",
-      "MGDG_18:1_18:2 [M-H+HCOOH]-", "MGDG_18:2_18:2 [M-H+HCOOH]-")
+      "CER_hex_dihydroxy_16:0_18:1 [M-H]-", "CER_hex_dihydroxy_18:1_22:0 [M-H]-",
+      "CER_hex_dihydroxy_18:1_23:0 [M-H]-", "CER_hex_dihydroxy_18:1_24:0 [M-H]-", 
+      "CER_hex_dihydroxy_18:1_26:0 [M-H]-", 
+      "MGDG_18:1_18:2 [M-H+HCOOH]-", "MGDG_18:2_18:2 [M-H+HCOOH]-",
+      "Malic acid [M-H]-",
+      "Unk-075 _14:2_15:3 [M-H]-", "Unk-173 [M-H+HCOOH]-", 
+      "Unk-202 _18:2_20:0 [M-H]-", "Unk-270 _16:0_18:2 [M-H]-")
   } else if(s == "maturation" & p == "NEG"){
     excl <- c(
       excl, 
@@ -728,11 +738,10 @@ if(nrow(ms2_excl) > 0){
     excl <- c(
       excl, 
       "PE_18:1_18:2 [M+H]+", "PE_18:2_18:2 [M+H]+",
-      "TAG_16:0_16:2_18:3 [M+NH4]+")
+      "DAG_18:2_18:3 [M+NH4]+", "DAG_18:2_20:0 [M+NH4]+", "TAG_16:0_16:2_18:3 [M+NH4]+")
   }else if(s == "maturation" & p == "POS"){
     excl <- c(
-      excl, "PE_16:0_18:2 _I [M+H]+", 
-      "DAG_18:2_18:3 [M+NH4]+", "DAG_18:2_20:0 [M+NH4]+")
+      excl, "PE_16:0_18:2 _I [M+H]+")
   }
   todo <- todo[!todo %in% excl]
 } 
