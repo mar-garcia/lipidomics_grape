@@ -18,7 +18,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-p <- "NEG" # specify "POS" or "NEG"
+p <- "POS" # specify "POS" or "NEG"
 s <- "tissues" # specify "maturation" or "tissues"
 
 if(p == "NEG"){
@@ -735,7 +735,7 @@ if(nrow(ms2_excl) > 0){
       "mPA_18:2_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
       "LPC_18:1d7 [M-H+HCOOH]-", "LPE_18:1d7 [M-H]-",
       "PE_16:0_18:3 [M-H]-", 
-      "PE_18:0_18:3[M-H]-", "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-", 
+      "PE_18:0_18:3 [M-H]-", "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-", 
       "PE_20:0_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-",
       "PG_16:0_16:0 [M-H]-","PG_16:0_18:1 [M-H]-",
       "PI_16:0_18:1 [M-H]-",
@@ -749,10 +749,15 @@ if(nrow(ms2_excl) > 0){
       "DAG_18:2_18:3 [M+NH4]+", "DAG_18:2_20:0 [M+NH4]+", 
       "TAG_16:0_16:0_16:0 [M+NH4]+", "TAG_16:0_16:2_18:3 [M+NH4]+", 
       "TAG_18:3_18:3_20:0 [M+NH4]+",
-      "Unk-010 _I [M+C2H8N]+")
+      "Unk-010 _I [M+C2H8N]+", "Unk-176 [M+H]+", "Unk-206 [M+H]+")
   }else if(s == "maturation" & p == "POS"){
     excl <- c(
-      excl, "PE_16:0_18:2 _I [M+H]+")
+      excl, 
+      "PC_16:0_16:1 [M+H]+",
+      "PE_16:0_18:1 _II [M+H]+", "PE_16:0_18:2 _I [M+H]+", "PE_18:1_18:2 [M+H]+",
+      "DAG_16:0_18:3 [M+NH4]+", "TAG_14:0_16:0_18:1 [M+NH4]+",
+      "Sitosterol ester 18:3 [M+NH4]+",
+      "Unk-172 [M+H]+")
   }
   todo <- todo[!todo %in% excl]
 } 
