@@ -18,13 +18,13 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-p <- "POS" # specify "POS" or "NEG"
+p <- "NEG" # specify "POS" or "NEG"
 s <- "tissues" # specify "maturation" or "tissues"
 
 if(p == "NEG"){
-  int <- 5e5
+  int <- 2e5
 } else if(p == "POS"){
-  int <- 5e6
+  int <- 2e6
 }
 
 if(s == "maturation"){
@@ -705,28 +705,35 @@ if(nrow(ms2_excl) > 0){
     excl <- c(
       excl, 
       "PA_16:0_18:1 [M-H]-", "PA_16:0_18:2 [2M-H]-", "PA_18:1_18:2 [M-H]-", 
-      "PA_18:2_18:2 [M-H]-", "PA_18:3_18:3 [M-H]-",
+      "PA_18:2_18:2 [M-H]-", "PA_18:3_18:3 [M-H]-","PA_18:2_22:0 _II [M-H]-", 
       "mPA_16:0_18:1 [M-H]-", "mPA_16:0_18:2 [M-H]-", 
       "mPA_18:0_18:1 [M-H]-", "mPA_18:1_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
       "dmPA_16:0_18:1 [M-H]-", "dmPA_16:0_18:2 [M-H]-", "dmPA_18:2_18:2 [M-H]-", 
       "PC_15:0_18:1d7 [M-H+HCOOH]-",
-      "PE_15:0_18:1d7 [M-H]-", "PE_16:0_18:1 _II [M-H]-", "PE_18:2_18:2 [M-H]-", 
+      "PE_15:0_18:1d7 [M-H]-", "PE_16:0_18:1 _II [M-H]-", "PE_16:0_18:3 [M-H]-", 
+      "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-",
       "PG_15:0_18:1d7 [M-H]-", "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-", 
       "PG_16:0_18:2 [M-H]-",
-      "FFA_32:4 [M-H+HCOOH]-", "FFA_PA_20:0 [M-H]-", 
+      "PS_18:2_20:0 [M-H]-",
+      "FFA_32:4 [M-H+HCOOH]-", "FFA_34:4 [M-H+HCOOH]-", "FFA_PA_20:0 [M-H]-", 
       "FFA_red_21:1 [M-H+HCOOH]-", "FFA_red_22:1 [M-H+HCOOH]-", "FFA_red_23:1 [M-H+HCOOH]-",
       "CER_dihydroxy_16:0_26:1 [M-H]-", 
       "CER_dihydroxy_18:0_22:0 [M-H]-", "CER_dihydroxy_18:0_22:0 [M-H+HCOOH]-",
       "CER_dihydroxy_18:0_24:0 [M-H]-","CER_dihydroxy_41:1 [M-H+HCOOH]-",
       "CER_hex_hydroxy_34:1 [M-H+HCOOH]-", "CER_hex_hydroxy_34:1 [M-H]-",
       "CER_hex_hydroxy_34:2 [M-H+HCOOH]-", "CER_hex_hydroxy_34:2 [M-H]-",
+      "CER_hex_hydroxy_42:2 [M-H]-",
       "CER_hex_dihydroxy_16:0_18:1 [M-H]-", "CER_hex_dihydroxy_18:1_22:0 [M-H]-",
       "CER_hex_dihydroxy_18:1_23:0 [M-H]-", "CER_hex_dihydroxy_18:1_24:0 [M-H]-", 
-      "CER_hex_dihydroxy_18:1_26:0 [M-H]-", 
+      "CER_hex_dihydroxy_18:1_25:0 [M-H]-", "CER_hex_dihydroxy_18:1_26:0 [M-H]-", 
       "MGDG_18:1_18:2 [M-H+HCOOH]-", "MGDG_18:2_18:2 [M-H+HCOOH]-",
       "Malic acid [M-H]-",
-      "Unk-075 _14:2_15:3 [M-H]-", "Unk-173 [M-H+HCOOH]-", 
-      "Unk-202 _18:2_20:0 [M-H]-", "Unk-270 _16:0_18:2 [M-H]-")
+      "Unk-001 _I [M-H]-", "Unk-075 _14:2_15:3 [M-H]-", "Unk-134 _NL325 [M-H]-",
+      "Unk-173 [M-H+HCOOH]-", "Unk-179 _18:2_23:0 [M-H]-","Unk-190 [M-H]-",
+      "Unk-191 _16:0/18:1 [M-H]-","Unk-198 [M-H+HCOOH]-",
+      "Unk-202 _18:2_20:0 [M-H]-", "Unk-221 _16:0/18:2 [M-H]-", "Unk-223 [M-H]-", 
+      "Unk-224 [M-H]-", "Unk-225 [M-H]-","Unk-247 [M-H]-",
+      "Unk-270 _16:0_18:2 [M-H]-")
   } else if(s == "maturation" & p == "NEG"){
     excl <- c(
       excl, 
@@ -737,7 +744,7 @@ if(nrow(ms2_excl) > 0){
       "PE_16:0_18:3 [M-H]-", 
       "PE_18:0_18:3 [M-H]-", "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-", 
       "PE_20:0_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-",
-      "PG_16:0_16:0 [M-H]-","PG_16:0_18:1 [M-H]-",
+      "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-",
       "PI_16:0_18:1 [M-H]-",
       "CER_hex_dihydroxy_18:1_22:0 [M-H]-", "CER_hex_dihydroxy_18:1_24:0 [M-H]-")
   } else if(s == "tissues" & p == "POS"){
@@ -749,7 +756,7 @@ if(nrow(ms2_excl) > 0){
       "DAG_18:2_18:3 [M+NH4]+", "DAG_18:2_20:0 [M+NH4]+", 
       "TAG_16:0_16:0_16:0 [M+NH4]+", "TAG_16:0_16:2_18:3 [M+NH4]+", 
       "TAG_18:3_18:3_20:0 [M+NH4]+",
-      "Unk-010 _I [M+C2H8N]+", "Unk-176 [M+H]+", "Unk-206 [M+H]+")
+      "Unk-010 _I [M+C2H8N]+", "Unk-176 [M+H]+", "Unk-206 _16:0_18:2_18:3 [M+H]+")
   }else if(s == "maturation" & p == "POS"){
     excl <- c(
       excl, 
