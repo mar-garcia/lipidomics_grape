@@ -730,9 +730,9 @@ if(nrow(ms2_excl) > 0){
       "Malic acid [M-H]-",
       "Unk-001 _I [M-H]-", "Unk-075 _14:2_15:3 [M-H]-", "Unk-134 _NL325 [M-H]-",
       "Unk-173 [M-H+HCOOH]-", "Unk-179 _18:2_23:0 [M-H]-","Unk-190 [M-H]-",
-      "Unk-191 _16:0/18:1 [M-H]-","Unk-198 [M-H+HCOOH]-",
-      "Unk-202 _18:2_20:0 [M-H]-", "Unk-221 _16:0/18:2 [M-H]-", "Unk-223 [M-H]-", 
-      "Unk-224 [M-H]-", "Unk-225 [M-H]-","Unk-247 [M-H]-",
+      "Unk-191 _16:0_18:1 [M-H]-","Unk-198 [M-H+HCOOH]-",
+      "Unk-202 _18:2_20:0 [M-H]-", "Unk-221 _16:0_18:2 [M-H]-", "Unk-223 [M-H]-",
+      "Unk-224 [M-H]-", "Unk-225 [M-H]-","Unk-247 [M-H]-", "Unk-257 [M-H+HCOOH]-",
       "Unk-270 _16:0_18:2 [M-H]-")
   } else if(s == "maturation" & p == "NEG"){
     excl <- c(
