@@ -18,8 +18,8 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-p <- "POS" # specify "POS" or "NEG"
-s <- "tissues" # specify "maturation" or "tissues"
+p <- "NEG" # specify "POS" or "NEG"
+s <- "maturation" # specify "maturation" or "tissues"
 
 if(p == "NEG"){
   int <- 2e5
@@ -738,16 +738,22 @@ if(nrow(ms2_excl) > 0){
   } else if(s == "maturation" & p == "NEG"){
     excl <- c(
       excl, 
-      "PA_16:0_18:1 [M-H]-", "PA_18:1_18:2 [M-H]-",
-      "mPA_16:0_18:2 [M-H]-", "mPA_16:0_18:3 [M-H]-",
-      "mPA_18:2_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
-      "LPC_18:1d7 [M-H+HCOOH]-", "LPE_18:1d7 [M-H]-",
-      "PE_16:0_18:3 _I [M-H]-", 
+      "FFA_32:4 [M-H+HCOOH]-","FFA_red_23:1 [M-H+HCOOH]-",
+      "PA_16:0_18:1 [M-H]-", "PA_18:0_18:3 [M-H]-", "PA_18:1_18:2 [M-H]-", "PA_18:3_18:3 [M-H]-",
+      "mPA_16:0_18:1 [M-H]-", "mPA_16:0_18:2 [M-H]-", "mPA_16:0_18:3 [M-H]-",
+      "mPA_18:1_18:2 [M-H]-", "mPA_18:2_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
+      "LPC_18:1d7 [M-H+HCOOH]-", 
+      "PC_17:0_18:2 [M-H+HCOOH]-",
+      "LPE_18:1d7 [M-H]-",
+      "PE_16:0_18:3 _I [M-H]-", "PE_16:0_18:3 _II [M-H]-", "PE_18:3_18:3 [M-H]-", "PE_18:2_23:0 [M-H]-",
       "PE_18:0_18:3 [M-H]-", "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-", 
       "PE_20:0_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-",
       "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-",
       "PI_16:0_18:1 [M-H]-",
-      "CER_hex_dihydroxy_18:1_22:0 [M-H]-", "CER_hex_dihydroxy_18:1_24:0 [M-H]-")
+      "CER_hex_dihydroxy_18:1_22:0 [M-H]-", "CER_hex_dihydroxy_18:1_24:0 [M-H]-",
+      "CER_hex_dihydroxy_18:1_26:0 [M-H]-",
+      "Unk-134 _NL325 [M-H]-", "Unk-229 [M-H]-", "Unk-231 [M-H]-", "Unk-232 _18:2 [M-H]-",
+      "Unk-271 [M-H]-")
   } else if(s == "tissues" & p == "POS"){
     excl <- c(
       excl, 
@@ -771,11 +777,18 @@ if(nrow(ms2_excl) > 0){
   }else if(s == "maturation" & p == "POS"){
     excl <- c(
       excl, 
+      "PA_16:0_18:1 [M+NH4]+",
+      "mPA_18:2_18:3 [M+C2H8N]+",
       "PC_16:0_16:1 [M+H]+",
-      "PE_16:0_18:1 _II [M+H]+", "PE_16:0_18:2 _I [M+H]+", "PE_18:1_18:2 [M+H]+",
-      "DAG_16:0_18:3 [M+NH4]+", "TAG_14:0_16:0_18:1 [M+NH4]+",
+      "PE_15:0_18:1d7 [M+H]+", "PE_16:0_18:1 _II [M+H]+", "PE_16:0_18:2 _I [M+H]+", 
+      "PE_18:1_18:2 [M+H]+", "PE_18:2_23:0 [M+H]+",
+      "PG_16:0_16:0 [M+NH4]+",
+      "DAG_15:0_18:1d7 [M+NH4]+","DAG_16:0_18:1 [M+C2H8N]+", "DAG_16:0_18:3 [M+NH4]+", 
+      "TAG_14:0_16:0_18:1 [M+NH4]+","TAG_17:1_18:2_18:2 [M+NH4]+","TAG_18:3_18:3_20:0 [M+NH4]+",
       "Sitosterol ester 18:3 [M+NH4]+",
-      "Unk-172 [M+H]+")
+      "Unk-089 [M+NH4]+", "Unk-169 _18:3 [M+H]+", "Unk-172 [M+H]+", "Unk-176 [M+H]+",
+      "Unk-178 [M+H]+", "Unk-200 _18:2_18:3 [M+H]+", "Unk-206 _16:0_18:2_18:3 [M+H]+",
+      "Unk-234 [M+H]+", "Unk-236 [M+H]+")
   }
   todo <- todo[!todo %in% excl]
 } 
