@@ -18,8 +18,8 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-p <- "NEG" # specify "POS" or "NEG"
-s <- "maturation" # specify "maturation" or "tissues"
+p <- "POS" # specify "POS" or "NEG"
+s <- "tissues" # specify "maturation" or "tissues"
 
 if(p == "NEG"){
   int <- 2e5
@@ -253,18 +253,33 @@ ft$ms2 <- NA
 ms2$FT <- "X"
 for(i in seq(nrow(ft))){
   idx_ms2 <- unlist(matchWithPpm(ft$mzmed[i], precursorMz(ms2), ppm = 10))
-  if(s == "tissues" & p == "POS"){
-    if(length(unlist(matchWithPpm(638.5718, ft$mzmed, ppm = 10))) > 1){
-      rt <- round(ft$rtmed[unlist(matchWithPpm(638.5718, ft$mzmed, ppm = 10))])
-      if(rt[which.max(rt)] == round(ft$rtmed[i])){
-        idx_ms2 <- idx_ms2[- which(
-          idx_ms2 == which(basename(
-            ms2@backend@spectraData@listData$dataOrigin) ==
-              "x008_lipidgrape_tissues_pt11_seeds_rep3_POS_DDA.mzML" & 
-              ms2@backend@spectraData@listData$scanIndex == 2188))]
-      }
-    }
-  }
+  #if(s == "tissues" & p == "NEG"){
+    # do not consider tail of "PA_16:0_18:2":
+   # if(length(unlist(matchWithPpm(671.4657, ft$mzmed[i], ppm = 10))) == 1){
+    #  if(ft$rtmed[i]/60 > 16.40){
+     #   idx_ms2 <- NULL
+      #}
+    #}# do not consider tail of "PA_16:0_18:3":
+#    if(length(unlist(matchWithPpm(669.4501, ft$mzmed[i], ppm = 10))) == 1){
+ #     if(ft$rtmed[i]/60 > 15.75){
+  #      idx_ms2 <- NULL
+   #   }
+    #}
+#  } else if(s == "tissues" & p == "POS"){
+    # PE_16:0_18:2:
+    
+    # DAG36:2 ????????????
+ #   if(length(unlist(matchWithPpm(638.5718, ft$mzmed, ppm = 10))) > 1){
+  #    rt <- round(ft$rtmed[unlist(matchWithPpm(638.5718, ft$mzmed, ppm = 10))])
+   #   if(rt[which.max(rt)] == round(ft$rtmed[i])){
+    #    idx_ms2 <- idx_ms2[- which(
+     #     idx_ms2 == which(basename(
+      #      ms2@backend@spectraData@listData$dataOrigin) ==
+       #       "x008_lipidgrape_tissues_pt11_seeds_rep3_POS_DDA.mzML" & 
+        #      ms2@backend@spectraData@listData$scanIndex == 2188))]
+      #}
+     #}
+  #}
   idx_cp <- unlist(matchWithPpm(ft$mzmed[i], cp[,"mz"], ppm = 10))
   cpx <- cp[idx_cp, ]
   if(length(idx_cp) > 1){
@@ -712,7 +727,7 @@ if(nrow(ms2_excl) > 0){
       "dmPA_16:0_18:1 [M-H]-", "dmPA_16:0_18:2 [M-H]-", "dmPA_18:2_18:2 [M-H]-", 
       "PC_15:0_18:1d7 [M-H+HCOOH]-",
       "PE_15:0_18:1d7 [M-H]-", "PE_16:0_18:1 _II [M-H]-", 
-      "PE_16:0_18:3 _I [M-H]-", "PE_16:0_18:3 _II [M-H]-",
+      "PE_16:0_18:3 [M-H]-", 
       "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-","PE_18:2_23:0 [M-H]-",
       "PG_15:0_18:1d7 [M-H]-", "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-", 
       "PG_16:0_18:2 [M-H]-",
@@ -745,14 +760,14 @@ if(nrow(ms2_excl) > 0){
       "LPC_18:1d7 [M-H+HCOOH]-", 
       "PC_17:0_18:2 [M-H+HCOOH]-",
       "LPE_18:1d7 [M-H]-",
-      "PE_16:0_18:3 _I [M-H]-", "PE_16:0_18:3 _II [M-H]-", "PE_18:3_18:3 [M-H]-", "PE_18:2_23:0 [M-H]-",
+      "PE_16:0_18:3 [M-H]-", "PE_18:3_18:3 [M-H]-", "PE_18:2_23:0 [M-H]-",
       "PE_18:0_18:3 [M-H]-", "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-", 
       "PE_20:0_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-",
       "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-",
       "PI_16:0_18:1 [M-H]-",
       "CER_hex_dihydroxy_18:1_22:0 [M-H]-", "CER_hex_dihydroxy_18:1_24:0 [M-H]-",
       "CER_hex_dihydroxy_18:1_26:0 [M-H]-",
-      "Unk-134 _NL325 [M-H]-", "Unk-229 [M-H]-", "Unk-231 [M-H]-", "Unk-232 _18:2 [M-H]-",
+      "Unk-134 _NL325 [M-H]-", "Unk-231 [M-H]-", "Unk-232 _18:2 [M-H]-",
       "Unk-271 [M-H]-")
   } else if(s == "tissues" & p == "POS"){
     excl <- c(
