@@ -18,13 +18,13 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-p <- "POS" # specify "POS" or "NEG"
+p <- "NEG" # specify "POS" or "NEG"
 s <- "tissues" # specify "maturation" or "tissues"
 
 if(p == "NEG"){
-  int <- 2e5
+  int <- 4e5
 } else if(p == "POS"){
-  int <- 2e6
+  int <- 4e6
 }
 
 if(s == "maturation"){
@@ -134,7 +134,7 @@ data_raw <- readMSData(
 
 ```{r peak-detection}
 cwp <- CentWaveParam(ppm = 20,
-                     peakwidth = c(2, 20),
+                     peakwidth = c(5, 40),
                      prefilter = c(5, int),
                      snthresh = 5,
                      noise = 1000,
@@ -253,33 +253,45 @@ ft$ms2 <- NA
 ms2$FT <- "X"
 for(i in seq(nrow(ft))){
   idx_ms2 <- unlist(matchWithPpm(ft$mzmed[i], precursorMz(ms2), ppm = 10))
-  #if(s == "tissues" & p == "NEG"){
-    # do not consider tail of "PA_16:0_18:2":
-   # if(length(unlist(matchWithPpm(671.4657, ft$mzmed[i], ppm = 10))) == 1){
-    #  if(ft$rtmed[i]/60 > 16.40){
-     #   idx_ms2 <- NULL
-      #}
-    #}# do not consider tail of "PA_16:0_18:3":
-#    if(length(unlist(matchWithPpm(669.4501, ft$mzmed[i], ppm = 10))) == 1){
- #     if(ft$rtmed[i]/60 > 15.75){
-  #      idx_ms2 <- NULL
-   #   }
-    #}
-#  } else if(s == "tissues" & p == "POS"){
-    # PE_16:0_18:2:
-    
-    # DAG36:2 ????????????
- #   if(length(unlist(matchWithPpm(638.5718, ft$mzmed, ppm = 10))) > 1){
-  #    rt <- round(ft$rtmed[unlist(matchWithPpm(638.5718, ft$mzmed, ppm = 10))])
-   #   if(rt[which.max(rt)] == round(ft$rtmed[i])){
-    #    idx_ms2 <- idx_ms2[- which(
-     #     idx_ms2 == which(basename(
-      #      ms2@backend@spectraData@listData$dataOrigin) ==
-       #       "x008_lipidgrape_tissues_pt11_seeds_rep3_POS_DDA.mzML" & 
-        #      ms2@backend@spectraData@listData$scanIndex == 2188))]
-      #}
-     #}
-  #}
+  if(s == "tissues" & p == "NEG"){
+    # do not consider tail of 
+    ### "PA_16:0_18:2":
+    if(length(unlist(matchWithPpm(671.4657, ft$mzmed[i], ppm = 10))) == 1){
+      if(ft$rtmed[i]/60 > 16.47 & ft$rtmed[i]/60 < 16.70){
+        idx_ms2 <- NULL
+      }}
+    ### PA(18:2/18:2)
+    if(length(unlist(matchWithPpm(695.4657, ft$mzmed[i], ppm = 10))) == 1){
+      if(ft$rtmed[i]/60 > 16.03 & ft$rtmed[i]/60 < 16.22){
+        idx_ms2 <- NULL
+      }}
+  } else if(s == "maturation" & p == "NEG"){
+    # do not consider tail of 
+    ### "PA_16:0_18:2":
+    if(length(unlist(matchWithPpm(671.4657, ft$mzmed[i], ppm = 10))) == 1){
+      if(ft$rtmed[i]/60 > 16.40 & ft$rtmed[i]/60 < 16.65){
+        idx_ms2 <- NULL
+      }}
+  } else if(s == "tissues" & p == "POS"){
+    # do not consider tail of 
+    ### "PA_16:0_18:2":
+#    if(length(unlist(matchWithPpm(690.5068, ft$mzmed[i], ppm = 10))) == 1){
+#      if(ft$rtmed[i]/60 > 16.35 & ft$rtmed[i]/60 < 16.5){
+#        idx_ms2 <- NULL
+#      }}
+    ### "DAG_18:1_18:2":
+    if(length(unlist(matchWithPpm(636.5562, ft$mzmed[i], ppm = 10))) == 1){
+      if(ft$rtmed[i]/60 > 18.21 & ft$rtmed[i]/60 < 18.33){
+        idx_ms2 <- NULL
+      }}      
+#  }else if(s == "maturation" & p == "POS"){
+    # do not consider tail of 
+    ### "PA_16:0_18:2":
+#    if(length(unlist(matchWithPpm(690.5068, ft$mzmed[i], ppm = 10))) == 1){
+#      if(ft$rtmed[i]/60 > 16.3 & ft$rtmed[i]/60 < 16.45){
+#        idx_ms2 <- NULL
+#      }}
+  }
   idx_cp <- unlist(matchWithPpm(ft$mzmed[i], cp[,"mz"], ppm = 10))
   cpx <- cp[idx_cp, ]
   if(length(idx_cp) > 1){
@@ -301,17 +313,25 @@ for(i in seq(nrow(ft))){
         if(idy %in% cpx[,"sample"]) {
           rtmin <- min(cpx[cpx[,"sample"] == idy, "rtmin"])
           rtmax <- max(cpx[cpx[,"sample"] == idy, "rtmax"])
-        } else {
-          idx_cp <-NULL
-        }
+        } #else {
+        #idx_cp <-NULL
+        #}
       }
-      if((length(idx_cp) == 1 & cpx["sample"] == idy) |
-         length(idx_cp) > 1){
-        if((rtime(ms2)[idx_ms2][j] > rtmin) & (rtime(ms2)[idx_ms2][j] < rtmax)){
+      if((length(idx_cp) == 1 & cpx["sample"] == idy)){
+        if((rtime(ms2)[idx_ms2][j] > rtmin) & 
+           (rtime(ms2)[idx_ms2][j] < rtmax)){
           ms2$FT[idx_ms2][j] <- gsub("X-", "", 
                                      paste(ms2$FT[idx_ms2][j], 
                                            rownames(ft)[i], sep = "-"))
-          
+        }
+      } else if((length(idx_cp) > 1)){
+        if(idy %in% cpx[,"sample"]){
+          if((rtime(ms2)[idx_ms2][j] > rtmin) & 
+             (rtime(ms2)[idx_ms2][j] < rtmax)){
+            ms2$FT[idx_ms2][j] <- gsub("X-", "", 
+                                       paste(ms2$FT[idx_ms2][j], 
+                                             rownames(ft)[i], sep = "-"))
+          }
         }
       }
     } # close idx "j"
@@ -394,6 +414,7 @@ adds <- data.frame(rbind(
   c("[2M-H]-",           -1.007276,              2, "NEG"),
   c("[2M+Na-2H]-",       20.974668,              2, "NEG"), 
   c("13C[2M+Na-2H]-",    20.974668 + 1.003355,   2, "NEG"), 
+  c("[M-H-CO2]-",       -1.007276 - 43.98982,  1, "NEG"), 
   c("[M-H-H2O]-",       -1.007276 - 18.0105647,  1, "NEG"), 
   c("[M-CH3]-",         -15.023475105,           1, "NEG"),
   c("[14:3-H]-",        -219.174076,             1, "NEG"),
@@ -418,7 +439,7 @@ ft_match <- matchMz(as.data.frame(db_exp), cmps, parm,
                     mzColname = "precursor", rtColname = "rtime")
 ft_match_out <- as.data.frame(matchedData(ft_match))
 tmp <- ft_match_out[!is.na(ft_match_out$target_compound), ]
-tmp2 <- gsub("\\..*", "", rownames(tmp))
+tmp2 <- unique(gsub("\\..*", "", rownames(tmp)))
 if(any(duplicated(tmp2))){
   dpl <- unique(tmp2[duplicated(tmp2)])
   for(i in unique(dpl)){
@@ -447,7 +468,7 @@ length(unique(db_exp$compound[!is.na(db_exp$compound)]))
 
 ## Fragmentation patterns
 
-```{r fragmentation}
+```{r fragmentation, eval=FALSE}
 ids <- c()
 
 C <- seq(from = 16, to = 18, by = 2)
@@ -584,18 +605,21 @@ ms2sim_smp <- function(compound, precursor, FT){
   }
   sim
 }
+```
 
+
+```{r}
 db_exp <- db_exp %>%
   filter(MS2_n > 0) %>%
-  filter(!is.na(compound)) %>%
-  mutate(sim_std = pmap(list(compound, precursor, FT),
-                        function(compound, precursor, FT){
-                          ms2sim_std(compound, precursor, FT)
-                        })) %>%
-  mutate(sim_smp = pmap(list(compound, precursor, FT),
-                        function(compound, precursor, FT){
-                          ms2sim_smp(compound, precursor, FT)
-                        }))
+  filter(!is.na(compound)) #%>%
+#mutate(sim_std = pmap(list(compound, precursor, FT),
+#                      function(compound, precursor, FT){
+#                        ms2sim_std(compound, precursor, FT)
+#                      })) %>%
+#mutate(sim_smp = pmap(list(compound, precursor, FT),
+#                      function(compound, precursor, FT){
+#                        ms2sim_smp(compound, precursor, FT)
+#                      }))
 length(unique(db_exp$compound))
 unique(db_exp$compound)
 ```
@@ -685,8 +709,8 @@ for(i in unique(db_exp$compound)){
 ```{r output}
 db_exp$precursor <- sprintf("%.4f", db_exp$precursor)
 db_exp$rtime <- sprintf("%.2f", db_exp$rtime/60)
-db_exp$sim_std <- sprintf("%.3f", db_exp$sim_std)
-db_exp$sim_smp <- sprintf("%.3f", db_exp$sim_smp)
+#db_exp$sim_std <- sprintf("%.3f", db_exp$sim_std)
+#db_exp$sim_smp <- sprintf("%.3f", db_exp$sim_smp)
 db_exp <- db_exp[order(db_exp$compound),]
 cmp <- db_exp$compound[!grepl("13C", db_exp$adduct)]
 ```
@@ -712,6 +736,11 @@ DT::datatable(db_exp[!idx,], rownames = FALSE, options = list(
 ```{r ms2-to-flag}
 ms2_excl <- readxl::read_xlsx("MS2_exclude.xlsx")
 ms2_excl <- ms2_excl[ms2_excl$polarity == p & ms2_excl$study == s, ]
+
+db_exp$compound <- gsub(")", "", db_exp$compound)
+db_exp$compound <- gsub("\\(", "_", db_exp$compound)
+db_exp$compound <- gsub("/", "_", db_exp$compound)
+
 todo <- paste(db_exp$compound, db_exp$adduct)
 todo <- todo[!grepl("13C", todo)]
 if(nrow(ms2_excl) > 0){
@@ -721,21 +750,22 @@ if(nrow(ms2_excl) > 0){
       excl, 
       "PA_16:0_18:1 [M-H]-", "PA_16:0_18:2 [2M-H]-", "PA_18:1_18:2 [M-H]-", 
       "PA_18:2_18:2 [M-H]-", "PA_18:3_18:3 [M-H]-",
-      "PA_18:2_20:0 [M-H]-", "PA_18:2_22:0 _II [M-H]-", 
+      "PA_18:2_20:0 [M-H]-", "PA_18:2_22:0 [M-H]-", "PA_18:2_22:0 _II [M-H]-", 
       "mPA_16:0_18:1 [M-H]-", "mPA_16:0_18:2 [M-H]-", 
-      "mPA_18:0_18:1 [M-H]-", "mPA_18:1_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
+      "mPA_18:0_18:1 [M-H]-", "mPA_18:0_18:2 [M-H]-", "mPA_18:1_18:2 [M-H]-",
+      "mPA_18:2_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
       "dmPA_16:0_18:1 [M-H]-", "dmPA_16:0_18:2 [M-H]-", "dmPA_18:2_18:2 [M-H]-", 
       "PC_15:0_18:1d7 [M-H+HCOOH]-",
-      "PE_15:0_18:1d7 [M-H]-", "PE_16:0_18:1 _II [M-H]-", 
-      "PE_16:0_18:3 [M-H]-", 
-      "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-","PE_18:2_23:0 [M-H]-",
+      "PE_15:0_18:1d7 [M-H]-", "PE_16:0_18:1 _II [M-H]-", "PE_16:0_18:3 [M-H]-", 
+      "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-",
+      "PE_20:0_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-", "PE_18:2_23:0 [M-H]-",
       "PG_15:0_18:1d7 [M-H]-", "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-", 
       "PG_16:0_18:2 [M-H]-",
+      "PI_18:0_18:2 [M-H]-",
       "PS_18:2_20:0 [M-H]-",
-      "FFA_32:4 [M-H+HCOOH]-", "FFA_34:4 [M-H+HCOOH]-", "FFA_PA_20:0 [M-H]-", 
-      "FFA_red_21:1 [M-H+HCOOH]-", "FFA_red_22:1 [M-H+HCOOH]-", "FFA_red_23:1 [M-H+HCOOH]-",
+      "CER_15:0_18:1d7 [M-H+HCOOH]-", 
       "CER_hydroxy_41:0 [M-H+HCOOH]-","CER_hydroxy_41:1 [M-H+HCOOH]-",
-      "CER_dihydroxy_16:0_26:1 [M-H]-", 
+      "CER_dihydroxy_41:1 [M-H]-", "CER_dihydroxy_16:0_26:1 [M-H]-", 
       "CER_dihydroxy_18:0_22:0 [M-H]-", "CER_dihydroxy_18:0_22:0 [M-H+HCOOH]-",
       "CER_dihydroxy_18:0_24:0 [M-H]-","CER_dihydroxy_41:1 [M-H+HCOOH]-",
       "CER_hex_hydroxy_34:1 [M-H+HCOOH]-", "CER_hex_hydroxy_34:1 [M-H]-",
@@ -746,48 +776,84 @@ if(nrow(ms2_excl) > 0){
       "CER_hex_dihydroxy_18:1_25:0 [M-H]-", "CER_hex_dihydroxy_18:1_26:0 [M-H]-", 
       "MGDG_18:1_18:2 [M-H+HCOOH]-", "MGDG_18:2_18:2 [M-H+HCOOH]-",
       "Malic acid [M-H]-",
-      "Unk-001 _I [M-H]-", "Unk-075 _14:2_15:3 [M-H]-", "Unk-134 _NL325 [M-H]-",
-      "Unk-173 [M-H+HCOOH]-", 
-      "Unk-191 _16:0_18:1 [M-H]-","Unk-198 [M-H+HCOOH]-", "Unk-223 [M-H]-",
+      "Unk-001 _I [M-H]-", "Unk-004 [M-H]-", "Unk-014 [M-H]-", 
+      "Unk-016 [M-H+HCOOH]-", "Unk-019 [M-H+HCOOH]-", "Unk-020 [M-H+HCOOH]-",
+      "Unk-021 [M-H]-", "Unk-022 [M-H]-", "Unk-023 [M-H]-",
+      "Unk-075 _14:2_15:3 [M-H]-", "Unk-122 _NL325 [M-H]-", 
+      "Unk-134 _NL325 [M-H]-", "Unk-135 _NL325 [M-H]-",
+      "Unk-173 [M-H+HCOOH]-", "Unk-175 _18:2 [M-H]-", "Unk-182 [M-H+HCOOH]-",
+      "Unk-187 [M-H]-", "Unk-191 _16:0_18:1 [M-H]-","Unk-198 [M-H+HCOOH]-", 
+      "Unk-202 [M-H]-", "Unk-213 _18:2 [M-H]-", "Unk-223 [M-H]-",
       "Unk-224 [M-H]-", "Unk-247 [M-H]-")
   } else if(s == "maturation" & p == "NEG"){
     excl <- c(
       excl, 
-      "FFA_32:4 [M-H+HCOOH]-","FFA_red_23:1 [M-H+HCOOH]-",
-      "PA_16:0_18:1 [M-H]-", "PA_18:0_18:3 [M-H]-", "PA_18:1_18:2 [M-H]-", "PA_18:3_18:3 [M-H]-",
+      "PA_16:0_18:1 [M-H]-", 
+      "PA_18:0_18:2 [M-H]-", "PA_18:0_18:3 [M-H]-", "PA_18:1_18:2 [M-H]-",
+      "PA_18:3_18:3 [M-H]-",
       "mPA_16:0_18:1 [M-H]-", "mPA_16:0_18:2 [M-H]-", "mPA_16:0_18:3 [M-H]-",
-      "mPA_18:1_18:2 [M-H]-", "mPA_18:2_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
+      "mPA_18:0_18:2 [M-H]-", "mPA_18:1_18:2 [M-H]-", "mPA_18:2_18:2 [M-H]-", 
+      "mPA_18:2_18:3 [M-H]-",
       "LPC_18:1d7 [M-H+HCOOH]-", 
-      "PC_17:0_18:2 [M-H+HCOOH]-",
+      "PC_17:0_18:2 [M-H+HCOOH]-", "PC_20:0_18:2 [M-H+HCOOH]-",
       "LPE_18:1d7 [M-H]-",
-      "PE_16:0_18:3 [M-H]-", "PE_18:3_18:3 [M-H]-", "PE_18:2_23:0 [M-H]-",
-      "PE_18:0_18:3 [M-H]-", "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-", 
-      "PE_20:0_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-",
-      "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-",
+      "PE_15:0_18:1d7 [M-H]-", "PE_16:0_18:3 [M-H]-",  
+      "PE_18:0_18:3 [M-H]-", "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-",
+      "PE_18:3_18:2 [M-H]-", "PE_18:3_18:3 [M-H]-",
+      "PE_20:0_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-","PE_18:2_23:0 [M-H]-",
+      "PG_15:0_18:1d7 [M-H]-", "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-",
+      "PG_16:0_18:2 [M-H]-",
       "PI_16:0_18:1 [M-H]-",
+      "CER_15:0_18:1d7 [M-H+HCOOH]-", 
+      "CER_hex_hydroxy_34:2 [M-H]-",
       "CER_hex_dihydroxy_18:1_22:0 [M-H]-", "CER_hex_dihydroxy_18:1_24:0 [M-H]-",
       "CER_hex_dihydroxy_18:1_26:0 [M-H]-",
-      "Unk-134 _NL325 [M-H]-", "Unk-231 [M-H]-", "Unk-232 _18:2 [M-H]-",
-      "Unk-271 [M-H]-")
+      "Unk-004 [M-H]-", "Unk-20 [M-H+HCOOH]-", 
+      "Unk-134 _NL325 [M-H]-", "Unk-229 _I [M-H]-", "Unk-231 [M-H]-", 
+      "Unk-232 _18:2 [M-H]-", "Unk-271 [M-H]-")
   } else if(s == "tissues" & p == "POS"){
     excl <- c(
       excl, 
       "LPC_16:0 [M+H]+",
       "PA_18:3_18:3 [M+NH4]+",
-      "PE_15:0_18:1d7 [M+H]+", "PE_18:1_18:2 [M+H]+", "PE_18:2_18:2 [M+H]+",
-      "PE_20:0_18:2 [M+H]+", "PE_18:2_23:0 [M+H]+",
+      "PE_15:0_18:1d7 [M+H]+", "PE_18:0_18:2 [M+H]+", "PE_18:1_18:2 [M+H]+", 
+      "PE_18:2_18:2 [M+H]+",
+      "PE_20:0_18:2 [M+H]+", "PE_22:0_18:2 [M+H]+", "PE_18:2_23:0 [M+H]+",
+      "CER_15:0_18:1d7 [M+H]+",
       "CER_dihydroxy_16:0_26:1 [M+H]+", "CER_dihydroxy_18:0_24:0 [M+H]+", 
-      "DAG_16:0_16:1 [M+NH4]+", "DAG_17:0_18:2 [M+NH4]+",
-      "DAG_18:0_18:1 [M+C2H8N]+", "DAG_18:2_18:3 [M+NH4]+", "DAG_18:2_20:0 [M+NH4]+", 
-      "TAG_14:0_16:0_18:3 [M+NH4]+", "TAG_15:1_16:0_18:2 [M+NH4]+",
+      "CER_hex_dihydroxy_18:1_26:0 [M+H]+", #???
+      "DAG_15:0_18:1d7 [M+NH4]+", "DAG_16:0_16:0 [M+NH4]+", 
+      "DAG_16:0_16:1 [M+NH4]+", "DAG_16:1_18:2 [M+NH4]+",
+      "DAG_16:0_18:3 [M+NH4]+",
+      "DAG_17:0_18:2 [M+NH4]+",
+      "DAG_18:0_18:1 [M+C2H8N]+", "DAG_18:2_18:3 [M+NH4]+", 
+      "DAG_18:2_20:0 [M+NH4]+", 
+      "TAG_12:0_18:2_18:2 [M+NH4]+", 
+      "TAG_14:0_16:0_18:2 [M+NH4]+", "TAG_14:0_16:0_18:3 [M+NH4]+", 
+      "TAG_15:1_16:0_18:2 [M+NH4]+",
       "TAG_16:0_16:0_16:0 [M+NH4]+", "TAG_16:0_16:2_18:3 [M+NH4]+", 
       "TAG_16:0_17:0_18:2 [M+NH4]+", "TAG_16:0_17:1_18:2 [M+NH4]+",
       "TAG_17:2_18:2_18:3 [M+NH4]+",
-      "TAG_18:1_18:2_22:0 [M+NH4]+", "TAG_18:2_18:2_18:2 [M+NH4]+", "TAG_18:2_18:2_24:0 [M+NH4]+",
+      "TAG_18:1_18:2_22:0 [M+NH4]+", "TAG_18:2_18:2_18:2 [M+NH4]+", 
+      "TAG_18:2_18:2_19:2 [M+NH4]+", "TAG_18:2_18:2_24:0 [M+NH4]+",
       "TAG_18:3_18:3_20:0 [M+NH4]+",
-      "Unk-010 _I [M+C2H8N]+", "Unk-026 _II [M+C2H8N]+", "Unk-026 _III [M+NH4]+",
-      "Unk-040 [M+C2H8N]+", "Unk-169 _18:3 [M+H]+", "Unk-176 [M+H]+", "Unk-194 [M+H]+",
-      "Unk-200 _18:2_18:3 [M+H]+", "Unk-206 _16:0_18:2_18:3 [M+H]+", "Unk-210 _16:0 [M+H]+",
+      "Sitosterol ester 18:3 [M+NH4]+",
+      "Unk-010 _I [M+C2H8N]+",
+      "Unk-010 _II [M+NH4]+", "Unk-010 _II [M+C2H8N]+", # ????????
+      "Unk-010 _III [M+NH4]+", # ?????
+      "Unk-010 _IV [M+NH4]+",
+      "Unk-025 _18:1_18:2 [M+NH4]+",
+      "Unk-026 _I [M+C2H8N]+", # ?????????
+      "Unk-026 _II [M+C2H8N]+", "Unk-026 _III [M+NH4]+",
+      "Unk-040 [M+C2H8N]+", 
+      "Unk-168 [M+H]+", # ??????????
+      "Unk-169 _18:3 [M+H]+", 
+      "Unk-170 _I [M+H]+", "Unk-170 _II _18:2 [M+NH4]+", 
+      "Unk-172 _18:3 [M+H]+", "Unk-176 [M+H]+", 
+      "Unk-177 _16:0_18:0 [M+NH4]+", "Unk-178 _16:0_18:0 [M+H]+",
+      "Unk-194 [M+H]+",
+      "Unk-200 _18:2_18:3 [M+H]+", "Unk-206 _16:0_18:2_18:3 [M+H]+", 
+      "Unk-210 _16:0 [M+H]+",
       "Unk-214 [M+H]+", "Unk-237 [M+H]+", "Unk-238 [M+H]+")
   }else if(s == "maturation" & p == "POS"){
     excl <- c(
@@ -795,14 +861,21 @@ if(nrow(ms2_excl) > 0){
       "PA_16:0_18:1 [M+NH4]+",
       "mPA_18:2_18:3 [M+C2H8N]+",
       "PC_16:0_16:1 [M+H]+",
-      "PE_15:0_18:1d7 [M+H]+", "PE_16:0_18:1 _II [M+H]+", "PE_16:0_18:2 _I [M+H]+", 
-      "PE_18:1_18:2 [M+H]+", "PE_18:2_23:0 [M+H]+",
+      "PE_15:0_18:1d7 [M+H]+", "PE_16:0_18:1 _I [M+H]+", "PE_16:0_18:1 _II [M+H]+",
+      "PE_16:0_18:2 [M+H]+", 
+      "PE_18:1_18:2 [M+H]+", "PE_18:2_23:0 [M+H]+", "PE_18:3_18:2 [M+H]+",
+      "PE_22:0_18:2 [M+H]+",
       "PG_16:0_16:0 [M+NH4]+",
-      "DAG_15:0_18:1d7 [M+NH4]+","DAG_16:0_18:1 [M+C2H8N]+", "DAG_16:0_18:3 [M+NH4]+", 
-      "TAG_14:0_16:0_18:1 [M+NH4]+","TAG_17:1_18:2_18:2 [M+NH4]+","TAG_18:3_18:3_20:0 [M+NH4]+",
+      "CER_hex_dihydroxy_18:1_26:0 [M+H]+", #???
+      "DAG_15:0_18:1d7 [M+NH4]+","DAG_16:0_18:1 [M+C2H8N]+", 
+      "DAG_16:0_18:3 [M+NH4]+", "DAG_18:2_18:3 [M+NH4]+",
+      "TAG_14:0_16:0_18:1 [M+NH4]+","TAG_17:1_18:2_18:2 [M+NH4]+",
+      "TAG_18:3_18:3_20:0 [M+NH4]+",
       "Sitosterol ester 18:3 [M+NH4]+",
-      "Unk-089 [M+NH4]+", "Unk-169 _18:3 [M+H]+", "Unk-172 [M+H]+", "Unk-176 [M+H]+",
-      "Unk-178 [M+H]+", "Unk-200 _18:2_18:3 [M+H]+", "Unk-206 _16:0_18:2_18:3 [M+H]+",
+      "Unk-089 [M+NH4]+", "Unk-169 _18:3 [M+H]+", "Unk-172 [M+H]+", 
+      "Unk-176 [M+H]+",
+      "Unk-178 [M+H]+", "Unk-200 _18:2_18:3 [M+H]+", 
+      "Unk-206 _16:0_18:2_18:3 [M+H]+",
       "Unk-234 [M+H]+", "Unk-236 [M+H]+")
   }
   todo <- todo[!todo %in% excl]
