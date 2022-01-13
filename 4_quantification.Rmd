@@ -35,7 +35,7 @@ matchWithPpm <- function(x, y, ppm = 0) {
 ```{r import}
 cmps <- read.csv("compounds.csv")
 res <- read.csv("output/res.csv")
-res$id <- res$compound
+res$id <- res$name_old
 res$id <- gsub(")", "", res$id)
 res$id <- gsub("\\(", "_", res$id)
 res$id <- gsub("/", "_", res$id)
@@ -142,50 +142,59 @@ dbexp$adduct <- gsub("\\[M-H\\+HCOOH]-", "\\[M\\+CHO2]-", dbexp$adduct)
 res$pw_t <- NA
 res$pw_m <- NA
 for(i in seq(nrow(res))){
-  fml <- unique(cmps$formula[cmps$compound == res$compound[i]])
-  cl <- unique(cmps$class[cmps$compound == res$compound[i]])
+  fml <- unique(cmps$formula[cmps$compound == res$name_old[i]])
+  cl <- unique(cmps$class[cmps$compound == res$name_old[i]])
   if(cl %in% c(
     "FFA_PA", "CER_hex_dihydroxy", "PA", "mPA", "dmPA", "LPE", "PE",
-    "LPG", "PG", "PI", "PS", "unk_A", "unk_B", "unk_C", "unk_D")){
+    "LPG", "PG", "PI", "PS", "SQDG", "unk_B", "unk_C", "unk_D")){
     ad <- "[M-H]-"
     pol <- "NEG"
   } else if(cl %in% c(
     "CER", "CER_hydroxy", "CER_dihydroxy", "CER_hex_hydroxy", 
-    "PC", "MGDG", "DGDG", "unk_E")){
+    "PC", "MGDG", "DGDG", "unk_A", "unk_E")){
     ad <- "[M+CHO2]-"
     pol <- "NEG"
   } else if(cl %in% c("CAR", "LPC")){
     ad <- "[M+H]+"
     pol <- "POS"
-  } else if(cl %in% c("DAG", "TAG")){
+  } else if(cl %in% c("DAG", "TAG", "sitosterol")){
     ad <- "[M+NH4]+"
     pol <- "POS"
-  } else if(res$compound[i] %in% c(
-    "(Epi)catechin", "Kaempferol glucoside",
-    "Unk-006 (pph_glucoside)", "Unk-029 (18:2)", "Unk-032", "Unk-037 (14:3)",
-    "Unk-039", "Unk-042", "Unk-043 (15:3)", "Unk-045 (I)", "Unk-075 (14:2/15:3)",
-    "Unk-184 (glucoside)", "Unk-191 (16:0/18:1)", "Unk-202", "Unk-208", "Unk-211",
+  } else if(res$name_old[i] %in% c(
+    "(Epi)catechin", "Kaempferol glucoside", "Disaccharide", "Malic acid",
+    "Unk-006 (pph_glucoside)", "Unk-029 (18:2)", 
+    "Unk-021", "Unk-022", "Unk-023", "Unk-027","Unk-028",
+    "Unk-031", "Unk-032", "Unk-033 (18:2)", "Unk-034", "Unk-037 (14:3)",
+    "Unk-039", "Unk-042", "Unk-043 (15:3)", "Unk-044 (I)", "Unk-045 (I)",
+    "Unk-061 (I)", "Unk-075 (14:2/15:3)",
+    "Unk-174 (16:0)","Unk-175 (18:2)",
+    "Unk-184 (glucoside)", "Unk-191 (16:0/18:1)", 
+    "Unk-201", "Unk-202", "Unk-208", "Unk-211","Unk-213 (18:2)",
     "Unk-212", "Unk-222", "Unk-223", "Unk-224", "Unk-229 (I)", "Unk-229 (II)",
     "Unk-231", "Unk-232 (18:2)", "Unk-247", "Unk-250", "Unk-253", "Unk-266",
     "Unk-271")){
     ad <- "[M-H]-"
     pol <- "NEG"
-  } else if(res$compound[i] %in% c(
-    "Unk-068", "Unk-079", "Unk-099", "Unk-173", "Unk-187", "Unk-198")){
+  } else if(res$name_old[i] %in% c(
+    "Unk-030", "Unk-068", "Unk-079", "Unk-173", "Unk-187", "Unk-198")){
     ad <- "[M+CHO2]-"
     pol <- "NEG"
-  } else if(res$compound[i] %in% c(
-    "Unk-001 (I)", "Unk-001 (II)", "Unk-003", "Unk-169 (18:3)", "Unk-172",
-    "Unk-176", "Unk-178", "Unk-193", "Unk-194", "Unk-200 (18:2/18:3)",
+  } else if(res$name_old[i] %in% c(
+    "Unk-001 (I)", "Unk-001 (II)", "Unk-003", 
+    "Unk-010 (I)", "Unk-010 (II)", "Unk-010 (III)", "Unk-010 (IV)", 
+    "Unk-038 (I)", "Unk-038 (II)", "Unk-090",
+    "Unk-168", "Unk-169 (18:3)", "Unk-170 (I)", "Unk-172 (18:3)",
+    "Unk-176", "Unk-178 (16:0/18:0)", "Unk-193", "Unk-194", "Unk-200 (18:2/18:3)",
     "Unk-206 (16:0/18:2/18:3)", "Unk-207", "Unk-209", "Unk-210 (16:0)", "Unk-214",
     "Unk-234", "Unk-235", "Unk-236", "Unk-237", "Unk-238")){
     ad <- "[M+H]+"
     pol <- "POS"
-  } else if(res$compound[i] %in% c(
-    "Sitosterol ester 18:3", 
-    "Unk-005", "Unk-010 (I)", "Unk-026 (II)", "Unk-026 (III)", "Unk-040",
-    "Unk-041 (18:2)", "Unk-051 (18:0/18:1/18:2)", "Unk-059 (II)", 
-    "Unk-062 (16:0/18:2) (I)", "Unk-089")){
+  } else if(res$name_old[i] %in% c(
+    "Unk-005", "Unk-025 (18:1/18:2)", "Unk-026 (II)", "Unk-026 (III)", 
+    "Unk-040", "Unk-041 (18:2)", 
+    "Unk-051 (18:0/18:1/18:2)", "Unk-059 (II)", 
+    "Unk-062 (16:0/18:2) (I)", "Unk-089", "Unk-123", 
+    "Unk-170 (II) (18:2)")){
     ad <- "[M+NH4]+"
     pol <- "POS"
   }
@@ -206,38 +215,40 @@ for(i in seq(nrow(res))){
         cp <- chromPeaks(xdata)[unlist(feat[ft, "peakidx"]),]
         rtmin <- min(cp[,"rtmin"])
         rtmax <- max(cp[,"rtmax"])
-      } else if(length(ft) == 0){
+      } else {#if(length(ft) == 0){
         cp <- as.data.frame(get(paste0("cp_", s, "_", pol)))
         cpx <- cp[unlist(matchWithPpm(mz, cp$mz, ppm = 10)),]
-        cpx <- cpx[(cpx$rtmin < res$RT[i]*60) & (cpx$rtmax > res$RT[i]*60),]
+        cpx <- cpx[(cpx$rtmin < res$RT[i]*60) & 
+                     (cpx$rtmax > res$RT[i]*60),]
         if(any(duplicated(cpx$sample))){
-          print(paste("Ull! Check", res$compound[i], "in", s, 
+          print(paste("Ull! Check", res$name_old[i], "in", s, 
                       "for duplicated cpx$sample!"))
         } else {
           rtmin <- min(cpx$rtmin)
           rtmax <- max(cpx$rtmax)
         }
-      } else {
-        print(paste("ULL! Check", res$compound[i], "in", s))
-        rtmin <- min(cpx$rtmin)
-        rtmax <- max(cpx$rtmax)
-      }
+      } #else {
+      #print(paste("ULL! Check", res$name_old[i], "in", s))
+      #rtmin <- min(cpx$rtmin)
+      #rtmax <- max(cpx$rtmax)
+      #}
       i.cmp <- matrix(c(as.numeric(mz) + 0.01 * c(-1, 1),
                         rtmin, rtmax), nrow = 1)
       colnames(i.cmp) <- c("mzmin", "mzmax", "rtmin", "rtmax")
       
       
-      if(!is.na(cmps[cmps$compound == res$compound[i], paste0(
+      if(!is.na(cmps[cmps$compound == res$name_old[i], paste0(
         substr(s, 1, 1), "_min")])){
-        i.cmp[,"rtmin"] <- cmps[cmps$compound == res$compound[i], 
+        i.cmp[,"rtmin"] <- cmps[cmps$compound == res$name_old[i], 
                                 paste0(substr(s, 1, 1), "_min")]*60
       }
-      if(!is.na(cmps[cmps$compound == res$compound[i], paste0(
+      if(!is.na(cmps[cmps$compound == res$name_old[i], paste0(
         substr(s, 1, 1), "_max")])){
-        i.cmp[,"rtmax"] <- cmps[cmps$compound == res$compound[i], 
+        i.cmp[,"rtmax"] <- cmps[cmps$compound == res$name_old[i], 
                                 paste0(substr(s, 1, 1), "_max")]*60
       }
-      res[i, paste0("pw_", substr(s, 1, 1))] <- i.cmp[,"rtmax"] - i.cmp[,"rtmin"]
+      res[i, paste0("pw_", substr(s, 1, 1))] <- i.cmp[,"rtmax"] -
+        i.cmp[,"rtmin"]
       pks <- manualChromPeaks(ydata,
                               chromPeaks = i.cmp,
                               samples = seq_along(fileNames(ydata)),
@@ -249,8 +260,9 @@ for(i in seq(nrow(res))){
         "output/chr_", s, "/")))){
         col <- get(paste0("col_", s, "_", pol))
         jpeg(fl)
-        chr <- chromatogram(ydata, 
-                            mz = i.cmp[,1:2], rt = i.cmp[,3:4] + 10 * c(-1,1))
+        chr <- chromatogram(
+          ydata, 
+          mz = i.cmp[,1:2], rt = i.cmp[,3:4] + 10 * c(-1,1))
         plot(chr, col = col, xaxt = "n")
         axis(1, at = seq(0, 60*30, 3), labels = sprintf(
           "%.2f", seq(0, 30, 3/60))) 
@@ -279,77 +291,14 @@ for(i in seq(nrow(res))){
     } # close study "s"
     #print(i)
     rm(ad, pol)
-  } else{print(paste("Define adduct for compound", res$compound[i]))}
+  } else{print(paste("Define adduct for compound", res$name_old[i]))}
 }
 
-
-
-
-for(s in c("tissues", "maturation")){
-  data <- get(paste0("data_", s))
-  data[is.na(data)] <- 0
-  #write.csv(data, paste0("output/data_", s, ".csv"))
-  idx <- grep("QC", rownames(data))
-  idx <- idx[!grepl("rw|dl", rownames(data)[idx])]
-  CV <- (apply(data[idx,], 2, sd, na.rm = TRUE) / apply(
-    data[idx,], 2, mean, na.rm = TRUE))*100
-  assign(paste0("CV_", s), CV)
-  
-  idx <- grep("QC", rownames(data))
-  idx <- idx[grepl("rw|dl", rownames(data)[idx])]
-  dil <- rownames(data)[idx]
-  dil <- gsub("uL.*", "", dil)
-  dil1 <- gsub("_.*", "", dil)
-  dil1 <- gsub("QCrw", 1, dil1)
-  dil1 <- gsub("QCdl", 10, dil1)
-  dil1 <- as.numeric(dil1)
-  dil2 <- gsub(".*_", "", dil)
-  dil2 <- gsub("uL", "", dil2)
-  dil2 <- gsub("02", "2.5", dil2)
-  dil2 <- as.numeric(dil2)
-  dil <- dil2 / dil1
-  rm(dil1, dil2)
-  tmp <- cbind(rownames(data)[idx], dil)
-  linearity <- cor(log10(data[idx, ]), log10(dil))
-  assign(paste0("lin_", s), linearity)
-  
-  if(s == "tissues"){
-    idx <- grep("solv", rownames(data))
-  } else if(s == "maturation"){
-    idx <- grep("slv", rownames(data))
-  }
-  m_slv <- colMeans(data[idx,])
-  m_slv[m_slv == 0] <- 1
-  idx <- grep("QC", rownames(data))
-  idx <- idx[!grepl("rw|dl", rownames(data)[idx])]
-  m_qc <- colMeans(data[idx, ])
-  assign(paste0("FC_", s), m_qc/m_slv)
-}
 write.csv(res, "output/res_pw.csv")
 round(range(res$pw_t, na.rm = T))
 round(range(res$pw_m, na.rm = T))
+save.image("output/quantification.RData")
 ```
-
-
-# Output
-
-```{r output}
-res <- as.data.frame(cbind(res$compound, 
-                           CV_tissues, lin_tissues, FC_tissues,
-                           CV_maturation, lin_maturation, FC_maturation))
-colnames(res) <- c("compound", "t_CV", "t_linearity", "t_FC",
-                   "m_CV", "m_linearity", "m_FC")
-res$t_CV <- as.numeric(sprintf("%.1f", as.numeric(res$t_CV)))
-res$m_CV <-  as.numeric(sprintf("%.1f", as.numeric(res$m_CV)))
-res$t_linearity <-  as.numeric(sprintf("%.3f", as.numeric(res$t_linearity)))
-res$m_linearity <-  as.numeric(sprintf("%.3f", as.numeric(res$m_linearity)))
-res$t_FC <-  as.numeric(sprintf("%.1f", as.numeric(res$t_FC)))
-res$m_FC <-  as.numeric(sprintf("%.1f", as.numeric(res$m_FC)))
-
-
-DT::datatable(res, rownames = FALSE, options = list(pageLength = nrow(res)))
-```
-
 
 # Session information
 
