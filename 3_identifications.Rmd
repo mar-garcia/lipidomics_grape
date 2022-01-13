@@ -16,11 +16,14 @@ startpoint <- Sys.time()
 
 
 ```{r, message = FALSE, warning = FALSE}
+slow <- FALSE
 library(xcms)
 library(MsCoreUtils)
 library(MetaboCoreUtils)
 library(Rdisop)
 library(DT)
+library(OrgMassSpecR)
+library(inlmisc)
 .ppm <- function(x, ppm = 10) {
   ppm * x / 1e6
 }
@@ -56,43 +59,69 @@ for(s in c("tissues", "maturation")){
     load(paste0("data/RData/data_", s, "_", p, ".RData"))
     cmp <- unique(db_exp$compound[!grepl("13C", db_exp$adduct)])
     db_exp <- db_exp[db_exp$compound %in% cmp, ]
+    if(any(grepl("FG", colnames(db_exp)))){
+      db_exp <- db_exp[,-which(colnames(db_exp) == "FG")]
+      db_exp <- db_exp[,-which(colnames(db_exp) == "mean")]
+    }
     db_exp$polarity <- p
     db_exp$study <- s
     db_exp$precursor <- as.numeric(db_exp$precursor)
     db_exp$rtime <- as.numeric(db_exp$rtime)
-    db_exp$sim_std <- as.numeric(db_exp$sim_std)
-    db_exp$sim_smp <- as.numeric(db_exp$sim_smp)
-    data <- as.data.frame(t(featureValues(xdata, method = "sum", value = "into")))
+    #db_exp$sim_std <- as.numeric(db_exp$sim_std)
+    #db_exp$sim_smp <- as.numeric(db_exp$sim_smp)
+    data <- as.data.frame(t(
+      featureValues(xdata, method = "sum", value = "into")))
     assign(paste0("dbexp_", p), db_exp)
     assign(paste0("ms2_", s, "_", p), ms2)
-    assign(paste0("xdata_", s, "_", p), xdata)
+    #assign(paste0("xdata_", s, "_", p), xdata)
     assign(paste0("data_", s, "_", p), data)
   }
   dbexp <- rbind(dbexp_NEG, dbexp_POS)
   assign(paste0("dbexp_", s), dbexp)
 }
 rm(s, p, db_exp, ms2, xdata, dbexp_NEG, dbexp_POS, dbexp, data)
+
+ms2 <- c(ms2_tissues_NEG, ms2_tissues_POS,
+         ms2_maturation_NEG, ms2_maturation_POS)
+rm(ms2_tissues_NEG, ms2_tissues_POS,
+   ms2_maturation_NEG, ms2_maturation_POS)
+
 cmps <- read.csv("compounds.csv")
 cmps$id <- cmps$compound
 cmps$id <- gsub(")", "", cmps$id)
 cmps$id <- gsub("\\(", "_", cmps$id)
 cmps$id <- gsub("/", "_", cmps$id)
+cmps$class <- gsub("CER", "Cer", cmps$class)
+cmps$class <- gsub("Cer_hex", "HexCer", cmps$class)
+cmps$class <- gsub("Cer_lact", "LacCer", cmps$class)
+cmps$class <- gsub("_hydroxy", ";O3", cmps$class)
+cmps$class <- gsub("_dihydroxy", ";O4", cmps$class)
+cmps$class <- gsub("DAG", "DG", cmps$class)
+cmps$class <- gsub("TAG", "TG", cmps$class)
+cmps$class <- gsub("sitosterol", "SE", cmps$class)
 
 dbexp <- rbind(dbexp_tissues, dbexp_maturation)
+rm(dbexp_tissues, dbexp_maturation)
+#dbexp$compound[dbexp$compound == "Unk-041 _18:2"] <- "Sitosterol ester 18:2"
+#dbexp$compound[dbexp$compound == "Unk-187"] <- "CER_dihydroxy_40:1"
 cmp <- unique(dbexp$compound[!grepl("13C", dbexp$adduct)])
 dbexp <- dbexp[dbexp$compound %in% cmp, ]
-dbexp$sim_smp[is.na(dbexp$sim_smp)] <- 0
-res <- data.frame(matrix(nrow = length(cmp), ncol = 15))
+#dbexp$sim_smp[is.na(dbexp$sim_smp)] <- 0
+#cmp <- cmp[!cmp %in% c("PE_16:0_18:1 _I", "PE_16:0_18:1 _II", "PS_18:2_18:2 _II")]
+res <- data.frame(matrix(nrow = length(cmp), ncol = 17))
 colnames(res) <- c(
   "compound", "formula", "RT", "t_ions", "m_ions", 
   "cor_i", "cor_ps", "ip_NEG", "ip_POS", 
-  "sim_MS2", "sim_NEG_std", "sim_POS_std", "sim_NEG_smp", "sim_POS_smp", "class")
+  "sim_MS2", "sim_NEG_std", "sim_POS_std", 
+  "sim_NEG_smp", "sim_POS_smp", "class", "C", "db")
 res$compound <- cmp
 for(i in seq(length(cmp))){
   dbi <- dbexp[dbexp$compound == cmp[i],]
   res$RT[i] <- mean(dbi$rtime)
   res$compound[i] <- unique(cmps$compound[cmps$id == cmp[i]])
   res$class[i] <- unique(cmps$class[cmps$id == cmp[i]])
+  res$C[i] <- unique(cmps$C[cmps$id == cmp[i]])
+  res$db[i] <- unique(cmps$db[cmps$id == cmp[i]])
   cori <- c()
   corps <- c()
   for(s in c("tissues", "maturation")){
@@ -102,51 +131,58 @@ for(i in seq(length(cmp))){
     } else {
       res[i,paste0(substr(s, 1, 1), "_ions")] <- "-"
     }
-    for(p in c("POS", "NEG")){
-      if(sum(dbi$study == s & dbi$polarity == p) > 1){
-        data <- get(paste0("data_", s, "_", p))
-        dt <- data[,dbi$FT[dbi$study == s & dbi$polarity == p]]
-        dt <- apply(dt, 2, myimputer)
-        idx <- colnames(dt) == dbi$FT[dbi$study == s & dbi$polarity == p][1]
-        cori <- c(cori, cor(log10(dt[,idx]), log10(dt[,-idx])))
-        xdata <- get(paste0("xdata_", s, "_", p))
-        chr <- chromatogram(xdata, 
-                            mz = dbi$precursor[idx] + 0.01 * c(-1, 1), 
-                            rt = res$RT[i]*60 + 15 * c(-1, 1),
-                            aggregationFun = "max")
-        for(j in seq(ncol(dt)-1)){
-          chrj <- chromatogram(xdata, 
-                               mz = dbi$precursor[dbi$FT == colnames(dt)[-idx][j]] + 0.01 * c(-1, 1), 
-                               rt = res$RT[i]*60 + 15 * c(-1, 1),
-                               aggregationFun = "max")
-          chrcorx <- rep(NA, length(chr))
-          for(k in seq(length(chr))){
-            chrcorx[k] <- correlate(chr[[k]], chrj[[k]])
+    if(slow){ # slow-1
+      for(p in c("POS", "NEG")){
+        if(sum(dbi$study == s & dbi$polarity == p) > 1){
+          data <- get(paste0("data_", s, "_", p))
+          dt <- data[,dbi$FT[dbi$study == s & dbi$polarity == p]]
+          dt <- apply(dt, 2, myimputer)
+          idx <- colnames(dt) == dbi$FT[
+            dbi$study == s & dbi$polarity == p][1]
+          cori <- c(cori, cor(log10(dt[,idx]), log10(dt[,-idx])))
+          xdata <- get(paste0("xdata_", s, "_", p))
+          chr <- chromatogram(
+            xdata, 
+            mz = dbi$precursor[idx] + 0.01 * c(-1, 1), 
+            rt = res$RT[i]*60 + 15 * c(-1, 1),
+            aggregationFun = "max")
+          for(j in seq(ncol(dt)-1)){
+            chrj <- chromatogram(
+              xdata, 
+              mz = dbi$precursor[
+                dbi$FT == colnames(dt)[-idx][j]] + 0.01 * c(-1, 1), 
+              rt = res$RT[i]*60 + 15 * c(-1, 1),
+              aggregationFun = "max")
+            chrcorx <- rep(NA, length(chr))
+            for(k in seq(length(chr))){
+              chrcorx[k] <- correlate(chr[[k]], chrj[[k]])
+            }
+            corps <- c(corps, chrcorx)
           }
-          corps <- c(corps, chrcorx)
         }
       }
-    }
-  }
-  if(length(cori) == 1){
-    res$cor_i[i] <- sprintf("%.3f", cori)
-  } else if(length(cori) > 1){
-    res$cor_i[i] <- paste(sprintf("%.3f", range(
-      cori, na.rm = TRUE)), collapse = "-")
-  } else {
-    res$cor_i[i] <- "-"
-  }
-  if(length(corps) > 0){
-    if(round(min(corps, na.rm = TRUE), 3) == round(max(corps, na.rm = TRUE))){
-      res$cor_ps[i] <- sprintf("%.3f", mean(corps, na.rm = TRUE))
+    } # close "if slow-1"
+    if(length(cori) == 1){
+      res$cor_i[i] <- sprintf("%.3f", cori)
+    } else if(length(cori) > 1){
+      res$cor_i[i] <- paste(sprintf("%.3f", range(
+        cori, na.rm = TRUE)), collapse = "-")
     } else {
-      res$cor_ps[i] <- paste(sprintf("%.3f", range(
-        corps, na.rm = TRUE)), collapse = "-")
+      res$cor_i[i] <- "-"
     }
-  } else {
-    res$cor_ps[i] <- "-"
+    if(length(corps) > 0){
+      if(round(min(corps, na.rm = TRUE), 3) == round(
+        max(corps, na.rm = TRUE))){
+        res$cor_ps[i] <- sprintf("%.3f", mean(corps, na.rm = TRUE))
+      } else {
+        res$cor_ps[i] <- paste(sprintf("%.3f", range(
+          corps, na.rm = TRUE)), collapse = "-")
+      }
+    } else {
+      res$cor_ps[i] <- "-"
+    }
   }
-  fml <- cmps$formula[cmps$id == cmp[i]]
+  fml <- unique(cmps$formula[cmps$id == cmp[i]])
   res$formula[i] <- fml
   dbi <- dbi[!grepl("13C", dbi$adduct),]
   if(sum(!is.na(dbi$MS2_sim)) == 1){
@@ -157,148 +193,250 @@ for(i in seq(length(cmp))){
   } else {
     res$sim_MS2[i] <- "-"
   }
-  for(p in c("POS", "NEG")){
-    for(r in c("std", "smp")){
-      if(sum(dbi$polarity == p) > 1 & 
-         sum(!is.na(dbi[dbi$polarity == p, paste0("sim_", r)])) > 0){
-        if(min(round(dbi[dbi$polarity == p, paste0("sim_", r)], 3)) ==
-           max(round(dbi[dbi$polarity == p, paste0("sim_", r)], 3))){
-          res[i, paste0("sim_", p, "_", r)] <- sprintf(
-            "%.3f", mean(unlist(dbi[dbi$polarity == p, paste0("sim_", r)])))
-        } else {
-          res[i, paste0("sim_", p, "_", r)] <- paste(
-            sprintf("%.3f", range(dbi[dbi$polarity == p, paste0("sim_", r)])), collapse  = "-")
-        }
-      } else if(sum(dbi$polarity == p) == 1 & 
-                sum(!is.na(dbi[dbi$polarity == p, paste0("sim_", r)])) > 0){
-        res[i, paste0("sim_", p, "_", r)] <- sprintf(
-          "%.3f", as.numeric(dbi[dbi$polarity == p, paste0("sim_", r)]))
-      } else {
-        res[i, paste0("sim_", p, "_", r)] <- "-"
-      }
-    }
-    if(p == "POS" & !(res$class[i] %in% c(
-      "CAR", "LPC", "LPI", "PA", "PC", "PE", "PG", "PI", "PS", 
-      "CER", "CERhex", "MGDG", "DGDG", "DAG", "TAG"))){
-      res[i, paste0("sim_", p, "_std")] <- "-"
-    }
-    if(p == "NEG" & !(res$class[i] %in% c(
-      "LPC", "LPI", "PA", "PC", "PE", "PG", "PI", "PS", 
-      "CER", "CERhex", "CERlact", "MGDG", "DGDG"))){
-      res[i, paste0("sim_", p, "_std")] <- "-"
-    }
-    if(p == "POS"){
-      res[i, paste0("sim_", p, "_smp")] <- "-"
-    }
-    if(p == "NEG" & !(res$class[i] %in% c(
-      "mPA", "PE", "PI", "MGDG", "DGDG"))){
-      res[i, paste0("sim_", p, "_smp")] <- "-"
-    }
-    if(sum(dbi$polarity == p) > 0){
-      ad <- dbi$adduct[dbi$polarity == p][1]
-      if(ad == "[M+H]+"){
-        fmlx <- addElements(fml, "H")
-      } else if(ad == "[M+NH4]+"){
-        fmlx <- addElements(fml, "NH4")
-      } else if(ad == "[M-H]-"){
-        fmlx <- subtractElements(fml, "H")
-      }  else if(ad == "[M-H+HCOOH]-"){
-        fmlx <- addElements(fml, "CHO2")
-      }else {
-        print(paste0("Ull!! Add adduct ", ad, " for compound ", cmp[i]))
-      }
-      iso_thr <- t(getMolecule(fmlx, maxisotopes = 3)$isotopes[[1]][,1:3]) 
-      # substract/add the mass of an electron:
-      if(p == "POS"){
-        iso_thr[,1] <- iso_thr[,1] - 0.00054857990924
-      } else if(p == "NEG"){
-        iso_thr[,1] <- iso_thr[,1] + 0.00054857990924
-      }
-      colnames(iso_thr) <- c("mz", "i")
-      for(s in c("tissues", "maturation")){
-        if(any(dbi$study == s & dbi$adduct == ad)){
-          xdata <- get(paste0("xdata_", s, "_", p))
-          cp <- chromPeaks(xdata)[unlist(as.data.frame(featureDefinitions(xdata))[
-            dbi$FT[dbi$polarity == p & dbi$study == s][1], "peakidx"]),]
-          plist <- list()
-          for(j in seq(nrow(cp))){
-            xdataj <- filterFile(xdata, cp[j,"sample"])
-            l <- closest(cp[j, "rtmin"], rtime(xdataj))
-            m <- closest(cp[j, "rtmax"], rtime(xdataj))
-            lm <- seq(l, m)
-            i1 <- rep(NA, length(lm))
-            i2 <- rep(NA, length(lm))
-            i3 <- rep(NA, length(lm))
-            for(n in seq(length(lm))){
-              sps <- as.data.frame(xdataj[[lm[n]]])
-              iso_exp <- matrix(ncol = 2, nrow = 3)
-              colnames(iso_exp) <- c("mz", "i")
-              for(q in seq(3)){
-                idx <- as.numeric(unlist(matchWithPpm(iso_thr[q,"mz"], sps[,"mz"], ppm = 10)))
-                if(length(idx) > 1){
-                  idx <- idx[which.min(abs(iso_thr[q,"mz"] - sps[idx, "mz"]))]
-                }
-                if(length(idx) > 0){
-                  iso_exp[q,1] <- sps[idx,1]
-                  iso_exp[q,2] <- sps[idx,2]
-                }
-              }
-              i1[n] <- iso_exp[1,2]
-              i2[n] <- iso_exp[2,2]
-              i3[n] <- iso_exp[3,2]
-            } # end lm "n"
-            idx <- which(i1 > mean(i1, na.rm = TRUE))
-            i1 <- i1[idx]
-            i2 <- i2[idx]
-            i3 <- i3[idx]
-            plist[[j]] <- cbind(i1, i2, i3)
+  if(slow){
+    for(p in c("POS", "NEG")){
+      for(r in c("std", "smp")){
+        if(sum(dbi$polarity == p) > 1 & 
+           sum(!is.na(dbi[dbi$polarity == p, paste0("sim_", r)])) > 0){
+          if(min(round(dbi[dbi$polarity == p, paste0("sim_", r)], 3)) ==
+             max(round(dbi[dbi$polarity == p, paste0("sim_", r)], 3))){
+            res[i, paste0("sim_", p, "_", r)] <- sprintf(
+              "%.3f", mean(unlist(dbi[
+                dbi$polarity == p, paste0("sim_", r)])))
+          } else {
+            res[i, paste0("sim_", p, "_", r)] <- paste(
+              sprintf("%.3f", range(dbi[
+                dbi$polarity == p, paste0("sim_", r)])), collapse  = "-")
           }
+        } else if(sum(dbi$polarity == p) == 1 & 
+                  sum(!is.na(dbi[dbi$polarity == p, 
+                                 paste0("sim_", r)])) > 0){
+          res[i, paste0("sim_", p, "_", r)] <- sprintf(
+            "%.3f", as.numeric(dbi[dbi$polarity == p, paste0("sim_", r)]))
+        } else {
+          res[i, paste0("sim_", p, "_", r)] <- "-"
         }
-        assign(paste0("plist_", s), plist)
       }
-      if(exists("plist_maturation") & exists("plist_tissues")){
-        plist <- c(plist_maturation, plist_tissues)
-        rm(plist_maturation, plist_tissues)
-      } else if(exists("plist_maturation")){
-        plist <- plist_maturation
-        rm(plist_maturation)
-      } else if(exists("plist_tissues")){
-        plist <- plist_tissues
-        rm(plist_tissues)
+      if(p == "POS" & !(res$class[i] %in% c(
+        "CAR", "LPC", "LPI", "PA", "PC", "PE", "PG", "PI", "PS", 
+        "Cer", "Cerhex", "MGDG", "DGDG", "DG", "TG"))){
+        res[i, paste0("sim_", p, "_std")] <- "-"
       }
-      iso_exp <- do.call("rbind", plist)
-      iso_exp <- iso_exp[complete.cases(iso_exp),]
-      iso_exp_r <- as.data.frame(iso_exp / rowSums(iso_exp))
-      iso_exp_r$i1d <- abs(iso_thr[1,2] - iso_exp_r$i1) 
-      iso_exp_r$i2d <- abs(iso_thr[2,2] - iso_exp_r$i2) 
-      iso_exp_r$i3d <- abs(iso_thr[3,2] - iso_exp_r$i3) 
-      res[i, paste0("ip_", p)] <- round(median((1-(abs(iso_thr[1,2] - iso_exp_r$i1) + 
-                                                     abs(iso_thr[2,2] - iso_exp_r$i2)  + 
-                                                     abs(iso_thr[3,2] - iso_exp_r$i3)))*100))
-    } else {
-      res[i, paste0("ip_", p)] <- "-"
+      if(p == "NEG" & !(res$class[i] %in% c(
+        "LPC", "LPI", "PA", "PC", "PE", "PG", "PI", "PS", 
+        "Cer", "Cerhex", "Cerlact", "MGDG", "DGDG"))){
+        res[i, paste0("sim_", p, "_std")] <- "-"
+      }
+      if(p == "POS"){
+        res[i, paste0("sim_", p, "_smp")] <- "-"
+      }
+      if(p == "NEG" & !(res$class[i] %in% c(
+        "mPA", "PE", "PI", "MGDG", "DGDG"))){
+        res[i, paste0("sim_", p, "_smp")] <- "-"
+      }
+      if(!grepl("unk", res$class[i])){
+        if(sum(dbi$polarity == p) > 0){
+          ad <- dbi$adduct[dbi$polarity == p][1]
+          if(ad == "[M+H]+"){
+            fmlx <- addElements(fml, "H")
+          } else if(ad == "[M+NH4]+"){
+            fmlx <- addElements(fml, "NH4")
+          } else if(ad == "[M-H]-"){
+            fmlx <- subtractElements(fml, "H")
+          }  else if(ad == "[M-H+HCOOH]-"){
+            fmlx <- addElements(fml, "CHO2")
+          }else {
+            print(paste0("Ull!! Add adduct ", ad, " for compound ", cmp[i]))
+          }
+          iso_thr <- t(getMolecule(
+            fmlx, maxisotopes = 3)$isotopes[[1]][,1:3]) 
+          # substract/add the mass of an electron:
+          if(p == "POS"){
+            iso_thr[,1] <- iso_thr[,1] - 0.00054857990924
+          } else if(p == "NEG"){
+            iso_thr[,1] <- iso_thr[,1] + 0.00054857990924
+          }
+          colnames(iso_thr) <- c("mz", "i")
+          for(s in c("tissues", "maturation")){
+            if(any(dbi$study == s & dbi$adduct == ad)){
+              xdata <- get(paste0("xdata_", s, "_", p))
+              cp <- chromPeaks(xdata)[unlist(
+                as.data.frame(featureDefinitions(xdata))[
+                  dbi$FT[dbi$polarity == p & dbi$study == s][1], "peakidx"]),]
+              plist <- list()
+              for(j in seq(nrow(cp))){
+                xdataj <- filterFile(xdata, cp[j,"sample"])
+                l <- closest(cp[j, "rtmin"], rtime(xdataj))
+                m <- closest(cp[j, "rtmax"], rtime(xdataj))
+                lm <- seq(l, m)
+                i1 <- rep(NA, length(lm))
+                i2 <- rep(NA, length(lm))
+                i3 <- rep(NA, length(lm))
+                for(n in seq(length(lm))){
+                  sps <- as.data.frame(xdataj[[lm[n]]])
+                  iso_exp <- matrix(ncol = 2, nrow = 3)
+                  colnames(iso_exp) <- c("mz", "i")
+                  for(q in seq(3)){
+                    idx <- as.numeric(unlist(matchWithPpm(
+                      iso_thr[q,"mz"], sps[,"mz"], ppm = 10)))
+                    if(length(idx) > 1){
+                      idx <- idx[which.min(abs(
+                        iso_thr[q,"mz"] - sps[idx, "mz"]))]
+                    }
+                    if(length(idx) > 0){
+                      iso_exp[q,1] <- sps[idx,1]
+                      iso_exp[q,2] <- sps[idx,2]
+                    }
+                  }
+                  i1[n] <- iso_exp[1,2]
+                  i2[n] <- iso_exp[2,2]
+                  i3[n] <- iso_exp[3,2]
+                } # end lm "n"
+                idx <- which(i1 > mean(i1, na.rm = TRUE))
+                i1 <- i1[idx]
+                i2 <- i2[idx]
+                i3 <- i3[idx]
+                plist[[j]] <- cbind(i1, i2, i3)
+              }
+            }
+            assign(paste0("plist_", s), plist)
+          }
+          if(exists("plist_maturation") & exists("plist_tissues")){
+            plist <- c(plist_maturation, plist_tissues)
+            rm(plist_maturation, plist_tissues)
+          } else if(exists("plist_maturation")){
+            plist <- plist_maturation
+            rm(plist_maturation)
+          } else if(exists("plist_tissues")){
+            plist <- plist_tissues
+            rm(plist_tissues)
+          }
+          iso_exp <- do.call("rbind", plist)
+          iso_exp <- iso_exp[complete.cases(iso_exp),]
+          iso_exp_r <- as.data.frame(iso_exp / rowSums(iso_exp))
+          iso_exp_r$i1d <- abs(iso_thr[1,2] - iso_exp_r$i1) 
+          iso_exp_r$i2d <- abs(iso_thr[2,2] - iso_exp_r$i2) 
+          iso_exp_r$i3d <- abs(iso_thr[3,2] - iso_exp_r$i3) 
+          res[i, paste0("ip_", p)] <- round(median(
+            (1-(abs(iso_thr[1,2] - iso_exp_r$i1) + 
+                  abs(iso_thr[2,2] - iso_exp_r$i2)  + 
+                  abs(iso_thr[3,2] - iso_exp_r$i3)))*100))
+        } else {
+          res[i, paste0("ip_", p)] <- "-"
+        }
+      }
     }
-  }
+  } # close "if slow"
 }
+
+rm(data_tissues_NEG, data_tissues_POS, data_maturation_NEG, data_maturation_POS,
+   dbi, cmp, cori, corps, fml, s, slow)
 ```
 
 
 # Table
 
 ```{r}
+res$IS <- FALSE
+res$IS[res$compound %in% cmps$compound[cmps$IS == TRUE]] <- "IS"
 res$class <- factor(
   res$class, levels = 
-    c("FFA", "FFA_red", "FFA_PA", "CAR",
-      "CER", "CER_hydroxy", "CER_dihydroxy", "CER_hex", "CER_hex_hydroxy", 
-      "CER_hex_dihydroxy",
-      "PA", "mPA", "dmPA", "LPC", "PC", "LPE", "PE", "PG", "PI", "PS", "SM", 
-      "MGDG", "DGDG", "DAG", "TAG", "others", "non_FA", 
-      "unk_A", "unk_B", "unk_C", "unknown"))
-res <- res[order(res$class, res$compound),]
+    c("CAR",
+      "LPC", "LPE", "LPG", 
+      "PA", "mPA", "dmPA", "PC", "PE", "PG", 
+      "PI", "PS", 
+      "SM", 
+      "Cer", "Cer;O3", "Cer;O4", 
+      "HexCer", "HexCer;O3", "HexCer;O4",
+      "MGDG", "DGDG", "SQDG", "DG", "TG", "SE",
+      "others", "non_FA", 
+      "unk_A", "unk_B", "unk_C", "unk_D", "unk_E", "unk_F", "unk_G", 
+      "unknown"))
+res <- res[order(-as.numeric(as.factor(res$IS)), res$class, res$C, res$db,
+                 res$RT, res$compound),]
+
+res$name_old <- res$compound
+res$compound <- gsub("\\(", " ", res$compound)
+res$compound <- gsub(")", "", res$compound)
+res$compound <- gsub("d4", "[D4]", res$compound)
+res$compound <- gsub("d7", "[D7]", res$compound)
+
+idx <- which(res$IS == FALSE)
+#which(res$name_old %in% cmps$compound[cmps$standard == FALSE])
+res$compound[idx] <- gsub("/", "_", res$compound[idx])
+
+idx <- which(res$class == "Cer;O3")
+res$compound[idx] <- paste0(res$compound[idx], ";O3")
+res$compound[idx] <- gsub("CER_hydroxy", "Cer", res$compound[idx])
+
+idx <- which(res$class == "Cer;O4")
+res$compound[idx] <- paste0(res$compound[idx], ";O4")
+res$compound[idx] <- gsub("CER_dihydroxy", "Cer", res$compound[idx])
+
+idx <- which(res$class == "HexCer;O3")
+res$compound[idx] <- paste0(res$compound[idx], ";O3")
+res$compound[idx] <- gsub("CER_hex_hydroxy", "HexCer", res$compound[idx])
+
+idx <- which(res$class == "HexCer;O4")
+res$compound[idx] <- paste0(res$compound[idx], ";O4")
+res$compound[idx] <- gsub("CER_hex_dihydroxy", "HexCer", res$compound[idx])
+
+res$compound <- gsub("DAG", "DG", res$compound)
+res$compound <- gsub("TAG", "TG", res$compound)
+
+
+unk <- unique(res$class[grep("unk_", res$class)])
+for(i in unk){
+  idx <- which(res$class == i)
+  res$compound[idx] <- gsub("unk_", "Unk-", paste0(res$class[idx], "0", 
+                                                   seq(length(idx))))
+}
+
+idx <- which(res$class == "unknown")
+res$compound[idx] <- paste0("Unk-", formatC(seq(length(res$compound[idx])), 
+                                            width = 3, flag = "0"))
+
+idx <- grep("pph_glucoside", res$name_old)
+res$compound[idx] <- paste(res$compound[idx], "(glucoside)")
+
+# get the original names of unknowns with isomers:
+unk <- unique(gsub(" .*", "", res$name_old[grep("nk", res$class)])[
+  duplicated(gsub(" .*", "", res$name_old[grep("nk", res$class)]))])
+for(i in unk){
+  idx <- grep(i, res$name_old)
+  res$compound[idx] <- paste0(res$compound[idx][1], " (", 
+                              as.roman(seq(length(idx))), ")")
+  idx <- seq(idx[1], nrow(res))[!seq(idx[1], nrow(res)) %in% idx]
+  n <- as.numeric(gsub("Unk-", "", gsub(" .*", "", 
+                                        res$compound[idx[1]-1]))) + 1
+  res$compound[idx] <- paste0(
+    "Unk-", 
+    formatC(seq(n, n + length(idx) - 1), width = 3, flag = "0"))
+}
+rm(unk, i, idx, n)
+
+idx <- grep("nk", res$class)[grep("/", res$name_old[grep("nk", res$class)])]
+res$compound[idx] <- paste(
+  res$compound[idx], 
+  gsub("/", "_", 
+       gsub(")", "", 
+            gsub(".*\\(", "", gsub(" \\(I.*", "", res$name_old[idx])))))
+
+
 write.csv(res, "output/res.csv", row.names = FALSE)
 res$RT <- sprintf("%.2f", res$RT)
-datatable(res[,-ncol(res)], rownames = FALSE, options = list(
-  pageLength = nrow(res), dom = "t"))
+rownames(res) <- paste0("C", 
+                        formatC(seq(nrow(res)), 
+                                width = nchar(nrow(res)), flag ="0"))
+datatable(res[,-c((ncol(res)-3):ncol(res))], #rownames = FALSE, 
+          options = list(
+            pageLength = nrow(res)#, dom = "t"
+          ))
+
+tmp <- res[,1:5]
+colnames(tmp)[4:5] <- c("tissues", "ripening")
+write.csv(tmp, "output/Table_1.csv")
+rm(tmp)
 ```
 
 # Plots
@@ -306,14 +444,33 @@ datatable(res[,-ncol(res)], rownames = FALSE, options = list(
 ```{r}
 library(webr)
 library(ggplot2)
+res <- res[res$IS == FALSE, ]
+res <- res[res$class != "non_FA", ]
 res$sc <- "others"
-res$sc[res$class %in% c("PA", "mPA", "PC", "PE", "PI")] <- "PL"
-res$sc[res$class %in% c("MGDG", "DGDG", "DAG", "TAG")] <- "GL"
+res$sc[res$class %in% c("FFA")] <- "FA"
+res$sc[res$class %in% c("LPC", "LPE", "LPG",
+                        "PA", "mPA", "dmPA", 
+                        "PC", "PE", "PI", "PG", "PS")] <- "(lyso)PL"
+res$sc[res$class %in% c("MGDG", "DGDG", "SQDG", "DG", "TG")] <- "GL"
+res$sc[res$class %in% c("Cer", "Cer;O3", "Cer;O4", "HexCer", 
+                        "HexCer;O3", "HexCer;O4", 
+                        "SM")] <- "SP"
+res$sc[res$class %in% c("sitosterol")] <- "SE"
+res$sc[res$class %in% c(
+  "unknown", "unk_A", "unk_B", "unk_C", "unk_D", "unk_E", "unk_F", 
+  "unk_G")] <- "unknowns"
 res$sc <- as.character(res$sc)
 res$class <- as.character(res$class)
 PieDonut(res, aes(pies = sc, donuts = class), #r0 = 0, 
          showPieName = FALSE)
 PieDonut(res, aes(pies = sc, donuts = class), #r0 = 0, 
+         showPieName = FALSE, ratioByGroup = FALSE)
+
+PieDonut(res[!grepl("unk|non_FA", res$class),], 
+         aes(pies = sc, donuts = class), #r0 = 0, 
+         showPieName = FALSE)
+PieDonut(res[!grepl("unk|non_FA", res$class),], 
+         aes(pies = sc, donuts = class), #r0 = 0, 
          showPieName = FALSE, ratioByGroup = FALSE)
 ```
 
@@ -321,7 +478,7 @@ Use the package `circlize` (https://jokergoo.github.io/circlize_book/book/introd
 
 ```{r}
 library(networkD3)
-res$id <- res$compound
+res$id <- res$name_old
 res$id <- gsub(")", "", res$id)
 res$id <- gsub("\\(", "_", res$id)
 res$id <- gsub("/", "_", res$id)
@@ -329,9 +486,26 @@ res$id <- gsub(":", ".", res$id)
 res$id <- gsub("^_", "X_", res$id)
 res$id <- gsub("\\.", ":", res$id)
 
-cl <- unique(res$class)
-fa <- unlist(strsplit(res$id, "_"))
+
+#for(sc in unique(res$sc)){
+#idx <- which(res$sc == sc)
+idx <- which(!res$compound %in% cmps$compound[cmps$IS == TRUE])
+cl <- unique(res$class[idx])
+fa <- unlist(strsplit(res$id[idx], "_"))
 fa <- fa[grep(":", fa)]
+fa <- gsub("Sitosterol ester ", "", fa)
+fa <- gsub(" ", "", fa)
+fa <- fa[!fa %in% c("34:1", "34:2", "34:4", "36:3", 
+                    "40:1", "40:2", "41:0", "41:1", "42:1", "42:2", 
+                    "57:4")]
+round(prop.table(table(fa))*100,2)[order(round(prop.table(table(fa))*100,2))]
+round(prop.table(table(gsub(":.*", "", fa)))*100,2)[
+  order(round(prop.table(table(gsub(":.*", "", fa)))*100,2))]
+unique(gsub(":.*", "", fa)[which(as.numeric(gsub(":.*", "", fa)) %% 2 == 1)])
+res$compound[grep(paste(paste0(unique(gsub(":.*", "", fa)[
+  which(as.numeric(gsub(":.*", "", fa)) %% 2 == 1)]), ":"), collapse = "|"),
+  res$compound)]
+round(prop.table(table(gsub(".*:", "", fa)))*100,2)
 fa <- unique(fa)
 links <- data.frame(expand.grid(cl, fa))
 colnames(links) <- c("source", "target")
@@ -342,14 +516,18 @@ for(i in seq(nrow(links))){
       strsplit(res$id[res$class == links$source[i]], "_"))))
 }
 links <- links[links$value > 0,]
+#links <- links[links$source %in% names(table(links$source))[table(links$source) > 1], ]
+#links <- links[links$target %in% names(table(links$target))[table(links$target) > 1], ]
 
-# From these flows we need to create a node data frame: it lists every entities involved in the flow
+# From these flows we need to create a node data frame: it lists every 
+# entities involved in the flow
 nodes <- data.frame(
   name=c(as.character(links$source), 
          as.character(links$target)) %>% unique()
 )
 
-# With networkD3, connection must be provided using id, not using real name like in the links dataframe.. So we need to reformat it.
+# With networkD3, connection must be provided using id, not using real name 
+# like in the links dataframe.. So we need to reformat it.
 links$IDsource <- match(links$source, nodes$name)-1 
 links$IDtarget <- match(links$target, nodes$name)-1
 
@@ -358,7 +536,158 @@ p <- sankeyNetwork(Links = links, Nodes = nodes,
                    Source = "IDsource", Target = "IDtarget",
                    Value = "value", NodeID = "name", 
                    sinksRight=FALSE)
+#saveNetwork(p, paste0("output/sankey/", sc, ".html"))
+#}
 p
+saveNetwork(p, "output/sankey.html")
+rm(links, nodes, p, fa)
+```
+
+## KMD
+
+```{r}
+ref <- c(12, 1, 16, 14, 31, 32)
+names(ref) <- c("C", "H", "O", "N", "P", "S")
+
+col_cmps <- c(
+  "#E41A1C", "pink", "#974661", "#4A72A6", "#3E8E93", "#48A462", 
+  "#5D995D", "#90CC90", "#90CC90", "#7E6E85", "#A35390", "#D16948", "#FF7F00", "#FFB716", 
+  "#FFF02D", "#E1C62F", "#B97B2A", "#B97B2A", rep("#ea890b", 5),
+  "#B75F49", "#DB728C", "red", "#EC83BA", "#C28EA9", "#999999", "grey",
+  "#FFFFBF50", "tomato", "tomato", rep("skyblue", 7), "black", "white")
+names(col_cmps) <- c(
+  "FFA", "FFA_O", "LPA", "LPE", "LPG", "LPI", 
+  "PA", "mPA", "dmPA", "PC", "PE", "PG", "PI", "PS", 
+  "CAR", "MAG", "Cer", "Cerhex", "pCerhex", "Cer;O3", "Cer;O4", "HexCer;O3", "HexCer;O4",
+  "DG", "DGDG", "SQDG", "LPC", "MGDG", "TG", "unk_NL325", 
+  "X", "others", "non_FA", 
+  "unk_A", "unk_B", "unk_C", "unk_D", "unk_E", "unk_F", "unk_G", "unknown", "IS")
+
+cmps$name_old <- cmps$compound
+dt <- merge(res[,c("compound", "RT", "name_old")], 
+            cmps[,c("class", "compound", "C", "db", "formula", "standard", 
+                    "IS", "rtime", "name_old")],
+            by = "name_old", all = TRUE)
+dt <- dt[!is.na(dt$class),]
+dt$exactmass <- NA
+dt$NM <- NA
+for(i in seq(nrow(dt))){
+  if(!grepl("D", dt$formula[i]) & grepl("C", dt$formula[i])){
+    dt$exactmass[i] <- MonoisotopicMass(formula = ListFormula(
+      dt$formula[i]))
+  } else if(grepl("C", dt$formula[i])) {
+    dt$exactmass[i] <- getMolecule(dt$formula[i])$exactmass
+  } else {
+    dt$exactmass[i] <- as.numeric(as.character(dt$formula[i]))
+  }
+  myform <- countElements(dt$formula[i])
+  pippo <- ref[names(myform)]
+  if(grepl("C", dt$formula[i])){
+    dt$NM[i] <- t(pippo) %*% myform
+  } else {
+    dt$NM[i] <- floor(dt$exactmass[i])
+  }
+}
+
+dt$KMD_H <- dt$NM - (
+  dt$exactmass * ref["H"] / 
+    MonoisotopicMass(formula = ListFormula("H")))
+
+dt$KMD_CH2 <- dt$NM - (
+  dt$exactmass * as.numeric(t(ref[
+    names(countElements("CH2"))]) %*% countElements("CH2")) / 
+    MonoisotopicMass(formula = ListFormula("CH2")))
+rm(myform, pippo, ref)
+
+idx <- which(is.na(dt$RT) | dt$IS == TRUE)#which(dt$IS == TRUE)
+plot(dt$KMD_CH2[-idx], dt$KMD_H[-idx], col = "white", 
+     #xlim = c(0, 0.5), ylim = c(1, 7), 
+     xlab = "KMD(CH2)", ylab = "KMD(H)")
+text(dt$KMD_CH2[-idx], dt$KMD_H[-idx], 
+     paste(dt$C[-idx], dt$db[-idx], sep = ":"), #cex = 0.5, 
+     col = col_cmps[dt$class][-idx])
+
+#idx <- which(dt$IS == TRUE | dt$class == "unknown")
+#plot(dt$KMD_H[-idx], round(dt$KMD_H[-idx]) - dt$KMD_H[-idx],
+#     xlab = "KM(H)", ylab ="KMD(H)" ,
+#     col = col_cmps[dt$class][-idx], pch = 16)
+#text(dt$KMD_H[-idx], round(dt$KMD_H[-idx]) - dt$KMD_H[-idx],
+#     dt$class[-idx], cex = 0.5, pos = 1)
+rm(col_cmps)
+
+mycols <- GetColors(length(seq(
+  min(unique(dt$db[-idx])), max(unique(dt$db[-idx])))), "discrete rainbow")
+names(mycols) <- seq(min(unique(dt$db[-idx])), max(unique(dt$db[-idx])))
+cl <- unique(dt$class[-idx])
+cl <- cl[!cl %in% c("non_FA", "others", "unknown")]
+cl <- factor(cl, levels = c(
+  "FFA", "CAR",
+  "LPA", "LPC", "LPE", "LPG", "LPI", "LPS",
+  "PA", "mPA", "dmPA", "PC", "PE", "PG", 
+  "PI", "PS", 
+  "SM", 
+  "Cer", "Cer;O3", "Cer;O4", 
+  "HexCer", "HexCer;O3", "HexCer;O4",
+  "LacCer",
+  "MGDG", "DGDG", "SQDG", "MAG", "DG", "TG", 
+  "SE", "others", "non_FA", 
+  "unk_A", "unk_B", "unk_C", "unk_D", "unk_E", "unk_F", 
+  "unk_G", "unknown"))
+cl <- cl[order(cl)]
+n <- ceiling(length(cl)/8)
+q <- 1
+for(o in seq(n)){
+  jpeg(paste0("output/identifications/KMD_", o, ".jpeg"), 
+       width = 106*2, height = 70*4, units = "mm",
+       res = 120) # if image too big, reduce "res""!!!
+  par(mfrow = c(4, 2), mar = c(4, 3.5, 2, 0.5))
+  for(i in seq(q, q+7)){
+    if(i <= length(cl)){
+      if(cl[i] %in% c("PA", "PC", "PS", "DG")){
+        y <- 0.06
+      } else if(cl[i] %in% c("PE", "HexCer;O3")){
+        y <- 0.08
+      } else if(cl[i] %in% c("HexCer;O4")){
+        y <- 0.1
+      } else if(cl[i] %in% c("TG")){
+        y <- 0.15
+      } else {
+        y <- 0.05
+      }
+      dx <- dt[dt$class == cl[i] & (!is.na(dt$RT) | dt$standard == TRUE) & 
+                 dt$IS == FALSE,]
+      x <- dx$RT
+      x[is.na(x)] <- dx$rtime[is.na(x)]
+      x <- as.numeric(x)
+      print(plot(x, dx$KMD_H, col = "white", bty="l", xlab = "", ylab = "",
+                 ylim = c(min(dx$KMD_H)-y, max(dx$KMD_H)+0.05)))
+      title(gsub("unk_", "Unk-", cl[i]), line = 0)
+      title(xlab = "RT (min)", ylab = "KMD(H)", line = 2.5)
+      points(x, dx$KMD_H, pch = 19, col = mycols[as.character(dx$db)], cex = 2)
+      idx <- which(duplicated(paste0(" ", dx$C, ":", dx$db, " ")))
+      if(length(idx) > 0){
+        text(x[-idx], dx$KMD_H[-idx], paste0(" ", dx$C, ":", dx$db, " ")[-idx], 
+             pos = 1, offset = 1)
+      } else {
+        text(x, dx$KMD_H, paste0(" ", dx$C, ":", dx$db, " "), 
+             pos = 1, offset = 1)
+      }
+      idx <- which(dx$standard == TRUE) # verified with STDs
+      points(x[idx], dx$KMD_H[idx], pch = 3, cex = 2)
+      idx <- which(!is.na(dx$RT)) # study ompounds
+      points(x[idx], dx$KMD_H[idx], pch = 1, cex = 3)
+      abline(h=unique(round(dx$KMD_H,2)), lty =2 , col = "grey")
+      for(j in unique(dx$db[duplicated(dx$db)])){
+        idx <- which(dx$db == j)
+        lines(x[idx], predict(lm(dx$KMD_H[idx]~x[idx])), lwd = 4, 
+              col = paste0(mycols[as.character(j)], "60"))
+      }
+    }
+  } # close class "i"
+  dev.off()
+  q <- i + 1
+}
+rm(dt, dx, cl, i, idx, j, mycols, x)
 ```
 
 
@@ -369,3 +698,4 @@ Sys.time()-startpoint
 devtools::session_info()
 ```
 
+", "
