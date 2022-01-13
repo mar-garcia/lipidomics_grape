@@ -18,7 +18,7 @@ startpoint <- Sys.time()
 ## Parameters
 
 ```{r parameters}
-p <- "NEG" # specify "POS" or "NEG"
+p <- "POS" # specify "POS" or "NEG"
 s <- "tissues" # specify "maturation" or "tissues"
 
 if(p == "NEG"){
@@ -248,6 +248,22 @@ xchr <- refineChromPeaks(xchr,
                            nValues = 5, threshold = intx)
 )
 cp <- chromPeaks(xchr)
+if(s == "tissues"){
+  cl <- gsub(".*_", "", gsub("_rep.*", "", basename(fileNames(ydata))))
+} else if(s == "maturation"){
+  cl <- gsub(
+    "MIX.*", "", gsub(".*QC.*", "QC", gsub(
+      ".*grape_", "", gsub("_Rep.*", "", basename(fileNames(ydata))))))
+}
+pdp <- PeakDensityParam(sampleGroups = cl,
+                        minFraction = 1,
+                        binSize = 0.02,
+                        bw = 3)
+ydatax <- groupChromPeaks(xchr, param = pdp)
+ydatax <- adjustRtime(ydatax, param = pgp)
+ydatax <- groupChromPeaks(ydatax, param = pdp)
+yft <- as.data.frame(featureDefinitions(ydatax))
+
 ft <- as.data.frame(featureDefinitions(xdata))
 ft$ms2 <- NA
 ms2$FT <- "X"
@@ -258,6 +274,18 @@ for(i in seq(nrow(ft))){
     ### "PA_16:0_18:2":
     if(length(unlist(matchWithPpm(671.4657, ft$mzmed[i], ppm = 10))) == 1){
       if(ft$rtmed[i]/60 > 16.47 & ft$rtmed[i]/60 < 16.70){
+        idx_ms2 <- NULL
+      }}
+    ### PA(18:0/18:2): 
+    if(length(unlist(matchWithPpm(699.497, ft$mzmed[i], ppm = 10))) == 1){
+      if(ft$rtmed[i]/60 > 16.85 & ft$rtmed[i]/60 < 17.06){
+        idx_ms2 <- NULL
+      }}
+    
+    ### 13C PA(18:0/18:2): 
+    if(length(unlist(matchWithPpm(699.497 + 1.003355, 
+                                  ft$mzmed[i], ppm = 10))) == 1){
+      if(ft$rtmed[i]/60 > 16.85 & ft$rtmed[i]/60 < 17.06){
         idx_ms2 <- NULL
       }}
     ### PA(18:2/18:2)
@@ -273,24 +301,103 @@ for(i in seq(nrow(ft))){
         idx_ms2 <- NULL
       }}
   } else if(s == "tissues" & p == "POS"){
+    # Isomers
+    ### DAG_16:1_18:2
+    if(length(unlist(matchWithPpm(608.5249, ft$mzmed[i], ppm = 10))) == 1){
+      if(length(unlist(matchWithPpm(608.5249, ft$mzmed, ppm = 10))) == 2 &
+         length(unlist(matchWithPpm(608.5249, yft$mzmed, ppm = 10))) == 2){
+        rt1 <- min(yft[unlist(matchWithPpm(608.5249, yft$mzmed, 
+                                           ppm = 10)),"rtmed"])
+        rt2 <- max(yft[unlist(matchWithPpm(608.5249, yft$mzmed, 
+                                           ppm = 10)),"rtmed"])
+        rt <- data.frame(cbind(
+          rt1 = abs(rt1 - rtime(ms2[idx_ms2])),
+          rt2 = abs(rt2 - rtime(ms2[idx_ms2]))
+        ))
+        if(which.min(ft$rtmed[unlist(
+          matchWithPpm(608.5249, ft$mzmed, ppm = 10))]) == 1){
+          idx_ms2 <- idx_ms2[
+            apply(rt, 1, which.min) == which(
+              unlist(matchWithPpm(608.5249, ft$mzmed, ppm = 10)) == i)]
+        } else {
+          idx_ms2 <- idx_ms2[
+            apply(rt, 1, which.min) != which(
+              unlist(matchWithPpm(608.5249, ft$mzmed, ppm = 10)) == i)]
+        }
+      }
+    }      
+    ### DAG_18:1_18:1 / DAG_18:0_18:2 - (2)13C[M+NH4]+
+    if(length(unlist(matchWithPpm(638.5718 + 1.003355*2, ft$mzmed[i], 
+                                  ppm = 10))) == 1){
+      if(length(unlist(matchWithPpm(638.5718 + 1.003355*2, ft$mzmed, 
+                                    ppm = 10))) == 2 #&
+         #length(unlist(matchWithPpm(638.5718 + 1.003355*2, yft$mzmed, ppm = 10))) == 2
+      ){
+        #rt1 <- min(yft[unlist(matchWithPpm(638.5718 + 1.003355*2, yft$mzmed, ppm = 10)),"rtmed"])
+        #rt2 <- max(yft[unlist(matchWithPpm(638.5718 + 1.003355*2, yft$mzmed, ppm = 10)),"rtmed"])
+        rt1 <- min(ft$rtmed[
+          unlist(matchWithPpm(638.5718 + 1.003355*2, ft$mzmed, ppm = 10))])
+        rt2 <- max(ft$rtmed[
+          unlist(matchWithPpm(638.5718 + 1.003355*2, ft$mzmed, ppm = 10))])
+        
+        rt <- data.frame(cbind(
+          rt1 = abs(rt1 - rtime(ms2[idx_ms2])),
+          rt2 = abs(rt2 - rtime(ms2[idx_ms2]))
+        ))
+        if(which.min(ft$rtmed[unlist(
+          matchWithPpm(638.5718 + 1.003355*2, ft$mzmed, ppm = 10))]) == 1){
+          idx_ms2 <- idx_ms2[
+            apply(rt, 1, which.min) == which(
+              unlist(matchWithPpm(638.5718 + 1.003355*2, ft$mzmed, 
+                                  ppm = 10)) == i)]
+        } else {
+          idx_ms2 <- idx_ms2[
+            apply(rt, 1, which.min) != which(
+              unlist(matchWithPpm(638.5718 + 1.003355*2, ft$mzmed, 
+                                  ppm = 10)) == i)]
+        }
+      }
+    }      
+    ### Unk-010 (2)13C[M+H]+
+    
+    ### Unk-026 13C[M+NH4]+
+    if(length(unlist(matchWithPpm(896.7452 + 1.007276 + 17.02654 + 1.003355, 
+                                  ft$mzmed[i], ppm = 10))) == 1){
+      if(length(unlist(matchWithPpm(
+        896.7452 + 1.007276 + 17.02654 + 1.003355, ft$mzmed, 
+        ppm = 10))) > 1 &
+        length(unlist(matchWithPpm(896.7452 + 1.007276 + 17.02654 + 1.003355,
+                                   yft$mzmed, ppm = 10))) > 1){
+        
+        rt <- yft[unlist(matchWithPpm(
+          896.7452 + 1.007276 + 17.02654 + 1.003355, yft$mzmed, 
+          ppm = 10)),"rtmed"]
+        rt1 <-rt[order(rt)][1]
+        rt2 <-rt[order(rt)][2]
+        rt3 <-rt[order(rt)][3]
+        rt4 <-rt[order(rt)][4]
+        rt <- data.frame(cbind(
+          rt1 = abs(rt1 - rtime(ms2[idx_ms2])),
+          rt2 = abs(rt2 - rtime(ms2[idx_ms2])),
+          rt3 = abs(rt3 - rtime(ms2[idx_ms2])),
+          rt4 = abs(rt4 - rtime(ms2[idx_ms2]))
+        ))
+        
+        idx_ms2 <- idx_ms2[
+          apply(rt, 1, which.min) ==
+            order(ft[unlist(matchWithPpm(
+              896.7452 + 1.007276 + 17.02654 + 1.003355, ft$mzmed, 
+              ppm = 10)),"rtmed"])[ft$rtmed[i] == ft[unlist(matchWithPpm(
+                896.7452 + 1.007276 + 17.02654 + 1.003355, ft$mzmed, 
+                ppm = 10)),"rtmed"]]]
+      }
+    }      
     # do not consider tail of 
-    ### "PA_16:0_18:2":
-#    if(length(unlist(matchWithPpm(690.5068, ft$mzmed[i], ppm = 10))) == 1){
-#      if(ft$rtmed[i]/60 > 16.35 & ft$rtmed[i]/60 < 16.5){
-#        idx_ms2 <- NULL
-#      }}
-    ### "DAG_18:1_18:2":
+    ### DAG_18:1_18:2:
     if(length(unlist(matchWithPpm(636.5562, ft$mzmed[i], ppm = 10))) == 1){
       if(ft$rtmed[i]/60 > 18.21 & ft$rtmed[i]/60 < 18.33){
         idx_ms2 <- NULL
       }}      
-#  }else if(s == "maturation" & p == "POS"){
-    # do not consider tail of 
-    ### "PA_16:0_18:2":
-#    if(length(unlist(matchWithPpm(690.5068, ft$mzmed[i], ppm = 10))) == 1){
-#      if(ft$rtmed[i]/60 > 16.3 & ft$rtmed[i]/60 < 16.45){
-#        idx_ms2 <- NULL
-#      }}
   }
   idx_cp <- unlist(matchWithPpm(ft$mzmed[i], cp[,"mz"], ppm = 10))
   cpx <- cp[idx_cp, ]
@@ -439,16 +546,20 @@ ft_match <- matchMz(as.data.frame(db_exp), cmps, parm,
                     mzColname = "precursor", rtColname = "rtime")
 ft_match_out <- as.data.frame(matchedData(ft_match))
 tmp <- ft_match_out[!is.na(ft_match_out$target_compound), ]
-tmp2 <- unique(gsub("\\..*", "", rownames(tmp)))
+tmp2 <- gsub("\\..*", "", rownames(tmp))
 if(any(duplicated(tmp2))){
   dpl <- unique(tmp2[duplicated(tmp2)])
-  for(i in unique(dpl)){
+  for(i in dpl){
     i.tmp <- tmp[gsub("\\..*", "", rownames(tmp)) == i, ]
     idx <- which(rownames(tmp)  == i)
     i.tmp <- i.tmp[!grepl("\\(2)13C", i.tmp$adduct),]
     if(nrow(i.tmp) > 1){
-      i.tmp <- i.tmp[!grepl("CH3", i.tmp$adduct),]
-      i.tmp <- i.tmp[!grepl("C2H8N", i.tmp$adduct),]
+      if(length(unique(i.tmp$adduct)) == 1){
+        i.tmp <- i.tmp[which.min(abs(i.tmp$rtime - i.tmp$target_rtime)),]
+      } else {
+       i.tmp <- i.tmp[!grepl("CH3", i.tmp$adduct),]
+      i.tmp <- i.tmp[!grepl("C2H8N", i.tmp$adduct),] 
+      }
     } else if(nrow(i.tmp) == 0){
       i.tmp <- tmp[gsub("\\..*", "", rownames(tmp)) == i, ]
     }
@@ -756,9 +867,9 @@ if(nrow(ms2_excl) > 0){
       "mPA_18:2_18:2 [M-H]-", "mPA_18:2_18:3 [M-H]-",
       "dmPA_16:0_18:1 [M-H]-", "dmPA_16:0_18:2 [M-H]-", "dmPA_18:2_18:2 [M-H]-", 
       "PC_15:0_18:1d7 [M-H+HCOOH]-",
-      "PE_15:0_18:1d7 [M-H]-", "PE_16:0_18:1 _II [M-H]-", "PE_16:0_18:3 [M-H]-", 
-      "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:3_18:2 [M-H]-",
-      "PE_20:0_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-", "PE_18:2_23:0 [M-H]-",
+      "PE_15:0_18:1d7 [M-H]-", "PE_16:0_18:1 [M-H]-", "PE_16:0_18:3 [M-H]-", 
+      "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-", "PE_18:2_18:3 [M-H]-",
+      "PE_18:2_20:0 [M-H]-", "PE_18:2_22:0 [M-H]-", "PE_18:2_23:0 [M-H]-",
       "PG_15:0_18:1d7 [M-H]-", "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-", 
       "PG_16:0_18:2 [M-H]-",
       "PI_18:0_18:2 [M-H]-",
@@ -795,12 +906,12 @@ if(nrow(ms2_excl) > 0){
       "mPA_18:0_18:2 [M-H]-", "mPA_18:1_18:2 [M-H]-", "mPA_18:2_18:2 [M-H]-", 
       "mPA_18:2_18:3 [M-H]-",
       "LPC_18:1d7 [M-H+HCOOH]-", 
-      "PC_17:0_18:2 [M-H+HCOOH]-", "PC_20:0_18:2 [M-H+HCOOH]-",
+      "PC_17:0_18:2 [M-H+HCOOH]-", "PC_18:2_20:0 [M-H+HCOOH]-",
       "LPE_18:1d7 [M-H]-",
       "PE_15:0_18:1d7 [M-H]-", "PE_16:0_18:3 [M-H]-",  
       "PE_18:0_18:3 [M-H]-", "PE_18:1_18:2 [M-H]-", "PE_18:2_18:2 [M-H]-",
-      "PE_18:3_18:2 [M-H]-", "PE_18:3_18:3 [M-H]-",
-      "PE_20:0_18:2 [M-H]-", "PE_22:0_18:2 [M-H]-","PE_18:2_23:0 [M-H]-",
+      "PE_18:2_18:3 [M-H]-", "PE_18:3_18:3 [M-H]-",
+      "PE_18:2_20:0 [M-H]-", "PE_18:2_22:0 [M-H]-","PE_18:2_23:0 [M-H]-",
       "PG_15:0_18:1d7 [M-H]-", "PG_16:0_16:0 [M-H]-", "PG_16:0_18:1 [M-H]-",
       "PG_16:0_18:2 [M-H]-",
       "PI_16:0_18:1 [M-H]-",
@@ -818,7 +929,7 @@ if(nrow(ms2_excl) > 0){
       "PA_18:3_18:3 [M+NH4]+",
       "PE_15:0_18:1d7 [M+H]+", "PE_18:0_18:2 [M+H]+", "PE_18:1_18:2 [M+H]+", 
       "PE_18:2_18:2 [M+H]+",
-      "PE_20:0_18:2 [M+H]+", "PE_22:0_18:2 [M+H]+", "PE_18:2_23:0 [M+H]+",
+      "PE_18:2_20:0 [M+H]+", "PE_18:2_22:0 [M+H]+", "PE_18:2_23:0 [M+H]+",
       "CER_15:0_18:1d7 [M+H]+",
       "CER_dihydroxy_16:0_26:1 [M+H]+", "CER_dihydroxy_18:0_24:0 [M+H]+", 
       "CER_hex_dihydroxy_18:1_26:0 [M+H]+", #???
@@ -861,10 +972,10 @@ if(nrow(ms2_excl) > 0){
       "PA_16:0_18:1 [M+NH4]+",
       "mPA_18:2_18:3 [M+C2H8N]+",
       "PC_16:0_16:1 [M+H]+",
-      "PE_15:0_18:1d7 [M+H]+", "PE_16:0_18:1 _I [M+H]+", "PE_16:0_18:1 _II [M+H]+",
+      "PE_15:0_18:1d7 [M+H]+", "PE_16:0_18:1 [M+H]+",
       "PE_16:0_18:2 [M+H]+", 
-      "PE_18:1_18:2 [M+H]+", "PE_18:2_23:0 [M+H]+", "PE_18:3_18:2 [M+H]+",
-      "PE_22:0_18:2 [M+H]+",
+      "PE_18:1_18:2 [M+H]+", "PE_18:2_23:0 [M+H]+", "PE_18:2_18:3 [M+H]+",
+      "PE_18:2_22:0 [M+H]+",
       "PG_16:0_16:0 [M+NH4]+",
       "CER_hex_dihydroxy_18:1_26:0 [M+H]+", #???
       "DAG_15:0_18:1d7 [M+NH4]+","DAG_16:0_18:1 [M+C2H8N]+", 
