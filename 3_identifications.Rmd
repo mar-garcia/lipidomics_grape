@@ -428,7 +428,7 @@ res$RT <- sprintf("%.2f", res$RT)
 rownames(res) <- paste0("C", 
                         formatC(seq(nrow(res)), 
                                 width = nchar(nrow(res)), flag ="0"))
-datatable(res[,-c((ncol(res)-3):ncol(res))], #rownames = FALSE, 
+datatable(res[,-c((ncol(res)-4):(ncol(res)-1))], #rownames = FALSE, 
           options = list(
             pageLength = nrow(res)#, dom = "t"
           ))
