@@ -107,7 +107,7 @@ rm(dbexp_tissues, dbexp_maturation)
 cmp <- unique(dbexp$compound[!grepl("13C", dbexp$adduct)])
 dbexp <- dbexp[dbexp$compound %in% cmp, ]
 #dbexp$sim_smp[is.na(dbexp$sim_smp)] <- 0
-#cmp <- cmp[!cmp %in% c("PE_16:0_18:1 _I", "PE_16:0_18:1 _II", "PS_18:2_18:2 _II")]
+cmp <- cmp[cmp %in% cmps$id] ############################################
 res <- data.frame(matrix(nrow = length(cmp), ncol = 17))
 colnames(res) <- c(
   "compound", "formula", "RT", "t_ions", "m_ions", 
@@ -663,13 +663,19 @@ for(o in seq(n)){
                  ylim = c(min(dx$KMD_H)-y, max(dx$KMD_H)+0.05)))
       title(gsub("unk_", "Unk-", cl[i]), line = 0)
       title(xlab = "RT (min)", ylab = "KMD(H)", line = 2.5)
-      points(x, dx$KMD_H, pch = 19, col = mycols[as.character(dx$db)], cex = 2)
-      idx <- which(duplicated(paste0(" ", dx$C, ":", dx$db, " ")))
-      if(length(idx) > 0){
-        text(x[-idx], dx$KMD_H[-idx], paste0(" ", dx$C, ":", dx$db, " ")[-idx], 
-             pos = 1, offset = 1)
-      } else {
-        text(x, dx$KMD_H, paste0(" ", dx$C, ":", dx$db, " "), 
+      points(x, dx$KMD_H, pch = 19, 
+             col = mycols[as.character(dx$db)], cex = 2)
+      c_db <- paste0(" ", dx$C, ":", dx$db, " ")
+      idx <- which(duplicated(c_db))
+      if(length(idx) > 0 & !unique(c_db) %in% c(" 0:0 ")){
+        z <- x
+        for(j in seq(length(c_db))){
+          ix <- which(c_db == c_db[idx[j]])
+          z[ix] <- mean(z[ix])
+        }
+        text(z[-idx], dx$KMD_H[-idx], c_db[-idx], pos = 1, offset = 1)
+      } else if (!unique(c_db) %in% c(" 0:0 ")) {
+        text(x, dx$KMD_H, c_db, 
              pos = 1, offset = 1)
       }
       idx <- which(dx$standard == TRUE) # verified with STDs
