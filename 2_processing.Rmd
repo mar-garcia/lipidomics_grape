@@ -469,7 +469,8 @@ for(i in which(ft$ms2 > 1 & ft$ms2 < 10)){
   }) 
   myf <- function(x){
     #Spectra::compareSpectra(x[[1]], x[[2]], ppm = 10)
-    SpectrumSimilarity(x[[1]], x[[2]], print.graphic = FALSE, t = 0.005, b = 10)
+    SpectrumSimilarity(x[[1]], x[[2]], 
+                       print.graphic = FALSE, t = 0.005, b = 10)
   }
   if(length(ms2sub) == 1){
     ft$ms2_sim[i] <- "-"
@@ -519,8 +520,8 @@ adds <- data.frame(rbind(
   c("13C[M-H+HCOOH]-",   44.998200 + 1.003355,   1, "NEG"),
   c("(2)13C[M-H+HCOOH]-",44.998200 + 1.003355*2, 1, "NEG"),  
   c("[2M-H]-",           -1.007276,              2, "NEG"),
-  c("[2M+Na-2H]-",       20.974668,              2, "NEG"), 
-  c("13C[2M+Na-2H]-",    20.974668 + 1.003355,   2, "NEG"), 
+  #c("[2M+Na-2H]-",       20.974668,              2, "NEG"), 
+  #c("13C[2M+Na-2H]-",    20.974668 + 1.003355,   2, "NEG"), 
   c("[M-H-CO2]-",       -1.007276 - 43.98982,  1, "NEG"), 
   c("[M-H-H2O]-",       -1.007276 - 18.0105647,  1, "NEG"), 
   c("[M-CH3]-",         -15.023475105,           1, "NEG"),
