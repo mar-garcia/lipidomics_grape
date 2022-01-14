@@ -163,7 +163,7 @@ for(i in seq(nrow(res))){
   } else if(res$name_old[i] %in% c(
     "(Epi)catechin", "Kaempferol glucoside", "Disaccharide", "Malic acid",
     "Unk-006 (pph_glucoside)", "Unk-029 (18:2)", 
-    "Unk-021", "Unk-022", "Unk-023", "Unk-027","Unk-028",
+    "Unk-021", "Unk-022", "Unk-023", "Unk-028",
     "Unk-031", "Unk-032", "Unk-033 (18:2)", "Unk-034", "Unk-037 (14:3)",
     "Unk-039", "Unk-042", "Unk-043 (15:3)", "Unk-044 (I)", "Unk-045 (I)",
     "Unk-061 (I)", "Unk-075 (14:2/15:3)",
@@ -176,7 +176,8 @@ for(i in seq(nrow(res))){
     ad <- "[M-H]-"
     pol <- "NEG"
   } else if(res$name_old[i] %in% c(
-    "Unk-030", "Unk-068", "Unk-079", "Unk-173", "Unk-187", "Unk-198")){
+    "Unk-027","Unk-030", "Unk-068", "Unk-079", 
+    "Unk-173", "Unk-187", "Unk-198")){
     ad <- "[M+CHO2]-"
     pol <- "NEG"
   } else if(res$name_old[i] %in% c(
