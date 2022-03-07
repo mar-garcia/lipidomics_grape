@@ -1,0 +1,349 @@
+---
+title: "CompoundDb"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: false
+    number_sections: false
+    toc_float: false
+---
+
+https://rformassspectrometry.github.io/CompoundDb/articles/create-compounddb.html#compdb-from-custom-data
+
+```{r, message=FALSE}
+startpoint <- Sys.time()
+
+library(tidyverse)
+library(OrgMassSpecR)
+library(Rdisop)
+library(CompoundDb)
+library(MetaboCoreUtils)
+```
+
+
+```{r}
+fml_maker <- function(class, C, db){
+  case_when(
+    class == "CAR" ~ paste0("C", C + 7, "H", C*2 - (2*db) + 13, "NO4"),
+    
+    class == "LPC" ~ paste0("C", C + 8, "H", C*2 - (2*db) + 18, "NO7P"),
+    class == "LPI" ~ paste0("C", C + 9, "H", C*2 - (2*db) + 17, "O12P"),
+    
+    class == "PA"  ~ paste0("C", C + 3, "H", C*2 - (2*db) +  5, "O8P"),
+    class == "mPA" ~ paste0("C", C + 4, "H", C*2 - (2*db) +  7, "O8P"),
+    class == "dmPA"~ paste0("C", C + 5, "H", C*2 - (2*db) +  9, "O8P"),
+    class == "PC"  ~ paste0("C", C + 8, "H", C*2 - (2*db) + 16, "NO8P"),
+    class == "PE"  ~ paste0("C", C + 5, "H", C*2 - (2*db) + 10, "NO8P"),
+    class == "PG"  ~ paste0("C", C + 6, "H", C*2 - (2*db) + 11, "O10P"),
+    class == "PI"  ~ paste0("C", C + 9, "H", C*2 - (2*db) + 15, "O13P"),
+    class == "PS"  ~ paste0("C", C + 6, "H", C*2 - (2*db) + 10, "NO10P"),
+    
+    class == "Cer"      ~paste0("C", C,      "H", C*2 - (2*db) +  1,  "NO3"),
+    class == "Cer;O3"   ~paste0("C", C,      "H", C*2 - (2*db) +  1,  "NO4"),
+    class == "Cer;O4"   ~paste0("C", C,      "H", C*2 - (2*db) +  1,  "NO5"),
+    class == "HexCer"   ~paste0("C", C +  6, "H", C*2 - (2*db) + 11,  "NO8"),
+    class == "HexCer;O3"~paste0("C", C +  6, "H", C*2 - (2*db) + 11,  "NO9"),
+    class == "HexCer;O4"~paste0("C", C +  6, "H", C*2 - (2*db) + 11, "NO10"),
+    class == "LactCer"  ~paste0("C", C + 12, "H", C*2 - (2*db) + 21, "NO13"),
+    
+    class == "MGDG" ~ paste0("C", C +  9, "H", C*2 - (2*db) + 14, "O10"),
+    class == "DGDG" ~ paste0("C", C + 15, "H", C*2 - (2*db) + 24, "O15"),
+    class == "SQDG" ~ paste0("C", C +  9, "H", C*2 - (2*db) + 14, "O12S"),
+    
+    class == "DG"   ~ paste0("C", C +  3, "H", C*2 - (2*db) +  4, "O5"),
+    class == "TG"   ~ paste0("C", C +  3, "H", C*2 - (2*db) +  2, "O6"),
+    class == "oxTG" ~ paste0("C", C +  3, "H", C*2 - (2*db) +  2, "O7"),
+    
+    class == "sitosterol" ~ 
+      paste0("C", C + 29, "H", C*2 - (2*db) + 48, "O2"),
+    class == "sitosterol_ester_hex" ~ 
+      paste0("C", C + 35, "H", C*2 - (2*db) + 58, "O7")
+  )
+}
+ids <- c()
+
+cls <- c("CAR", "LPC", "LPI", "sitosterol", "sitosterol_ester_hex")
+C <- seq(from = 16, to = 18, by = 2)
+db <- seq(from = 0, to = 3, by = 1)
+sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
+             sep = ":")
+for(i in cls){
+  ids <- c(ids, paste(i, sn))
+}
+
+cls <- c("PA", "mPA", "dmPA", "PC", "PE", "PG", "PI",
+         "Cer", "Cer;O3", "Cer;O4", "HexCer", "HexCer;O3", "HexCer;O4", 
+         "LactCer", "MGDG", "DGDG", "SQDG", "DG")
+C <- seq(from = 32, to = 44, by = 1)
+db <- seq(from = 0, to = 6, by = 1)
+sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
+             sep = ":")
+for(i in cls){
+  ids <- c(ids, paste(i, sn))
+}
+
+cls <- c("TG", "oxTG")
+C <- seq(from = 48, to = 58, by = 1)
+db <- seq(from = 0, to = 9, by = 1)
+sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
+             sep = ":")
+for(i in cls){
+  ids <- c(ids, paste(i, sn))
+}
+
+cdb <- data.frame(
+  class = gsub("\\ .*", "", ids),
+  name = ids,
+  adduct = NA
+)
+cdb$formula <- NA
+cdb$exactmass <- NA
+for(i in seq(nrow(cdb))){
+  cdb$formula[i] <- fml_maker(
+    cdb$class[i], 
+    as.numeric(gsub(".*\\ ", "", gsub(":.*", "", cdb$name[i]))), 
+    as.numeric(gsub(".*:", "", cdb$name[i])))
+  cdb$exactmass[i] <- MonoisotopicMass(formula = ListFormula(
+    cdb$formula[i]))
+  if(cdb$class[i] %in% c(
+    "LPI", "PG", "PI", "PA", "mPA", "dmPA", "SQDG", "DG", "TG", "oxTG", 
+    "sitosterol")){
+    cdb$adduct[i] <- "[M+NH4]+ ; [2M+NH4]+ ; [M-H]- ; [2M-H]-"
+  } else if(cdb$class[i] %in% c("MGDG", "DGDG", "sitosterol_ester_hex")){
+    cdb$adduct[i] <- "[M+NH4]+ ; [M+CHO2]-"
+  } else if(cdb$class[i] %in% c("CAR", "LPC", "PC")){
+    cdb$adduct[i] <- "[M+H]+ ; [M+CHO2]-"
+  } else if(cdb$class[i] %in% c("PE", "PS")){
+    cdb$adduct[i] <- "[M+H]+ ; [M-H]-"
+  } else if(cdb$class[i] %in% c("Cer", "Cer;O3", "Cer;O4", 
+                                "HexCer", "HexCer;O3", "HexCer;O4", 
+                                "LactCer")){
+    cdb$adduct[i] <- "[M+H]+ ; [M-H]- ; [M+CHO2]-"
+  }
+}
+cdb <- rbind(
+  cdb,
+  c("CAR", "CAR 24:0(d4)", "[M+H]+ ; [M+CHO2]-", "C31H57D4NO4", getMolecule("C31H57D4NO4")$exactmass),
+  c("LPC", "LPC 18:1(d7)", "[M+H]+ ; [M+CHO2]-", "C26H45D7NO7P", getMolecule("C26H45D7NO7P")$exactmass),
+  c("PC", "PC 15:0/18:1(d7)", "[M+H]+ ; [M+CHO2]-", "C41H73D7NO8P", getMolecule("C41H73D7NO8P")$exactmass),
+  c("LPE", "LPE 18:1(d7)", "[M+H]+ ; [M-H]-", "C23H39D7NO7P", getMolecule("C23H39D7NO7P")$exactmass),
+  c("PE", "PE 15:0/18:1(d7)", "[M+H]+ ; [M-H]-", "C38H67D7NO8P", getMolecule("C38H67D7NO8P")$exactmass),
+  c("PG", "PG 15:0/18:1(d7)", "[M+NH4]+ ; [M-H]-", "C39H68D7O10P", getMolecule("C39H68D7O10P")$exactmass),
+  c("Cer", "Cer 15:0/18:1(d7)", "[M+H]+ ; [M+CHO2]-", "C33H58D7NO3", getMolecule("C33H58D7NO3")$exactmass),
+  c("DG", "DG 15:0/18:1(d7)", "[M+NH4]+", "C36H61D7O5", getMolecule("C36H61D7O5")$exactmass),
+  c("TG", "TG 15:0/15:0/18:1(d7)", "[M+NH4]+", "C51H89D7O6", getMolecule("C51H89D7O6")$exactmass),
+  c("triterpen", "Oleanolic acid", "[M-H]-", "C30H48O3", getMolecule("C30H48O3")$exactmass),
+  c("others", "Hexose", "[M-H]-", "C6H12O6", getMolecule("C6H12O6")$exactmass),
+  c("others", "Disaccharide", "[M-H]-", "C12H22O11", getMolecule("C12H22O11")$exactmass),
+  c("others", "Malic acid", "[M-H]- ; [M-H-H2O]-", "C4H6O5", getMolecule("C4H6O5")$exactmass),
+  c("others", "Epicatechin", "[M-H]- ; [2M-H]- ; [M-H-CO2]-", "C15H14O6", getMolecule("C15H14O6")$exactmass),
+  c("others", "Kaempferol glucoside", "[M-H]-", "C21H20O11", getMolecule("C21H20O11")$exactmass),
+  c("unk", "Unk-001_I", "[M+H]+", "X", 870.56492),
+  c("unk", "Unk-001_II","[M+H]+", "X", 870.56492),
+  c("unk", "Unk-002",   "[M+H]+ ; [M-H]-", "C32H56O4", getMolecule("C32H56O4")$exactmass),
+  c("unk", "Unk-003",   "[M+H]+", "X", 884.5442),
+  c("unk", "Unk-004",   "[M-H]-", "C33H58O4", getMolecule("C33H58O4")$exactmass),
+  c("unk", "Unk-005",   "[M+NH4]+", "C53H102O6", getMolecule("C53H102O6")$exactmass),
+  c("unk", "Unk-006_pph_glucoside", "[M-H]-", "X", 368.1121),
+  c("unk", "Unk-007",   "[M+H]+ ; [M-H]-", "C34H60O4", getMolecule("C34H60O4")$exactmass),
+  c("unk", "Unk-008_NL126","[M-H]-", "X", 546.4279),
+  c("unk", "Unk-010",   "[M+H]+", "X", 911.7574),
+  c("unk", "Unk-014",   "[M-H]-", "C35H62O4", getMolecule("C35H62O4")$exactmass),
+  c("unk", "Unk-015",   "[M-H]-", "C36H64O4", getMolecule("C36H64O4")$exactmass),
+  c("unk", "Unk-016",   "[M+CHO2]-", "C21H42O", getMolecule("C21H42O")$exactmass),
+  c("unk", "Unk-017_NL126","[M-H]-", "X", 574.459),
+  c("unk", "Unk-019",   "[M+CHO2]-", "C22H44O", getMolecule("C22H44O")$exactmass),
+  c("unk", "Unk-020",   "[M+CHO2]-", "C23H46O", getMolecule("C23H46O")$exactmass),
+  c("unk", "Unk-021",   "[M-H]-", "C26H44O4", getMolecule("C26H44O4")$exactmass),
+  c("unk", "Unk-022",   "[M-H]-", "C28H48O4", getMolecule("C28H48O4")$exactmass),
+  c("unk", "Unk-024",   "[M+NH4]+", "X", 748.615484),
+  c("unk", "Unk-028",   "[M-H]-", "X", 968.7822),
+  c("unk", "Unk-030",   "[M-H]-", "C35H60O5", getMolecule("C35H60O5")$exactmass),
+  c("unk", "Unk-032",   "[M-H]-", "X", 1045.734),
+  c("unk", "Unk-037_14:3",   "[M-H]-", "X", 440.3285),
+  c("unk", "Unk-039",   "[M-H]-", "X", 442.2096),
+  c("unk", "Unk-040",   "[M+NH4]+", "X", 662.4435),
+  c("unk", "Unk-042",   "[M-H]-", "X", 397.2246),
+  c("unk", "Unk-043_15:3", "[M-H]-", "X", 1176.78),
+  c("unk", "Unk-044",   "[M+NH4]+", "X", 766.698),
+  c("unk", "Unk-045_I", "[M-H]-", "X", 934.7012),
+  c("unk", "Unk-045_II","[M-H]-", "X", 934.7012),
+  c("unk", "Unk-047",   "[M+NH4]+", "X", 862.681),
+  c("unk", "Unk-048",   "[M+H]+", "X", 1431.034724),
+  c("unk", "Unk-049",   "[M+H]+", "X", 1515.129),
+  c("unk", "Unk-050",   "[M+H]+", "X", 737.641324),
+  c("unk", "Unk-051",   "[M+NH4]+", "X", 696.542684),
+  c("unk", "Unk-052",   "[M-H]-", "X", 1391.062276),
+  c("unk", "Unk-053",   "[M-H]-", "X", 622.444176),
+  c("unk", "Unk-054",   "[M+H]+", "X", 403.118024),
+  c("unk", "Unk-055",   "[M+NH4]+", "X", 698.6359),
+  c("unk", "Unk-056",   "[M-H]-", "X", 662.512676),
+  c("unk", "Unk-057",   "[M+H]+", "X", 977.7452),
+  c("unk", "Unk-058",   "[M-H]-", "X", 220.182476),
+  c("unk", "Unk-060",   "[M-H]-", "X", 312.302876),
+  c("unk", "Unk-063",   "[M-H]-", "X", 1413.046276),
+  c("unk", "Unk-066",   "[M+H]+", "X", 647.600524),
+  c("unk", "Unk-075_14:2_15:3", "[M-H]-", "X", 750.6155),
+  c("unk", "Unk-070",   "[M-H]-", "X", 664.528176),
+  c("unk", "Unk-071",   "[M-H]-", "X", 1198.883276),
+  c("unk", "Unk-072",   "[M-H]-", "X", 796.511224),
+  c("unk", "Unk-073",   "[M-H]-", "X", 958.566124),
+  c("unk", "Unk-074",   "[M-H]-", "X", 399.240676),
+  c("unk", "Unk-077",   "[M+H]+", "X", 219.174924),
+  c("unk", "Unk-078_I", "[M-H]-", "X", 326.191376),
+  c("unk", "Unk-078_II","[M-H]-", "X", 326.191376),
+  c("unk", "Unk-078_III","[M-H]-", "X", 326.191376),
+  c("unk", "Unk-079",   "[M-H]-", "X", 608.4277),
+  c("unk", "Unk-080",   "[M-H]-", "X", 464.095376),
+  c("unk", "Unk-081",   "[M-H]-", "X", 496.279776),
+  c("unk", "Unk-083",   "[M-H]-", "X", 672.473576),
+  c("unk", "Unk-084",   "[M-H]-", "X", 722.372576),
+  c("unk", "Unk-085",   "[M-H]-", "X", 979.760176),
+  c("unk", "Unk-091",   "[M-H]-", "X", 982.798876),
+  c("unk", "Unk-092",   "[M+H]+", "X", 371.091224),
+  c("unk", "Unk-093",   "[M+H]+", "X", 638.491124),
+  c("unk", "Unk-099",   "[M+CHO2]-", "X", 542.469),
+  c("unk", "Unk-100",   "[M+H]+", "X", 767.659424),
+  c("unk", "Unk-101",   "[M+H]+", "X", 798.527224),
+  c("unk", "Unk-102",   "[M+H]+", "X", 1427.007724),
+  c("unk", "Unk-105",   "[M-H]-", "X", 322.070276),
+  c("unk", "Unk-106_I", "[M-H]-", "X", 340.206776),
+  c("unk", "Unk-106_II","[M-H]-", "X", 340.206776),
+  c("unk", "Unk-107",   "[M+H]+", "X", 424.258576),
+  c("unk", "Unk-108",   "[M+H]+", "X", 1174.767276),
+  c("unk", "Unk-173",   "[M+CHO2]-", "C24H48O", getMolecule("C24H48O")$exactmass),
+  c("unk", "Unk-176",   "[M+H]+", "X", 428.365224),
+  c("unk", "Unk-198",   "[M+H]+", "X", 773.556824),
+  c("unk", "Unk-201",   "[M-H]-", "X", 590.417376),
+  c("unk", "Unk-206_16:0_18:2_18:3", "[M+H]+", "X", 614.488524),
+  c("unk", "Unk-209",   "[M+H]+", "X", 333.230324),
+  c("unk", "Unk-211",   "[M-H]-", "X", 556.230476),
+  c("unk", "Unk-212",   "[M-H]-", "X", 630.209476),
+  c("unk", "Unk-219",   "[M+H]+", "X", 218.167224),
+  c("unk", "Unk-222",   "[M-H]-", "X", 731.5092067),
+  c("unk", "Unk-232_18:2","[M-H]-", "X", 739.5138312)
+)
+idx <- which(cdb$class == "unk")
+cdb$adduct[idx] <- c("[M+H]+ ; [M+NH4]+ ; [2M+H]+ ; [M-H]- ; [M+CHO2]-")
+idx <- which(cdb$name == "Unk-040")
+cdb$adduct[idx] <- c("[M+H]+ ; [M+NH4]+ ; [M+C2H8N]+ ; [M-H]- ; [M+CHO2]-")
+cdb$exactmass <- as.numeric(cdb$exactmass)
+cdb$RT <- NA
+cdb_RT <- read.csv("data/compounds.csv")
+source("R/cmps_names.R")
+cdb_RT <- cmps_names(cdb_RT)
+cdb_RT$cdb <- paste0(cdb_RT$class, " ", cdb_RT$C, ":", cdb_RT$db)
+cdb_RT <- cdb_RT[(cdb_RT$cdb %in% cdb$name) | 
+                   (cdb_RT$compound %in% cdb$name), ]
+cdb$compound <- NA
+cdb$standard <- FALSE
+cdb$interstd <- FALSE
+cdb$t_min <- NA
+cdb$t_max <- NA
+cdb$m_min <- NA
+cdb$m_max <- NA
+for(i in seq(nrow(cdb))){
+  if(cdb$name[i] == "TG 48:1"){
+    idx <- which(cdb_RT$cdb == cdb$name[i] & !grepl("d7", cdb_RT$compound))
+  } else {
+    idx <- which((cdb_RT$cdb == cdb$name[i]) | 
+                   (cdb_RT$compound == cdb$name[i]))
+  }
+  if(length(idx) > 0){
+    if(length(idx) > 1){
+      cdb <- rbind(
+        cdb, 
+        do.call("rbind", replicate(length(idx)-1, cdb[i,], 
+                                   simplify = FALSE)))
+    } 
+    jdx <- which(cdb$name == cdb$name[i])
+    cdb$RT[jdx] <- cdb_RT$rtime[idx]*60
+    cdb$compound[jdx] <- cdb_RT$compound[idx]
+    cdb$standard[jdx] <- cdb_RT$standard[idx]
+    cdb$interstd[jdx] <- cdb_RT$IS[idx]
+    cdb$t_min[jdx] <- cdb_RT$t_min[idx]
+    cdb$t_max[jdx] <- cdb_RT$t_max[idx]
+    cdb$m_min[jdx] <- cdb_RT$m_min[idx]
+    cdb$m_max[jdx] <- cdb_RT$m_max[idx]
+  }
+}
+cdb$compound_id <- paste0("C", formatC(seq(nrow(cdb)), 
+                                       width = nchar(nrow(cdb)), flag = "0"))
+cdb$inchi <- NA
+cdb$inchikey <- NA
+cdb$synonyms <- NA
+metad <- make_metadata(
+  source = "inhouse",
+  url = "",
+  source_version = 0,
+  source_date = Sys.Date(),
+  organism = NA_character_
+)
+db_file <- createCompDb(cdb, metadata = metad, path = "data/")
+cmpdb <- CompDb(db_file, flags = RSQLite::SQLITE_RW)
+idb <- IonDb(cmpdb)
+adds <- rbind(
+  adducts("positive"),
+  adducts("negative"),
+  "[M+C2H8N]+" = c(
+    "[M+C2H8N]+", 1, getMolecule("C2H8N")$exactmass, "C2H8N", "H", 1, TRUE
+  ),
+  "[M-H-CO2]-" = c(
+    "[M-H-CO2]-", 1, getMolecule("CO2")$exactmass*(-1)-1.007276, "CO2", "H", -1, FALSE
+  ),
+  "[M-H-H2O]-" = c(
+    "[M-H-H2O]-", 1, getMolecule("H2O")$exactmass*(-1)-1.007276, "CO2", "H", -1, FALSE
+  )
+)
+adds$mass_multi <- as.numeric(adds$mass_multi)
+adds$mass_add <- as.numeric(adds$mass_add)
+adds$positive <- as.logical(adds$positive)
+
+for(i in seq(nrow(cdb))){
+  x <- unlist(strsplit(cdb$adduct[i], " ; "))
+  ion <- data.frame(
+    compound_id = rep(cdb$compound_id[i], length(x)),
+    ion_adduct = x,
+    ion_mz = rep(NA, length(x)),
+    ion_rt = rep(cdb$RT[i], length(x))
+  )
+  for(j in seq(nrow(ion))){
+    ion$ion_mz[j] <- mass2mz(cdb$exactmass[i], adds[x[j],])
+  }
+  ion$ion_rt <- as.numeric(ion$ion_rt)
+  idb <- insertIon(idb, ion)
+}
+add_ions <- function(name, add){
+  i <- which(compounds(idb)[,"name"] == name)
+  x <- add
+  ion <- data.frame(
+    compound_id = compounds(idb, "compound_id")[i,"compound_id"],
+    ion_adduct = x,
+    ion_mz = mass2mz(compounds(idb)[i,"exactmass"], adds[x,]),
+    ion_rt = compounds(idb)[i,"RT"]
+  )
+  colnames(ion) <- c("compound_id", "ion_adduct", "ion_mz", "ion_rt")
+  return(ion)
+}
+#idb <- insertIon(idb, add_ions("mPA 36:4", "[M+C2H8N]+"))
+idb <- insertIon(idb, add_ions("DG 34:2", "[M+C2H8N]+"))
+idb <- insertIon(idb, add_ions("DG 36:2", "[M+C2H8N]+"))
+i <- which(compounds(idb)[,"name"] == "Unk-037_14:3")
+ion <- data.frame(
+  compound_id = compounds(idb, "compound_id")[i,"compound_id"],
+  ion_adduct = "[14:3-H]-",
+  ion_mz = mass2mz(getMolecule("C14H22O2")$exactmass, "[M-H]-"),
+  ion_rt = compounds(idb)[i,"RT"]
+)
+colnames(ion) <- c("compound_id", "ion_adduct", "ion_mz", "ion_rt")
+idb <- insertIon(idb, ion)
+
+ionsdb <- ions(idb, c("compound_id", "name", "ion_adduct", 
+                      "ion_mz", "ion_rt", "class"))
+
+save(ionsdb, adds, file = "data/ionsdb.RData")
+
+Sys.time()-startpoint
+devtools::session_info()
+```
+
