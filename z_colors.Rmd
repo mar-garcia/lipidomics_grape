@@ -1,0 +1,40 @@
+---
+title: "Colors"
+author: "Mar Garcia-Aloy"
+output: 
+  html_document:
+    toc: false
+    number_sections: false
+    toc_float: false
+---
+
+
+```{r}
+library(RColorBrewer)
+library(MetBrewer)
+
+col_tissues <- c("#377EB8", "#4DAF4A", "#E41A1C", "#984EA3", "grey")
+names(col_tissues) <- c("skin", "pulp", "seeds", "entire", "QC")
+plot(0,0)
+legend("top", legend = names(col_tissues), col = col_tissues, pch = 16)
+
+col_maturation <- c(rev(met.brewer("Homer2", 13)), "grey")
+names(col_maturation) <- c(paste0("Pt", formatC(seq(13), width = 2, flag = "0")), "QC")
+plot(0,0)
+legend("top", legend = names(col_maturation), col = col_maturation, pch = 16)
+
+col_cmps <- c(brewer.pal(7+1, "Reds")[-1], 
+              brewer.pal(4+1, "Greens")[-1],
+              brewer.pal(3, "Blues")[-1], 
+              brewer.pal(3+1, "Purples")[-1])
+names(col_cmps) <- c(
+  "LPC", "LPE", "LPI", "PA", "PC", "PE", "PS",
+  "MGDG", "DGDG", "DG", "TG",
+  "FFA", "CAR",
+  "SM", "Cer", "LactSer")
+plot(0,0)
+legend("top", legend = names(col_cmps), col = col_cmps, pch = 16, ncol = 3)
+
+save.image("data/colors.RData")
+```
+

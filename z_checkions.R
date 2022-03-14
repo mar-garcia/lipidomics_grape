@@ -4,8 +4,8 @@ load("data/RData.RData")
 
 
 s <- "tissues" # specify "maturation" or "tissues"
-p <- "POS" # specify "POS" or "NEG"
-ft_mz <- 718.5379
+p <- "NEG" # specify "POS" or "NEG"
+ft_mz <- 742.5380
 
 dda_xdata <- get(paste("dda_xdata", s, p, sep = "_"))
 ft <- get(paste("ft", s, p, sep = "_"))
@@ -32,7 +32,7 @@ text(sps[idx,1], sps[idx,2], round(sps[idx,1], 4), cex = 0.8)
 
 
 ##############################
-ft_chr1 <- featureChromatograms(xdata, features = "FT053", 
+ft_chr1 <- featureChromatograms(dda_xdata, features = "FT182", 
                                 expandRt = 15, filled = FALSE)
 plot(ft_chr1)
 

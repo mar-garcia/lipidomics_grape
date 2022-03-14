@@ -10,7 +10,7 @@ for(p in c("POS", "NEG")){
 }
 ms2 <- c(ms2_POS, ms2_NEG)
 
-ms2_exclude <- read.csv("MS2_exclude_STD.csv")
+ms2_exclude <- read.csv("data/MS2_exclude_STD.csv")
 idx <- rep(NA, nrow(ms2_exclude))
 for(i in seq(length(idx))){
   x <- which(
@@ -26,4 +26,4 @@ for(i in seq(length(idx))){
 idx <- idx[!is.na(idx)]
 ms2 <- ms2[-idx]
 
-save(ms2, file = "data/STDmix_MS2.RData")
+save(ms2, file = "data/MS2_STDmix.RData")
