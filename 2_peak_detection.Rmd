@@ -76,9 +76,9 @@ for(s in c("tissues", "maturation")){
   for(p in c("POS", "NEG")){
     dda_xdata <- get(paste("dda_data", s, p, sep = "_"))
     if(p == "NEG"){
-      int <- 1e5
+      int <- 1e4
     } else if(p == "POS"){
-      int <- 1e6
+      int <- 1e5
     }
     dda_xdata <- findChromPeaks(
       dda_xdata, 
@@ -86,7 +86,7 @@ for(s in c("tissues", "maturation")){
                             peakwidth = c(5, 40),
                             prefilter = c(5, int),
                             snthresh = 5,
-                            noise = 1000,
+                            noise = 100,
                             mzdiff = 0.001,
                             integrate = 2)
     )
@@ -129,7 +129,7 @@ rm(ft, dda_xdata)
 
 ```{r exclude-ms2}
 # Exclude noisy MS2:
-ms2_exclude <- read.csv("MS2_exclude.csv")
+ms2_exclude <- read.csv("data/MS2_exclude.csv")
 
 for(s in c("tissues", "maturation")){
   for(p in c("POS", "NEG")){
