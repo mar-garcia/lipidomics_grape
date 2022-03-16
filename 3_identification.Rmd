@@ -123,13 +123,18 @@ for(s in c("tissues", "maturation")){
     pks <- as.data.frame(matchedData(pks_match))
     pks_rt <- pks[!is.na(pks$target_compound_id),]
     # unify multiple matches:
-    dpl <- unique(gsub("\\..*", "", rownames(pks_rt)[grep("\\.",rownames(pks_rt))]))
+    dpl <- unique(gsub("\\..*", "", rownames(pks_rt)[grep(
+      "\\.", rownames(pks_rt))]))
     for(i in dpl){
-      idx <- c(which(rownames(pks_rt) == i), grep(paste0(i, "."), rownames(pks_rt)))
+      idx <- c(which(rownames(pks_rt) == i), grep(
+        paste0(i, "."), rownames(pks_rt)))
       tmp <- pks_rt[idx,]
-      pks_rt$target_compound_id[idx[1]] <- paste(pks_rt$target_compound_id[idx], collapse = "-")
-      pks_rt$target_ion_adduct[idx[1]] <- paste(unique(pks_rt$target_ion_adduct[idx]), collapse = "-")
-      pks_rt$target_name[idx[1]] <- paste(unique(pks_rt$target_name[idx]), collapse = "-")
+      pks_rt$target_compound_id[idx[1]] <- paste(
+        pks_rt$target_compound_id[idx], collapse = "-")
+      pks_rt$target_ion_adduct[idx[1]] <- paste(
+        unique(pks_rt$target_ion_adduct[idx]), collapse = "-")
+      pks_rt$target_name[idx[1]] <- paste(
+        unique(pks_rt$target_name[idx]), collapse = "-")
       pks_rt <- pks_rt[-idx[-1],]
     }
     
@@ -141,13 +146,18 @@ for(s in c("tissues", "maturation")){
                            mzColname = c("mzmed", "ion_mz"))
       pks <- as.data.frame(matchedData(pks_match))
       # unify multiple matches:
-      dpl <- unique(gsub("\\..*", "", rownames(pks)[grep("\\.",rownames(pks))]))
+      dpl <- unique(gsub("\\..*", "", rownames(pks)[
+        grep("\\.",rownames(pks))]))
       for(i in dpl){
-        idx <- c(which(rownames(pks) == i), grep(paste0(i, "."), rownames(pks)))
+        idx <- c(which(rownames(pks) == i), grep(
+          paste0(i, "."), rownames(pks)))
         tmp <- pks[idx,]
-        pks$target_compound_id[idx[1]] <- paste(pks$target_compound_id[idx], collapse = "-")
-        pks$target_ion_adduct[idx[1]] <- paste(unique(pks$target_ion_adduct[idx]), collapse = "-")
-        pks$target_name[idx[1]] <- paste(unique(pks$target_name[idx]), collapse = "-")
+        pks$target_compound_id[idx[1]] <- paste(
+          pks$target_compound_id[idx], collapse = "-")
+        pks$target_ion_adduct[idx[1]] <- paste(
+          unique(pks$target_ion_adduct[idx]), collapse = "-")
+        pks$target_name[idx[1]] <- paste(unique(
+          pks$target_name[idx]), collapse = "-")
         pks <- pks[-idx[-1],]
       }
       pks$score_rt <- NA
@@ -164,13 +174,16 @@ for(s in c("tissues", "maturation")){
     if(s == "tissues" & p == "POS"){
       head(pks)
     }
-    #print(paste(s, p))
-    #pander::pandoc.table(
-    #  pks[,c("mzmed", "rtmed", "target_compound_id", "n_MS2", "score_rt")],
-    #  style = "rmarkdown", split.tables = Inf, row.names = FALSE,
-    #  digits = c(7, 4, rep(0, 3)))
+    print(paste(s, p))
     pks$dataset <- paste(s, p, sep = "_")
     assign(paste("pks", s, p, sep = "_"), pks)
+    pks <- pks[!is.na(pks$target_compound_id),]
+    pks <- pks[!grepl("-", pks$target_compound_id),]
+    pks <- pks[order(pks$target_compound_id, pks$rtmed),]
+    pander::pandoc.table(
+      pks[,c("mzmed", "rtmed", "target_compound_id", "target_name", "n_MS2", "score_rt")],
+      style = "rmarkdown", split.tables = Inf, row.names = FALSE,
+      digits = c(7, 4, rep(0, 4)))
   }
 }
 rm(ft, tmp_ionsdb, param, pks_match, pks_rt, dpl, i, idx, tmp, pks)
@@ -209,6 +222,7 @@ pks <- rbind(pks_tissues_POS, pks_maturation_POS,
              pks_tissues_NEG, pks_maturation_NEG)
 ###########################################################################
 pks <- pks[!is.na(pks$score_rt) & !grepl("-", pks$target_compound_id),]
+#pks <- pks[!is.na(pks$ppm_error) & !grepl("-", pks$target_compound_id),]
 ###########################################################################
 cmps <- compounds(CompDb(db_file), c(
   "compound_id", "name", "formula", "exactmass", "class", "std", "instd", "C", "db"))
@@ -219,15 +233,17 @@ cmps$maturation <- ""
 for(i in seq(nrow(cmps))){
   tmp <- pks[pks$target_compound_id == cmps$compound_id[i],]
   cmps$RT[i] <- mean(tmp$rtmed)
-  cmps$tissues[i] <- paste(tmp$target_ion_adduct[grep("tissues", tmp$dataset)], collapse = "; ")
-  cmps$maturation[i] <- paste(tmp$target_ion_adduct[grep("maturation", tmp$dataset)], collapse = "; ")
+  cmps$tissues[i] <- paste(tmp$target_ion_adduct[
+    grep("tissues", tmp$dataset)], collapse = "; ")
+  cmps$maturation[i] <- paste(tmp$target_ion_adduct[
+    grep("maturation", tmp$dataset)], collapse = "; ")
 }
 cmps$class <- factor(cmps$class, levels = c(
-  "FFA", "CAR", "LPC", "LPE", "LPG", "LPI", "LPS", 
+  "FFA", "CAR", "LPA", "LPC", "LPE", "LPG", "LPI", "LPS", 
   "PA", "PC", "PE", "PG", "PI","PS",
   "SM", "Cer", "HexCer", "LactCer", 
-  "MGDG", "DGDG", "SQDG", "DG", "TG"))
-cmps <- cmps[order(-cmps$instd, cmps$class, cmps$name, cmps$RT),]
+  "MGDG", "DGDG", "SQDG", "MG", "DG", "TG"))
+cmps <- cmps[order(-cmps$instd, cmps$class, cmps$C, cmps$db, cmps$RT),]
 cmps$cmp <- paste0("C", formatC(seq(nrow(cmps)), width = nchar(nrow(cmps)), 
                                 flag = "0"))
 nrow(cmps)
@@ -278,7 +294,7 @@ cmps$class_super[which(
                     "PA", "PC", "PE", "PI", "PG", "PS"))] <- "(lyso)PL"
 cmps$class_super[which(cmps$class %in% 
                          c("MGDG", "DGDG", "SQDG", "DG", "TG"))] <- "GL"
-cmps$class_super[which(cmps$class %in% c("SM", "Cer", "LactCer"))] <- "SP"
+cmps$class_super[which(cmps$class %in% c("SM", "Cer", "HexCer", "LactCer"))] <- "SP"
 cmps$class_super[cmps$class %in% c("CAR", "FFA")] <- "others"
 unique(cmps$class[is.na(cmps$class_super)])
 cmps$class <- as.character(cmps$class)
@@ -351,8 +367,8 @@ text(cmps$KMD_CH2, cmps$KMD_H, paste(cmps$C, cmps$db, sep = ":"),
      col = col_cmps[cmps$class], cex = 0.8)
 
 # define colors by number of double bonds:
-mycols <- inlmisc::GetColors(9 + 1, "discrete rainbow")
-names(mycols) <- c(seq(9), 0)
+mycols <- inlmisc::GetColors(max(cmps$db) + 1, "discrete rainbow")
+names(mycols) <- c(seq(max(cmps$db)), 0)
 
 # get the data from standards NOT included in study compounds:
 stds <- compounds(CompDb(db_file), c(
@@ -374,10 +390,10 @@ stds$KMD_H <- stds$NM - (
 stds$RT <- stds$rtime
 
 cmps$class <- factor(cmps$class, levels = c(
-  "FFA", "CAR", "LPC", "LPE", "LPG", "LPI", "LPS", 
+  "FFA", "CAR", "LPA", "LPC", "LPE", "LPG", "LPI", "LPS", 
   "PA", "PC", "PE", "PG", "PI","PS",
   "SM", "Cer", "HexCer", "LactCer", 
-  "MGDG", "DGDG", "SQDG", "DG", "TG"))
+  "MGDG", "DGDG", "SQDG", "MG", "DG", "TG"))
 cl <- unique(cmps$class[cmps$instd == 0])
 pdf("output/KMD.pdf", paper = "a4", height = 4*3, width = 2*4)
 par(mfrow = c(4, 2), mar = c(4, 3.5, 2, 0.5))
@@ -391,7 +407,13 @@ for(i in seq(length(cl))){
   tmp <- tmp[tmp$instd == 0, ]
   if(nrow(tmp) > 1){
     # define ylims:
-    if(cl[i] %in% c("TG")){
+    if(cl[i] %in% c("CAR", "LPC", "PE", "PG", 
+                    "SM", "Cer", "HexCer", "LactCer", "MGDG", "DGDG", 
+                    "MG", "DG")){
+      y <- 0.06
+    } else if(cl[i] %in% c("FFA", "PA")){
+      y <- 0.07
+    }else if(cl[i] %in% c("TG")){
       y <- 0.1
     } else {
       y <- 0.05
@@ -435,13 +457,65 @@ for(i in seq(length(cl))){
 } # close cl "i"
 dev.off()
 
+
+# Equivalent carbon number
+cmps$ECN <- cmps$C - 2*cmps$db
+stds$ECN <- stds$C - 2*stds$db
+
+cmps$RT <- as.numeric(cmps$RT)
+cmps$rRT <- cmps$RT/max(cmps$RT)
+cmps$rECN <- cmps$ECN/max(cmps$ECN)
+mylm <- lm(rRT ~ poly(rECN, degree = 2), data = cmps)
+newdata <- data.frame(
+  rECN = seq(min(cmps$rECN) - 0.01, max(cmps$rECN) + 0.01, by = 0.01)
+)
+plot(cmps$rECN, cmps$rRT, bty="l", pch = 16, col = col_cmps[cmps$class],
+     xlab = "Relative ECN", ylab = "Relative RT")
+lines(x = newdata$rECN, 
+      y = predict(lm(rRT ~ poly(rECN, degree = 2), data = cmps), 
+                  newdata = newdata))
+text(cmps$rECN, cmps$rRT, paste0(cmps$class, cmps$C, ":", cmps$db), 
+     cex = 0.5, pos = 1)
+
+pdf("output/ECN.pdf", paper = "a4", height = 4*3, width = 2*4)
+par(mfrow = c(4, 2), mar = c(4, 3.5, 2, 0.5))
+for(i in seq(length(cl))){
+  # get the data from compounds of class "i":
+  tmp <- rbind(
+    cmps[cmps$class == cl[i], c("compound_id", "class", "name", "RT", 
+                                "KMD_H", "std", "instd", "C", "db", "ECN")],
+    stds[stds$class == cl[i], c("compound_id", "class", "name", "RT", 
+                                "KMD_H", "std", "instd", "C", "db", "ECN")])
+  tmp <- tmp[tmp$instd == 0, ]
+  tmp$RT <- as.numeric(tmp$RT)
+  tmp$ECN <- as.numeric(tmp$ECN)
+  tmp <- tmp[order(tmp$ECN),]
+  tmp$rRT <- tmp$RT/max(tmp$RT)
+  tmp$rECN <- tmp$ECN/max(tmp$ECN)
+  if(length(unique(tmp$ECN)) > 2){
+    tmp_lm <- lm(rRT ~ poly(rECN, degree = 2), data = tmp)
+    newdata <- data.frame(
+      rECN = seq(min(tmp$rECN) - 0.01, max(tmp$rECN) + 0.01, by = 0.01)
+    )
+    plot(tmp$rECN, tmp$rRT, bty="l", pch = 16,
+         xlab = "Relative ECN", ylab = "Relative RT")
+    lines(x = newdata$rECN, 
+          y = predict(lm(rRT ~ poly(rECN, degree = 2), data = tmp), 
+                      newdata = newdata))
+    text(tmp$rECN, tmp$rRT, paste0(tmp$C, ":", tmp$db), 
+     cex = 0.5, pos = 1)
+    title(cl[i], line = 0)
+  } # close "if(length(unique(tmp$ECN)) > 2)"
+} # close cl "i"
+dev.off()
+
 rm(ref, i, myform, pippo, mycols, cl, tmp, y, idx, j)
 ```
 
 
 ## MS2 spectra
 
-```{r ms2, eval = TRUE}
+```{r ms2, eval = FALSE}
 cdb <- CompDb(db_file, flags = RSQLite::SQLITE_RW)
 # join data from study compounds & 
 # standards from the classes included in study compounds
@@ -457,10 +531,10 @@ cmps <- rbind(
           "tissues", "maturation", "std", "instd", "study")])
 cmps <- cmps[cmps$instd == 0, ]
 cmps$class <- factor(cmps$class, levels = c(
-  "FFA", "CAR", "LPC", "LPE", "LPG", "LPI", "LPS", 
+  "FFA", "CAR", "LPA", "LPC", "LPE", "LPG", "LPI", "LPS", 
   "PA", "PC", "PE", "PG", "PI","PS",
   "SM", "Cer", "HexCer", "LactCer", 
-  "MGDG", "DGDG", "SQDG", "DG", "TG"))
+  "MGDG", "DGDG", "SQDG", "MG", "DG", "TG"))
 cmps$RT <- as.numeric(cmps$RT)
 cmps <- cmps[order(cmps$class, cmps$name, cmps$RT, cmps$compound),]
 
