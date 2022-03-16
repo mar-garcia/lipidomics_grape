@@ -23,13 +23,13 @@ names(col_maturation) <- c(paste0("Pt", formatC(seq(13), width = 2, flag = "0"))
 plot(0,0)
 legend("top", legend = names(col_maturation), col = col_maturation, pch = 16)
 
-col_cmps <- c(brewer.pal(7+1, "Reds")[-1], 
-              brewer.pal(4+1, "Greens")[-1],
+col_cmps <- c(brewer.pal(8+1, "Reds")[-1], 
+              brewer.pal(5+1, "Greens")[-1],
               brewer.pal(3, "Blues")[-1], 
               brewer.pal(3+1, "Purples")[-1])
 names(col_cmps) <- c(
-  "LPC", "LPE", "LPI", "PA", "PC", "PE", "PS",
-  "MGDG", "DGDG", "DG", "TG",
+  "LPA", "LPC", "LPE", "LPI", "PA", "PC", "PE", "PS",
+  "MGDG", "DGDG", "MG", "DG", "TG",
   "FFA", "CAR",
   "SM", "Cer", "LactSer")
 plot(0,0)
