@@ -20,15 +20,15 @@ load("data/RData.RData")
 
 
 
-s <- "tissues" # specify "maturation" or "tissues"
-p <- "NEG" # specify "POS" or "NEG"
+s <- "maturation" # specify "maturation" or "tissues"
+p <- "POS" # specify "POS" or "NEG"
 dda_spectra <- get(paste("dda_spectra", s, p, sep = "_"))
 dda_xdata <- get(paste("dda_xdata", s, p, sep = "_"))
 ft <- get(paste("ft", s, p, sep = "_"))
 
 #ft_mz <- 981.5788146
 #ft_rt <- 14.74978333
-ft_id <- "FT0580"
+#ft_id <- "FT0580"
 #(ft_id <- rownames(featureDefinitions(dda_xdata, mz = ft_mz, ppm = 10)))
 #(ft_id <- pks$FT[pks$dataset == paste(s, p, sep = "_") & MsCoreUtils::between(pks$mzmed, ft_mz + 0.01 * c(-1,1)) &
 #                   MsCoreUtils::between(pks$rtmed, ft_rt + 10/60 * c(-1, 1))])
@@ -39,7 +39,7 @@ for(j in rev(seq(length(ft_spectra)))){
   dt <- as.data.frame(cbind("mz" = unlist(mz(ft_spectra[j])),
                             "intensity" = unlist(intensity(ft_spectra[j]))))
   plotms2(dt$mz, dt$intensity, main = j)
-  abline(h = max(unlist(intensity(ft_spectra[j])))/2)
+  #abline(h = max(unlist(intensity(ft_spectra[j])))/2)
 }
 
 #### STDS #####
@@ -58,12 +58,13 @@ idx <- which(lapply(l,length) == 0)
 write.csv(data.frame(
   "File" = basename(ft_spectra@backend@spectraData@listData$dataOrigin)[idx],
   "scan" = ft_spectra@backend@spectraData@listData$scanIndex[idx],
-  "observations" =  #"precursor is a (2)13C ion"
+  "observations" =  
+    "precursor is a (2)13C ion"
     #"noisy MS2"
     #"outlier MS2"
     #"intensity of 13C very high"
   #"main ion (781.5597) is higher than precursor (780.5524)"
-  paste("Main peak should be", 513.3692, "instead of", round(unlist(mz(sps_2))[idx], 4))
+  #paste("Main peak should be", 513.3692, "instead of", round(unlist(mz(sps_2))[idx], 4))
 ), "x.csv")
 
 

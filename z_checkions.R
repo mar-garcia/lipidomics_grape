@@ -3,17 +3,17 @@ library(MsCoreUtils)
 load("data/RData.RData")
 
 
-s <- "tissues" # specify "maturation" or "tissues"
-p <- "NEG" # specify "POS" or "NEG"
-ft_mz <- 742.5380
+s <- "maturation" # specify "maturation" or "tissues"
+p <- "POS" # specify "POS" or "NEG"
+ft_mz <- 820.7418           
 
 dda_xdata <- get(paste("dda_xdata", s, p, sep = "_"))
 ft <- get(paste("ft", s, p, sep = "_"))
 
 dt <- data.frame(t(featureValues(dda_xdata, value = "into")))
-ft_id <- rownames(featureDefinitions(dda_xdata, mz = ft_mz, ppm = 0.1))
+(ft_id <- rownames(featureDefinitions(dda_xdata, mz = ft_mz, ppm = 0.1)))
 ft[ft_id,]
-ft_id <- ft_id[3]
+ft_id <- ft_id[2]
 
 ydata <- filterFile(dda_xdata, which.max(dt[,ft_id]))
 ydata <- ydata[msLevel(ydata) == 1]
