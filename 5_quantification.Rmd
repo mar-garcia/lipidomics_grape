@@ -1,0 +1,289 @@
+---
+title: "Quantification"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+
+# Libraries
+
+```{r, message = FALSE}
+library(xcms)
+library(CompoundDb)
+library(MsCoreUtils)
+```
+
+
+# Data import
+
+```{r import, eval = !file.exists("data/tmp/fs_data_tissues_POS.RData")}
+for(s in c("tissues", "maturation")){
+  for(p in c("POS", "NEG")){
+    fln <- list.files(paste0("data/", s, "/", p, "_FS_fixed/"))
+    fln <- fln[!grepl("MIX|entire|STD", fln)]
+    idx <- grep("eq", fln)
+    if(length(idx) > 0){
+      idx <- idx[length(idx)]
+      fln <- fln[-(1:idx)]
+    }
+    mtd <- gsub("QCrw_", "QCrw", fln)
+    mtd <- gsub("QCdl_", "QCdl", mtd)
+    mtd <- gsub("xx00_", "", mtd)
+    mtd <- gsub("xx_00_", "", mtd)
+    mtd <- gsub("Rep_", "rep", mtd)
+    mtd <- gsub("Pt_", "pt", mtd)
+    mtd <- gsub("lipidgrape_tissues", "lipidgrape", mtd)
+    if(s == "tissues"){
+      mtd <- gsub("pt11_", "", mtd)
+    }
+    mtd <- strsplit(gsub(".mzData", "", mtd), "_")
+    mtd <- data.frame(do.call(rbind, mtd))
+    colnames(mtd) <- c("order", "project", "class", "rep", "p", "mode")
+    injections <- data.frame(cbind(fln, mtd))
+    
+    # Read the data
+    register(SerialParam())
+    rdata <- readMSData(
+      paste0("data/", s, "/", p, "_FS_fixed/" , injections$fln),
+      pdata = as(AnnotatedDataFrame(injections),
+                 "NAnnotatedDataFrame"), 
+      mode = "onDisk")
+    assign(paste("rdata", s, p, sep = "_"), rdata)
+    
+    # Peak detection
+    register(SerialParam())
+    xdata <- findChromPeaks(
+      rdata, 
+      param = CentWaveParam(ppm = 20,
+                            peakwidth = c(5, 40),
+                            prefilter = c(5, 1e4),
+                            snthresh = 5,
+                            noise = 100,
+                            mzdiff = 0.001,
+                            integrate = 2)
+    )
+    
+    assign(paste("xdata", s, p, sep = "_"), xdata)
+    save(rdata, xdata, 
+         file = paste0("data/tmp/fs_data_", s, "_", p, ".RData"))
+  }
+}
+rm(injections, fln, mtd, rdata)
+```
+
+
+```{r load}
+load("output/identifications.RData")
+pksx <- pks
+ids <- read.csv("output/identifications.csv")
+for(s in c("tissues", "maturation")){
+  for(p in c("POS", "NEG")){
+    if(file.exists(paste0("data/tmp/fs_data_", s, "_", p, ".RData"))){
+      load(paste0("data/tmp/fs_data_", s, "_", p, ".RData"))
+      assign(paste("rdata", s, p, sep = "_"), rdata)
+    }
+    
+    register(SerialParam())
+    chr <- chromPeaks(xdata)
+    assign(paste("chr", s, p, sep = "_"), chr)
+  }
+  data <- matrix(nrow = length(fileNames(rdata)), ncol = nrow(ids))
+  if(s == "tissues"){
+    smpl <- unlist(substring(basename(fileNames(rdata)), 25, 40))
+    smpl <- gsub("xx00_", "", smpl)
+    smpl <- gsub("_N|_P|_NEG|_POS", "", smpl)
+    idx <- grepl("_$", smpl)
+    smpl[idx] <- unlist(substring(smpl[idx], 1, 15))
+  } else if(s == "maturation"){
+    smpl <- unlist(substring(basename(fileNames(rdata)), 17, 28))
+    smpl <- gsub("xx_00_xQC_", "QC", smpl)
+    smpl <- gsub("Rep_", "", smpl)
+    smpl <- gsub("Pt_", "Pt", smpl)
+  }
+  rownames(data) <- smpl
+  colnames(data) <- ids$cmp
+  assign(paste0("data_", s), data)
+}
+load("data/ionsdb.RData")
+```
+
+
+# Main code
+
+```{r main}
+for(s in c("tissues", "maturation")){
+  data <- get(paste("data", s, sep = "_"))
+  for(p in c("POS", "NEG")){
+    rdata <- get(paste("rdata", s, p, sep = "_"))
+    if(s == "tissues"){
+      smpl_name <- unlist(substring(basename(fileNames(rdata)), 25, 40))
+      smpl_name <- gsub("xx00_", "", smpl_name)
+      smpl_name <- gsub("_N|_P|_NEG|_POS", "", smpl_name)
+      idx <- grepl("_$", smpl_name)
+      smpl_name[idx] <- unlist(substring(smpl_name[idx], 1, 15))
+    } else if(s == "maturation"){
+      smpl_name <- unlist(substring(basename(fileNames(rdata)), 17, 28))
+      smpl_name <- gsub("xx_00_xQC_", "QC", smpl_name)
+      smpl_name <- gsub("Rep_", "", smpl_name)
+      smpl_name <- gsub("Pt_", "Pt", smpl_name)
+    }
+    assign(paste("smpl_name", s, p, sep = "_"), smpl_name)
+  }}
+
+
+for(i in seq(nrow(ids))){
+  for(s in c("tissues", "maturation")){
+    data <- get(paste("data", s, sep = "_"))
+    idx <- which(ionsdb$name == ids$name[i])
+    i.class <- unique(ionsdb$class[idx]) 
+    if(ids$name[i] %in% c("PS 34:0")){
+      i.add <- "[M+H]+"
+      i.p <- "POS"
+    } else if(ids$name[i] %in% c("PC 31:3")){
+      i.add <- "[M+CHO2]-"
+      i.p <- "NEG"
+    } else if(i.class %in% c("CAR", "LPC", "PC", "SM")){
+      i.add <- "[M+H]+"
+      i.p <- "POS"
+    } else if(i.class %in% c(
+      "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "DG", "TG", "ST", "Glc-ST")){
+      i.add <- "[M+NH4]+"
+      i.p <- "POS"
+    } else if(i.class %in% c(
+      "FFA", "LPE", "LPG", "LPI", "LPS", "PA", "mPA", "dmPA", "PE", "PG", 
+      "PI", "PS", "HexCer;O3", "HexCer;O4", "others", "nonFA")){
+      i.add <- "[M-H]-"
+      i.p <- "NEG"
+    } else if(i.class %in% c("Cer", "Cer;O3", "Cer;O4")){
+      i.add <- "[M+CHO2]-"
+      i.p <- "NEG"
+    }
+    rdata <- get(paste("rdata", s, i.p, sep = "_"))
+    idx <- which(ionsdb$name == ids$name[i] & ionsdb$ion_adduct == i.add)
+    if(length(idx) > 1){
+      idx <- idx[!is.na(ionsdb$ion_rt[idx])] # LPI 17:1, i=5
+    }
+    
+    # get the data from the original feature in DDA:
+    dda_xdata <- get(paste("dda_xdata", s, i.p, sep = "_"))
+    dda_spectra <- get(paste("dda_spectra", s, i.p, sep = "_"))
+    i_ft <- pksx$FT[
+      # select pks from study "s" and polarity "p":
+      pksx$dataset == paste(s, i.p, sep = "_") & 
+        # pks from compound "i"
+        pksx$target_compound_id == cmps$compound_id[cmps$name == ids$name[i]] & 
+        # pks from adduct "tmp_add"
+        pksx$target_ion_adduct == i.add]
+    if(length(i_ft) == 0){
+      i_ft <- pksx$FT[
+        pksx$dataset == paste(s, i.p, sep = "_") & 
+          pksx$target_compound_id == cmps$compound_id[cmps$name == ids$name[i]]]
+    }
+    if(length(i_ft) == 0){
+      i_ft <- pksx$FT[
+        grepl(s, pksx$dataset) & 
+          pksx$target_compound_id == cmps$compound_id[cmps$name == ids$name[i]]]
+      if(length(i_ft) == 1){
+        x.p <- gsub(".*_", "", 
+                    pksx$dataset[
+                      pksx$FT == i_ft & grepl(s, pksx$dataset) & 
+                        pksx$target_compound_id == cmps$compound_id[
+                          cmps$name == ids$name[i]]])
+        if(x.p != i.p){
+          dda_xdata <- get(paste("dda_xdata", s, x.p, sep = "_"))
+          dda_spectra <- get(paste("dda_spectra", s, x.p, sep = "_"))
+        }
+      }
+    }
+    if(length(i_ft) > 1){
+      i_ft <- i_ft[which.max(
+        pksx$into[pksx$dataset == paste(s, i.p, sep = "_")][pksx$FT[
+          pksx$dataset == paste(s, i.p, sep = "_")] %in% i_ft])]
+    }
+    
+    register(SerialParam())
+    ft_chr <- featureChromatograms(
+      dda_xdata, features = i_ft, expandRt = 15, filled = FALSE)
+    
+    
+    # get the data for peak integration:
+    i.cmp <- matrix(c(ionsdb$ion_mz[idx] + 0.01 * c(-1, 1),
+                      ionsdb[idx, paste0(substr(s, 1, 1), "_min")]*60, 
+                      ionsdb[idx, paste0(substr(s, 1, 1), "_max")]*60
+    ), nrow = 1)
+    colnames(i.cmp) <- c("mzmin", "mzmax", "rtmin", "rtmax")
+    
+    if(sum(is.na(i.cmp[,c("rtmin", "rtmax")])) > 0){
+      chr <- get(paste("chr", s, i.p, sep = "_"))
+      i.chr <- chr[between(chr[,"mz"], c(i.cmp[,"mzmin"], i.cmp[,"mzmax"])),]
+      i.chr <- i.chr[between(i.chr[,"rt"], ionsdb$ion_rt[idx]*60 + 15 * c(-1, 1)),]
+      if(is.na(i.cmp[,"rtmin"])){
+        i.cmp[,"rtmin"] <- min(i.chr[,"rtmin"])
+      }
+      if(is.na(i.cmp[,"rtmax"])){
+        i.cmp[,"rtmax"] <- max(i.chr[,"rtmax"])
+      }
+    }
+    
+    # plot the ECI with the corresponding RT windows used for peak integration:
+    register(SerialParam())
+    i.chr <- chromatogram(
+      rdata, 
+      mz = i.cmp[,1:2], rt = i.cmp[,3:4] + 15 * c(-1,1))
+    
+    # Do the peak integration:
+    register(SerialParam())
+    pks <- manualChromPeaks(rdata,
+                            chromPeaks = i.cmp,
+                            samples = seq_along(fileNames(rdata)),
+                            BPPARAM = bpparam(),
+                            msLevel = 1L)
+    pks <- data.frame(chromPeaks(pks))
+    
+    # write the integrated areas on the database:
+    smpl_name <- get(paste("smpl_name", s, i.p, sep = "_"))
+    pks$smpl <- smpl_name[pks$sample]    
+    data[pks$smpl, ids$cmp[i]] <- pks$into
+    write.csv(data, paste0("output/data_", s, ".csv"))
+    assign(paste0("data_", s), data)
+    
+    assign(paste0("ft_chr_", s), ft_chr)
+    assign(paste0("i.chr_", s), i.chr)
+    assign(paste0("i.cmp_", s), i.cmp)
+  }# close study "s"
+  jpeg(paste0("output/chr/", ids$cmp[i], ".jpeg"), 
+       width = 480*2, height = 480*2)
+  par(mfrow = c(2, 2))
+  plot(ft_chr_tissues, xaxt = "n")
+  axis(1, at = seq(0, 60*30, 3), labels = sprintf("%.2f", seq(0, 30, 3/60))) 
+  abline(v = i.cmp_tissues[,3:4], lty = 2, col = "grey")
+  plot(i.chr_tissues, xaxt = "n")
+  axis(1, at = seq(0, 60*30, 3), labels = sprintf("%.2f", seq(0, 30, 3/60))) 
+  abline(v = i.cmp_tissues[,3:4])
+  
+  plot(ft_chr_maturation, xaxt = "n")
+  axis(1, at = seq(0, 60*30, 3), labels = sprintf("%.2f", seq(0, 30, 3/60))) 
+  abline(v = i.cmp_maturation[,3:4], lty = 2, col = "grey")
+  plot(i.chr_maturation, xaxt = "n")
+  axis(1, at = seq(0, 60*30, 3), labels = sprintf("%.2f", seq(0, 30, 3/60))) 
+  abline(v = i.cmp_maturation[,3:4])
+  dev.off()
+} # close compound "i"
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
+
