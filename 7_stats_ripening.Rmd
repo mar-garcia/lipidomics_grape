@@ -1,0 +1,167 @@
+---
+title: "Stats - Ripening"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+# Libraries
+
+```{r}
+library(tidyverse)
+
+group_label <- function(t){
+  group <- data.frame(
+    sample = t$sample,
+    value = t$value,
+    group = NA
+  )
+  group$group[grep("solv|slv", group$sample)] <- "solv"
+  group$group[grep("skin", group$sample)] <- "skin"
+  group$group[grep("pulp", group$sample)] <- "pulp"
+  group$group[grep("seeds", group$sample)] <- "seeds"
+  group$group[grep("QC_rep|QC[0-9][0-9]", group$sample)] <- "QC"
+  group$group[grep("QCdl_02uL", group$sample)] <- "QCdl_02uL"
+  group$group[grep("QCdl_05uL", group$sample)] <- "QCdl_05uL"
+  group$group[grep("QCdl_10uL", group$sample)] <- "QCdl_10uL"
+  group$group[grep("QCrw_02uL", group$sample)] <- "QCrw_02uL"
+  group$group[grep("QCrw_05uL", group$sample)] <- "QCrw_05uL"
+  group$group[grep("QCrw_10uL", group$sample)] <- "QCrw_10uL"
+  group$group[is.na(group$group)] <- gsub(
+    "_.*", "", group$sample[is.na(group$group)])
+  return(group)
+}
+
+myimputer <- function(v){
+  set.seed(123)
+  if(sum(is.na(v)) == 0) {
+    return(v)
+  } else {
+    napos <- which(is.na(v))
+    newval <- runif(length(napos), 0, min(v, na.rm = TRUE))
+    out <- v
+    out[napos] <- newval
+    return(out)
+  }
+}
+scaling.pareto <- function(x){(x - mean(x)) / sqrt(sd(x))}
+```
+
+# Data import
+
+```{r}
+dt <- read.csv("output/data_maturation.csv", row.names = 1) 
+dt <- dt[,!apply(dt, 2, function(x) sum(is.na(x)) == nrow(dt))]
+dt <- dt[,!apply(dt, 2, function(x) min(x, na.rm = TRUE) < 0)]
+dt <- dt %>%
+  # transform to "tibble" and create the column "sample" with row.names:
+  as_tibble(rownames = "sample") %>%
+  # create 1 row/compound:
+  pivot_longer(-sample, names_to = "cmp") %>% 
+  nest(data = !c("cmp")) %>%
+  # create a column with the group of sample:
+  mutate(data = map(data, ~group_label(.x) 
+  )) %>%
+  mutate(data = map(data, function(t){
+    t %>%
+      mutate(val_imp = myimputer(value))
+  }))
+load("data/colors.RData")
+``` 
+
+
+# Compound selection
+
+Take those compounds with the statistically significant correlations with brix degree
+
+```{r}
+brix <- readxl::read_excel("data/maturation/Grape_Brix_Datafile.xlsx")
+brix <- brix[order(brix$data, brix$Replicate), ]
+brix$sample <- paste0("Pt", formatC(as.numeric(factor(brix$data)), 
+                                    width = 2, flag = "0"), "_", 
+                      formatC(brix$Replicate, width = 2, flag = "0"))
+
+dt <- dt %>%
+  mutate(lm = map(data, function(t){
+    u <- t %>% 
+      filter(group %in% paste0("Pt", formatC(seq(13), width = 2, flag = "0")))
+    u <- u[order(u$sample),]
+    out <- lm(log10(u$value)~log10(brix$Brix))
+    return(out)
+  }))
+
+dt <- dt %>%
+  mutate(
+    corr = map_dbl(lm, function(t) summary(t)$r.squared),
+    pval = map_dbl(lm, function(t) summary(t)$coefficients[
+      "log10(brix$Brix)","Pr(>|t|)"]),
+    estm = map_dbl(lm, function(t) summary(t)$coefficients[
+      "log10(brix$Brix)", "Estimate"])
+  )
+dt$padj <- p.adjust(dt$pval, "bonferroni")
+sum(dt$padj < 0.05)
+
+ids <- read.csv("output/identifications.csv")
+dt <- left_join(dt, ids[,c("cmp", "name")])
+dt$class <-  gsub("\\ .*", "", dt$name)
+dt$class[dt$class %in% c(
+  "Catechin", "Disaccharide", "Hexose", "Kaempferol", "Malic", 
+  "Oleanolic")] <- "others"
+dt$ripening <- "x"
+dt$ripening[dt$padj < 0.05 & dt$estm > 0] <- "up"
+dt$ripening[dt$padj < 0.05 & dt$estm < 0] <- "down"
+idx <- which(dt$padj < 0.05)
+length(idx)
+(length(idx)/nrow(dt))*100
+table(dt$ripening)
+dt$class <- factor(dt$class, levels = cmps_levels)
+table(dt$class, dt$ripening)
+idx <- which(dt$ripening != "x")
+table(dt$class[idx], dt$ripening[idx])
+round(prop.table(table(dt$class[idx], dt$ripening[idx]), margin = 1)*100)
+dt <- dt[order(dt$ripening, dt$class),]
+
+is <- grep("d7", ids$name)[length(grep("d7", ids$name))]
+data <- dt %>%
+  unnest(data) %>%
+  filter(group %in% paste0(
+    "Pt", formatC(seq(13), width = 2, flag = "0"))) %>%
+  filter(cmp %in% dt$cmp[dt$padj < 0.05]) %>%
+  filter(cmp %in% ids$cmp[-is]) %>%
+  select("cmp", "sample", "value") %>%
+  pivot_wider(names_from = "cmp", values_from = "value") %>%
+  column_to_rownames("sample")
+data <- data[order(rownames(data)),]
+all(rownames(data) == brix$sample)
+cl <- gsub("_.*", "", gsub("_.*", "", rownames(data)))
+pdf("output/maturation.pdf", paper = "a4", height = 4*3, width = 2*4)
+par(mfrow = c(4, 3))
+for(i in seq(nrow(dt))){
+  if(dt$ripening[i] != "x"){
+    j <- dt$cmp[i]
+    plot(brix$Brix, data[,j], xlab = "º Brix", ylab = "Intensity", 
+         main = dt$name[dt$cmp == j], bty = "l", 
+         col = col_maturation[cl], pch = 16)
+    #abline(lm(data[,j]~brix$Brix), col = "grey", lty = 2)
+  }
+}
+dev.off()
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
+
+
