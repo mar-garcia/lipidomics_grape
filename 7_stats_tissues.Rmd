@@ -1,0 +1,188 @@
+---
+title: "Stats - Tissues"
+author: "Mar Garcia-Aloy"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+# Libraries
+
+```{r libraries}
+library(tidyverse)
+library(beeswarm)
+
+group_label <- function(t){
+  group <- data.frame(
+    sample = t$sample,
+    value = t$value,
+    group = NA
+  )
+  group$group[grep("solv|slv", group$sample)] <- "solv"
+  group$group[grep("skin", group$sample)] <- "skin"
+  group$group[grep("pulp", group$sample)] <- "pulp"
+  group$group[grep("seeds", group$sample)] <- "seeds"
+  group$group[grep("QC_rep|QC[0-9][0-9]", group$sample)] <- "QC"
+  group$group[grep("QCdl_02uL", group$sample)] <- "QCdl_02uL"
+  group$group[grep("QCdl_05uL", group$sample)] <- "QCdl_05uL"
+  group$group[grep("QCdl_10uL", group$sample)] <- "QCdl_10uL"
+  group$group[grep("QCrw_02uL", group$sample)] <- "QCrw_02uL"
+  group$group[grep("QCrw_05uL", group$sample)] <- "QCrw_05uL"
+  group$group[grep("QCrw_10uL", group$sample)] <- "QCrw_10uL"
+  group$group[is.na(group$group)] <- gsub(
+    "_.*", "", group$sample[is.na(group$group)])
+  return(group)
+}
+
+myimputer <- function(v){
+  set.seed(123)
+  if(sum(is.na(v)) == 0) {
+    return(v)
+  } else {
+    napos <- which(is.na(v))
+    newval <- runif(length(napos), 0, min(v, na.rm = TRUE))
+    out <- v
+    out[napos] <- newval
+    return(out)
+  }
+}
+scaling.pareto <- function(x){(x - mean(x)) / sqrt(sd(x))}
+
+CV <- function(x){(sd(log10(x), na.rm = T) / mean(log10(x), na.rm = T))*100}
+```
+
+
+# Data import
+
+```{r import}
+dt <- read.csv("output/data_tissues.csv", row.names = 1) 
+dt <- dt[,!apply(dt, 2, function(x) sum(is.na(x)) == nrow(dt))]
+dt <- dt %>%
+  # transform to "tibble" and create the column "sample" with row.names:
+  as_tibble(rownames = "sample") %>%
+  # create 1 row/compound:
+  pivot_longer(-sample, names_to = "cmp") %>% 
+  nest(data = !c("cmp")) %>%
+  # create a column with the group of sample:
+  mutate(data = map(data, ~group_label(.x)
+  )) %>%
+  mutate(data = map(data, function(t){
+    t %>%
+      mutate(val_imp = myimputer(value))
+  }))
+load("data/colors.RData")
+ids <- read.csv("output/identifications.csv")
+``` 
+
+
+# Compound selection
+
+Take those compounds for which a huge CV within study samples
+
+```{r, fig.width = 15, fig.height = 5.5}
+dt <- dt %>%
+  mutate(CV = map_dbl(data, function(t){
+    t %>% 
+      filter(group %in% c("skin", "pulp", "seeds")) %>%
+      pull(val_imp) %>%
+      CV(.)
+  })) 
+h <- hist(dt$CV, breaks = 50)
+thr <- 8
+cuts <- cut(h$breaks, c(-Inf, -1, thr, Inf))
+plot(h, col = cuts)
+quantile(dt$CV)
+
+is <- grep("d7", ids$name)[length(grep("d7", ids$name))]
+data <- dt %>%
+  unnest(data) %>%
+  filter(group %in% c("skin", "pulp", "seeds")) %>%
+  filter(cmp %in% dt$cmp[dt$CV > thr]) %>%
+  filter(cmp %in% ids$cmp[-is]) %>%
+  select("cmp", "sample", "val_imp") %>%
+  pivot_wider(names_from = "cmp", values_from = "val_imp") %>%
+  column_to_rownames("sample")
+data <- log10(data)
+data <- apply(data, 2, scaling.pareto)
+
+dt <- left_join(dt, ids[,c("cmp", "name")])
+
+idx <- which(dt$CV > thr & (dt$cmp %in% ids$cmp[-is]))
+length(idx)
+(length(idx)/nrow(dt))*100
+mycols <- list(class = col_cmps[
+  c(names(col_cmps) %in% c(gsub("\\ .*", "", dt$name[idx]), "others"))])
+dt_cmp <- data.frame(class = gsub("\\ .*", "", dt$name[idx]))
+dt_cmp$class[dt_cmp$class %in% c(
+  "Oleanolic", "Kaempferol", "(Epi)catechin", "Malic")] <- "others"
+dt_cmp$class <- as.factor(dt_cmp$class)
+rownames(dt_cmp) <- colnames(data)
+pm <- pheatmap::pheatmap(
+  data, cutree_rows = 3, cutree_cols = 5,
+  annotation_col = dt_cmp, annotation_colors = mycols)
+
+dtx <- cbind(pm$tree_col$labels, cutree(pm$tree_col, k = 5))
+colnames(dtx) <- c("cmp", "cluster")
+dtx <- as.data.frame(dtx[
+  match(colnames(data)[pm$tree_col$order], rownames(dtx)),])
+dtx$order <- seq(nrow(dtx))
+dtx$cluster2 <- NA
+for(i in seq(length(unique(dtx$cluster)))){
+  dtx$cluster2[dtx$cluster == unique(dtx$cluster)[i]] <- letters[i]
+}
+
+dt <- left_join(dt, dtx)
+dt$class <-  gsub("\\ .*", "", dt$name)
+dt$cluster2[is.na(dt$cluster2)] <- "x"
+dt$class[dt$class %in% c(
+  "Catechin", "Disaccharide", "Hexose", "Kaempferol", "Malic", 
+  "Oleanolic")] <- "others"
+dt$class <- factor(dt$class, levels = cmps_levels)
+dt$class <- droplevels(dt$class)
+table(dt$class, dt$cluster2)
+idx <- which(dt$cluster2 != "x")
+table(dt$class[idx], dt$cluster2[idx])
+round(prop.table(table(dt$class[idx], dt$cluster2[idx]), margin = 1)*100)
+dt <- dt[order(dt$cluster2, dt$class),]
+
+
+data <- dt %>%
+  unnest(data) %>%
+  filter(group %in% c("skin", "pulp", "seeds")) %>%
+  filter(cmp %in% dt$cmp[dt$CV > thr]) %>%
+  filter(cmp %in% ids$cmp[-is]) %>%
+  select("cmp", "sample", "value") %>%
+  pivot_wider(names_from = "cmp", values_from = "value") %>%
+  column_to_rownames("sample")
+cl <- gsub("_.*", "", gsub("pt11_", "", rownames(data)))
+pdf("output/tissues.pdf", paper = "a4", height = 4*3, width = 2*4)
+par(mfrow = c(4, 3))
+for(i in seq(nrow(dt))){
+  if(dt$cluster2[i] != "x"){
+    j <- dt$cmp[i]
+    vals <- split(data[,j], f = cl)
+    vals <- vals[c("seeds", "pulp", "skin")]
+    beeswarm(vals, col = col_tissues[names(vals)], pch = 16, 
+             main = dt$name[dt$cmp == j])
+    bxplot(vals, probs = 0.5, col = "#00000060", add = TRUE)
+  }
+}
+dev.off()
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
+
+
