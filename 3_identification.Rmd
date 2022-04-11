@@ -11,29 +11,12 @@ output:
 # Libraries
 
 ```{r libraries, message = FALSE, warning = FALSE}
-library(xcms)
-library(MsFeatures)
-library(MetaboCoreUtils)
 library(MetaboAnnotation)
-library(magrittr)
-library(OrgMassSpecR)
+library(xcms)
 library(CompoundDb)
-library(Rdisop)
-library(MsCoreUtils)
-library(Spectra)
-
-.ppm <- function(x, ppm = 10) {
-  ppm * x / 1e6
-}
-matchWithPpm <- function(x, y, ppm = 0) {
-  lapply(x, function(z, ppm) {
-    which(abs(z - y) <= (.ppm(z, ppm)) + 1e-9)
-  }, ppm = force(ppm))
-}
-max_peak <- function(x, ...) {
-  x[which.max(x[, 2]), , drop = FALSE]
-}
+library(MetaboCoreUtils)
 ```
+
 
 # Data import
 
@@ -42,112 +25,17 @@ load("data/RData.RData")
 load("data/ionsdb.RData")
 load("data/colors.RData")
 load("data/MS2_STDmix.RData")
-db_file <- "data/CompDb_lipids_1.sqlite"
+db_file <- "data/CompDb_lipids_2.sqlite"
 startpoint <- Sys.time()
-```
-
-# Isotopologues
-
-We firstly want to detect isotopes using the function `isotopologues`.   
-This function identifies isotopes in a given MS spectrum. However, our data is LC-MS. Therefore, first of all we group features according to retention time (http://sneumann.github.io/xcms/articles/LC-MS-feature-grouping.html), in order to have something similar to a pseudo-MS spectrum, and then within each feature group we apply the function.  
-
-
-```{r isotopes}
-for(s in c("tissues", "maturation")){
-  for(p in c("POS", "NEG")){
-    dda_xdata <- get(paste("dda_xdata", s, p, sep = "_"))
-    ft <- get(paste("ft", s, p, sep = "_"))
-    
-    # feature grouping:
-    dda_xdata <- groupFeatures(dda_xdata, param = SimilarRtimeParam(10))
-    ft <- cbind(ft, featureGroups(dda_xdata))
-    colnames(ft)[ncol(ft)] <- "FG"
-    
-    # calculate mean-intensities of each feature:
-    dt <- data.frame(t(featureValues(dda_xdata, value = "into")))
-    all(colnames(dt) == rownames(ft))
-    ft$into <- apply(dt, 2, mean, na.rm = TRUE)
-    
-    # identify isotopes:
-    ft$isotope <- NA
-    ft$is_isotope <- FALSE
-    ft <- ft[order(ft$mzmed),]
-    xi <- 0
-    for(j in unique(ft$FG)){ # within FG "j"....
-      tmp <- ft[ft$FG == j,]
-      if(nrow(tmp) > 1){ # if there is >1feature in FG "j", apply "isotopologues"
-        isos <- isotopologues(as.data.frame(tmp[,c("mzmed", "into")]), 
-                              ppm = 10)
-        if(length(isos) > 0){ # if there are isotopes detected, annotate them
-          for(i in seq_along(isos)){
-            z <- isos[[i]]
-            xi <- xi + 1
-            z <- which(rownames(ft) %in% rownames(tmp)[z])
-            ft$isotope[z] <- paste0(
-              "i", formatC(xi, width = 2, flag = "0")
-            )
-            ft$is_isotope[z[-1]] <- TRUE
-          }
-        }
-      }
-    }
-    ft$dataset <- paste(s, p, sep = "_")
-    assign(paste("dda_xdata", s, p, sep = "_"), dda_xdata)
-    assign(paste("ft", s, p, sep = "_"), ft)
-  }
-}
-rm(dda_xdata, ft, dt, xi, j, tmp, isos, i, z) # fts_idx
 ```
 
 
 # Annotation
 
 ```{r annotation}
-ionsdb$ion_rt <- ionsdb$ion_rt*60
-for(s in c("tissues", "maturation")){
-  for(p in c("POS", "NEG")){
-    ft <- get(paste("ft", s, p, sep = "_"))
-    ft <- ft[ft$n_MS2 > 0,] # select features with at least 1  MS2
-    ft <- ft[!ft$is_isotope,] # select non-isotopic features
-    # get the ions from polarity "p":
-    if(p == "POS"){
-      tmp_ionsdb <- ionsdb[ionsdb$ion_adduct %in% adducts("positive")[,"name"],]
-    } else if(p == "NEG"){
-      tmp_ionsdb <- ionsdb[ionsdb$ion_adduct %in% adducts("negative")[,"name"],]
-    }
-    # start matching based on mz & RT:
-    param <- MzRtParam(ppm = 5, toleranceRt = 5)
-    pks_match <- matchMz(ft, tmp_ionsdb, param, 
-                         mzColname = c("mzmed", "ion_mz"),
-                         rtColname = c("rtmed", "ion_rt"))
-    pks <- as.data.frame(matchedData(pks_match))
-    pks_rt <- pks[!is.na(pks$target_compound_id),]
-    # unify multiple matches:
-    dpl <- unique(gsub("\\..*", "", rownames(pks_rt)[grep(
-      "\\.", rownames(pks_rt))]))
-    for(i in dpl){
-      idx <- c(which(rownames(pks_rt) == i), grep(
-        paste0(i, "."), rownames(pks_rt)))
-      tmp <- pks_rt[idx,]
-      pks_rt$target_compound_id[idx[1]] <- paste(
-        pks_rt$target_compound_id[idx], collapse = "-")
-      pks_rt$target_ion_adduct[idx[1]] <- paste(
-        unique(pks_rt$target_ion_adduct[idx]), collapse = "-")
-      pks_rt$target_name[idx[1]] <- paste(
-        unique(pks_rt$target_name[idx]), collapse = "-")
-      pks_rt <- pks_rt[-idx[-1],]
-    }
-    
-    # for those un-annotated features, match based only on mz:
-    if(nrow(pks_rt) < nrow(ft)){
-      param <- MzParam(ppm = 5)
-      pks_match <- matchMz(ft[!rownames(ft) %in% rownames(pks_rt),], 
-                           tmp_ionsdb, param, 
-                           mzColname = c("mzmed", "ion_mz"))
-      pks <- as.data.frame(matchedData(pks_match))
-      # unify multiple matches:
-      dpl <- unique(gsub("\\..*", "", rownames(pks)[
-        grep("\\.",rownames(pks))]))
+unify_dpls <- function(pks){
+      dpl <- unique(gsub("\\..*", "", rownames(pks)[grep(
+        "\\.", rownames(pks))]))
       for(i in dpl){
         idx <- c(which(rownames(pks) == i), grep(
           paste0(i, "."), rownames(pks)))
@@ -156,13 +44,62 @@ for(s in c("tissues", "maturation")){
           pks$target_compound_id[idx], collapse = "-")
         pks$target_ion_adduct[idx[1]] <- paste(
           unique(pks$target_ion_adduct[idx]), collapse = "-")
-        pks$target_name[idx[1]] <- paste(unique(
-          pks$target_name[idx]), collapse = "-")
+        pks$target_name[idx[1]] <- paste(
+          unique(pks$target_name[idx]), collapse = "-")
         pks <- pks[-idx[-1],]
       }
-      pks$score_rt <- NA
-      colnames(pks)[ncol(pks)-1] <- "ppm_error"
-      pks <- rbind(pks_rt, pks)
+      return(pks)
+}
+
+ionsdb$ion_rt <- ionsdb$ion_rt*60
+for(s in c("tissues", "maturation")){
+  for(p in c("POS", "NEG")){
+    ft <- get(paste("ft", s, p, sep = "_"))
+    ft <- ft[ft$n_MS2 > 0,] # select features with at least 1  MS2
+    ft <- ft[!ft$is_isotope,] # select non-isotopic features
+    # get the ions from polarity "p":
+    if(p == "POS"){
+      tmp_ionsdb <- ionsdb[
+        ionsdb$ion_adduct %in% adds[adds$positive, "name"],]
+    } else if(p == "NEG"){
+      tmp_ionsdb <- ionsdb[
+        ionsdb$ion_adduct %in% adds[!adds$positive, "name"],]
+    }
+    
+    # start matching based on mz & RT:
+    param <- MzRtParam(ppm = 5, toleranceRt = 5)
+    pks_match <- matchMz(ft, tmp_ionsdb, param, 
+                         mzColname = c("mzmed", "ion_mz"),
+                         rtColname = c("rtmed", "ion_rt"))
+    pks <- as.data.frame(matchedData(pks_match))
+    pks_rt <- pks[!is.na(pks$target_compound_id),]
+    
+    pks_rt <- unify_dpls(pks_rt) # unify multiple matches
+    
+    # for those un-annotated features, use more relaxed parameters:
+    param <- MzRtParam(ppm = 15, toleranceRt = 15)
+    pks_match <- matchMz(ft[!rownames(ft) %in% rownames(pks_rt),], 
+                         tmp_ionsdb, param, 
+                         mzColname = c("mzmed", "ion_mz"),
+                         rtColname = c("rtmed", "ion_rt"))
+    pks2 <- as.data.frame(matchedData(pks_match))
+    pks2 <- pks2[!is.na(pks2$target_compound_id),]
+    
+    pks2 <- unify_dpls(pks2) # unify multiple matches
+    colnames(pks2)[ncol(pks)-1] <- "ppm_error"
+    pks2 <- rbind(pks_rt, pks2)
+    
+    # for those un-annotated features, match based only on mz:
+    if(nrow(pks_rt) < nrow(ft)){
+      param <- MzParam(ppm = 5)
+      pks_match <- matchMz(ft[!rownames(ft) %in% rownames(pks2),], 
+                           tmp_ionsdb, param, 
+                           mzColname = c("mzmed", "ion_mz"))
+      pks_mz <- as.data.frame(matchedData(pks_match))
+      pks_mz <- unify_dpls(pks_mz) # unify multiple matches
+      pks_mz$score_rt <- NA
+      colnames(pks_mz)[ncol(pks_mz)-1] <- "ppm_error"
+      pks <- rbind(pks2, pks_mz)
     }
     
     pks <- pks[order(rownames(pks)),]
@@ -171,22 +108,14 @@ for(s in c("tissues", "maturation")){
                   "target_name", "target_class", "ppm_error", "score_rt")]
     pks$FT <- rownames(pks)
     pks$rtmed <- pks$rtmed/60
-    if(s == "tissues" & p == "POS"){
-      head(pks)
-    }
-    print(paste(s, p))
     pks$dataset <- paste(s, p, sep = "_")
     assign(paste("pks", s, p, sep = "_"), pks)
     pks <- pks[!is.na(pks$target_compound_id),]
     pks <- pks[!grepl("-", pks$target_compound_id),]
     pks <- pks[order(pks$target_compound_id, pks$rtmed),]
-    pander::pandoc.table(
-      pks[,c("mzmed", "rtmed", "target_compound_id", "target_name", "n_MS2", "score_rt")],
-      style = "rmarkdown", split.tables = Inf, row.names = FALSE,
-      digits = c(7, 4, rep(0, 4)))
   }
 }
-rm(ft, tmp_ionsdb, param, pks_match, pks_rt, dpl, i, idx, tmp, pks)
+rm(ft, tmp_ionsdb, param, pks_match, pks_rt, pks)
 ```
 
 
@@ -203,7 +132,8 @@ for(s in c("tissues", "maturation")){
                 nrow(featureDefinitions(dda_xdata))))
     print(paste("Non-isotopic MS1 features:", sum(!ft$is_isotope)))
     pks <- pks[!pks$is_isotope,]
-    print(paste("Non-isotopic MS1 features with at least one MS2 spectra:", nrow(pks)))
+    print(paste("Non-isotopic MS1 features with at least one MS2 spectra:", 
+                nrow(pks)))
     pks <- pks[!is.na(pks$target_compound_id),]
     pks <- pks[!grepl("-", pks$target_compound_id),]
     print(paste("Annotated features:", nrow(pks)))
@@ -220,12 +150,11 @@ rm(dda_xdata, ft, pks)
 ```{r table}
 pks <- rbind(pks_tissues_POS, pks_maturation_POS,
              pks_tissues_NEG, pks_maturation_NEG)
-###########################################################################
 pks <- pks[!is.na(pks$score_rt) & !grepl("-", pks$target_compound_id),]
-#pks <- pks[!is.na(pks$ppm_error) & !grepl("-", pks$target_compound_id),]
-###########################################################################
 cmps <- compounds(CompDb(db_file), c(
-  "compound_id", "name", "formula", "exactmass", "class", "std", "instd", "C", "db"))
+  "compound_id", "name", "formula", "exactmass", "class", "std", "instd", 
+  "C", "db"))
+cmps <- cmps[!grepl("tail", cmps$name),]
 cmps <- cmps[cmps$compound_id %in% pks$target_compound_id,]
 cmps$RT <- NA
 cmps$tissues <- ""
@@ -238,19 +167,16 @@ for(i in seq(nrow(cmps))){
   cmps$maturation[i] <- paste(tmp$target_ion_adduct[
     grep("maturation", tmp$dataset)], collapse = "; ")
 }
-cmps$class <- factor(cmps$class, levels = c(
-  "FFA", "CAR", "LPA", "LPC", "LPE", "LPG", "LPI", "LPS", 
-  "PA", "PC", "PE", "PG", "PI","PS",
-  "SM", "Cer", "HexCer", "LactCer", 
-  "MGDG", "DGDG", "SQDG", "MG", "DG", "TG"))
+cmps$class <- factor(cmps$class, levels = cmps_levels)
 cmps <- cmps[order(-cmps$instd, cmps$class, cmps$C, cmps$db, cmps$RT),]
 cmps$cmp <- paste0("C", formatC(seq(nrow(cmps)), width = nchar(nrow(cmps)), 
                                 flag = "0"))
-nrow(cmps)
+sum(cmps$instd == 0)
 for(s in c("tissues", "maturation")){
   print(s)
   print(paste("Total compounds:", sum(cmps[,s] != "")))
-  print(paste("Identified compounds:", sum(cmps[cmps$class != "unk", s] != "")))
+  print(paste("Identified compounds:", 
+              sum(cmps[cmps$class != "unk", s] != "")))
   print(paste("Unknown compounds:", sum(cmps[cmps$class == "unk", s] != "")))
   print("###########################################")
 }
@@ -258,11 +184,11 @@ cmps$RT <- sprintf("%.2f", cmps$RT)
 DT::datatable(
   cmps[,c("cmp", "name", "formula", "RT", "tissues", "maturation")],
   rownames = FALSE,
-  options = list(pageLength = nrow(cmps)#, dom = "t"
-  ))
+  options = list(pageLength = nrow(cmps))
+  )
 rm(i, tmp)
 write.csv(cmps[,c("cmp", "name", "formula", "RT", "tissues", "maturation")], 
-          "output/identifications.csv")
+          "output/identifications.csv", row.names = FALSE)
 ```
 
 
@@ -271,10 +197,22 @@ write.csv(cmps[,c("cmp", "name", "formula", "RT", "tissues", "maturation")],
 ## Venn Diagram
 
 ```{r venn}
-tissues <- unique(c(pks_tissues_NEG$target_name, pks_tissues_POS$target_name))
-maturat <- unique(c(pks_maturation_NEG$target_name, pks_maturation_POS$target_name))
+for(s in c("tissues", "maturation")){
+  for(p in c("POS", "NEG")){
+    pks <- get(paste("pks", s, p, sep = "_"))
+    pks <- pks[!is.na(pks$score_rt) & !grepl("-", pks$target_compound_id),]
+    pks <- pks[!grepl("tail", pks$target_name),]
+    assign(paste("pks", s, p, sep = "_"), pks)
+  }}
+
+tissues <- unique(
+  c(pks_tissues_NEG$target_name, pks_tissues_POS$target_name))
+maturat <- unique(
+  c(pks_maturation_NEG$target_name, pks_maturation_POS$target_name))
 tissues <- tissues[!is.na(tissues)]
 maturat <- maturat[!is.na(maturat)]
+tissues <- tissues[!tissues %in% cmps$name[cmps$instd==1]]
+maturat <- maturat[!maturat %in% cmps$name[cmps$instd==1]]
 
 VennDiagram::draw.pairwise.venn(
   area1 = length(tissues),
@@ -288,28 +226,86 @@ VennDiagram::draw.pairwise.venn(
 ## Classes of compounds
 
 ```{r classes, eval = TRUE}
+sum(cmps$class[cmps$instd == 0] != "nonFA")  # Total of annotated lipids
+length(unique(
+  cmps$class[cmps$instd == 0 & cmps$class != "nonFA"])) # Classes of lipids
+
 cmps$class_super <- NA
 cmps$class_super[which(
-  cmps$class %in% c("LPC", "LPE", "LPG", "LPI", "LPS",
-                    "PA", "PC", "PE", "PI", "PG", "PS"))] <- "(lyso)PL"
-cmps$class_super[which(cmps$class %in% 
-                         c("MGDG", "DGDG", "SQDG", "DG", "TG"))] <- "GL"
-cmps$class_super[which(cmps$class %in% c("SM", "Cer", "HexCer", "LactCer"))] <- "SP"
-cmps$class_super[cmps$class %in% c("CAR", "FFA")] <- "others"
+  cmps$class %in% c("LPA", "LPC", "LPE", "LPG", "LPI", "LPS",
+                    "PA", "mPA", "dmPA", "PC", "PE", "PI", "PG", 
+                    "PS"))] <- "(lyso)PL"
+cmps$class_super[which(cmps$class %in% c(
+  "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "MG", "DG", "TG"))] <- "GL"
+cmps$class_super[which(cmps$class %in% c(
+  "SM", "Cer", "Cer;O3", "Cer;O4", 
+  "HexCer", "HexCer;O3", "HexCer;O4", "LactCer"))] <- "SP"
+cmps$class_super[cmps$class %in% c("CAR", "FFA", "ST", "Glc-ST", 
+                                   "others", "nonFA")] <- "others"
 unique(cmps$class[is.na(cmps$class_super)])
 cmps$class <- as.character(cmps$class)
-webr::PieDonut(cmps, ggplot2::aes(pies = class_super, donuts = class), 
-               showPieName = FALSE)
+webr::PieDonut(
+  cmps[cmps$instd == 0 & cmps$class != "nonFA",], 
+  ggplot2::aes(pies = class_super, donuts = class), 
+  showPieName = FALSE)
+
+cmps$class2 <- cmps$class
+cmps$class2[cmps$class %in% c(
+  "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG")] <- "others"
+cmps$class2[cmps$class %in% c("LPE", "PE")] <- "(L)PE"
+cmps$class2[cmps$class %in% c("PA", "mPA", "dmPA")] <- "(dm/m)PA"
+cmps$class2[cmps$class %in% c("LPC", "PC")] <- "(L)PC"
+cmps$class2[cmps$class %in% c("ST", "Glc-ST")] <- "(Glc)ST"
+cmps$class2[cmps$class %in% c("Cer;O3", "HexCer;O3")] <- "(Hex)Cer;O3"
+cmps$class2[cmps$class %in% c("Cer;O4", "HexCer;O4")] <- "(Hex)Cer;O4"
+webr::PieDonut(
+  cmps[cmps$instd == 0 & cmps$class2 != "nonFA",], 
+  ggplot2::aes(pies = class_super, donuts = class2),
+  labelposition = 1, showPieName = FALSE)
+
+tmp <- data.frame(table(cmps$class[cmps$instd == 0 & cmps$class != "nonFA"]))
+tmp$perc <- (tmp$Freq*100)/sum(tmp$Freq)
+tmp <- tmp[order(tmp$Freq, decreasing = TRUE),]
+head(tmp)
 ```
 
 
 ## Fatty acyl chains
 
-```{r fa-chains, eval = TRUE}
+```{r fa-chains}
 idx <- which(cmps$instd == 0) # discard IS
 cl <- unique(cmps$class[idx])
 fa <- gsub(".*\\ ", "", cmps$name[idx]) # remove class from name
-fa <- unique(unlist(strsplit(fa, "_"))) # separate FA chains & get unique values
+fa <- unlist(strsplit(fa, "_")) # separate FA chains
+fa <- fa[grepl("[0-9]", substr(fa, 1, 1))]
+fa <- fa[as.numeric(gsub(":.*", "", fa)) < 28]
+
+tmp <- data.frame(table(fa))
+tmp$perc <- (tmp$Freq*100)/sum(tmp$Freq)
+tmp <- tmp[order(tmp$Freq, decreasing = TRUE),]
+head(tmp)
+
+C <- as.numeric(gsub(":.*", "", fa))
+tmp <- data.frame(table(C))
+tmp$perc <- (tmp$Freq*100)/sum(tmp$Freq)
+tmp <- tmp[order(tmp$Freq, decreasing = TRUE),]
+head(tmp)
+range(C)
+unique(C[C %% 2 != 0])[order(unique(C[C %% 2 != 0]))]
+
+tmp <- cmps[cmps$instd == 0,]
+prop.table(table(tmp$class[grep(paste(paste0(unique(C[C %% 2 != 0])[
+  order(unique(C[C %% 2 != 0]))], ":"), collapse = "|"), tmp$name)]))*100
+
+db <- as.numeric(gsub(".*:", "", fa))
+tmp <- data.frame(table(db))
+tmp$perc <- (tmp$Freq*100)/sum(tmp$Freq)
+tmp <- tmp[order(tmp$Freq, decreasing = TRUE),]
+head(tmp)
+range(db)
+
+fa <- unique(fa) # get unique values
+fa <- fa[!is.na(fa)]
 links <- data.frame(expand.grid(cl, fa))
 colnames(links) <- c("source", "target")
 links$value <- 0
@@ -319,24 +315,59 @@ for(i in seq(nrow(links))){
       strsplit(cmps$name[cmps$class == links$source[i]], "_"))))
 }
 links <- links[links$value > 0,]
+links <- links[order(links$source, as.character(links$target)),]
 nodes <- data.frame(
-  name = c(as.character(links$source), 
-           as.character(links$target)) %>% unique()
+  name = 
+    c(levels(droplevels(links$source)), unique(as.character(
+      links$target)[order(as.character(links$target))]))
+  
 )
 links$IDsource <- match(links$source, nodes$name)-1 
 links$IDtarget <- match(links$target, nodes$name)-1
 networkD3::sankeyNetwork(Links = links, Nodes = nodes,
                          Source = "IDsource", Target = "IDtarget",
                          Value = "value", NodeID = "name", 
-                         sinksRight = FALSE)
+                         sinksRight = FALSE, iterations = 0)
+
+links2 <- links[links$source %in% cmps$class[cmps$class_super == "GL"],]
+nodes <- data.frame(
+  name = c(levels(droplevels(links2$source)), unique(as.character(
+    links2$target)[order(as.character(links2$target))]))
+)
+links2$IDsource <- match(links2$source, nodes$name)-1 
+links2$IDtarget <- match(links2$target, nodes$name)-1
+networkD3::sankeyNetwork(Links = links2, Nodes = nodes,
+                         Source = "IDsource", Target = "IDtarget",
+                         Value = "value", NodeID = "name", 
+                         sinksRight = FALSE, iterations = 0)
+
+links2 <- links[links$source %in% cmps$class[cmps$class_super == "(lyso)PL"],]
+nodes <- data.frame(
+  name = c(levels(droplevels(links2$source)), unique(as.character(
+    links2$target)[order(as.character(links2$target))]))
+)
+links2$IDsource <- match(links2$source, nodes$name)-1 
+links2$IDtarget <- match(links2$target, nodes$name)-1
+networkD3::sankeyNetwork(Links = links2, Nodes = nodes,
+                         Source = "IDsource", Target = "IDtarget",
+                         Value = "value", NodeID = "name", 
+                         sinksRight = FALSE, iterations = 0)
+
+
+links$target <- as.character(links$target)
+links$C <- as.numeric(gsub(":.*", "", links$target))
+links$db <- as.numeric(gsub(".*:", "", links$target))
+
+table(links$C, links$db)
+links[links$target == "17:3",]
+
 rm(cl, fa, links, i, nodes)
 ```
 
 
-
 ## KMD
 
-```{r kmd, eval = TRUE}
+```{r kmd}
 ref <- c(12, 1, 16, 14, 31, 32)
 names(ref) <- c("C", "H", "O", "N", "P", "S")
 cmps$NM <- NA
@@ -349,14 +380,13 @@ for(i in seq(nrow(cmps))){
     cmps$NM[i] <- floor(cmps$exactmass[i])
   }
 }
-cmps$KMD_H <- cmps$NM - (
-  cmps$exactmass * ref["H"] / 
-    MonoisotopicMass(formula = ListFormula("H")))
+cmps$KMD_H <- cmps$NM - (cmps$exactmass * ref["H"] / calculateMass("H"))
 myform <- countElements("CH2")
 pippo <- ref[names(myform[[1]])]
 cmps$KMD_CH2 <- cmps$NM - (
-  cmps$exactmass * as.numeric(t(pippo) %*% myform[[1]]) / 
-    MonoisotopicMass(formula = ListFormula("CH2")))
+  cmps$exactmass * as.numeric(
+    t(pippo) %*% myform[[1]]) / calculateMass("CH2")
+  )
 
 
 idx <- which(cmps$instd == 0) # discard IS
@@ -372,48 +402,41 @@ names(mycols) <- c(seq(max(cmps$db)), 0)
 
 # get the data from standards NOT included in study compounds:
 stds <- compounds(CompDb(db_file), c(
-  "compound_id", "name", "formula", "exactmass", "rtime", "class", "std", "instd", "C", "db"))
+  "compound_id", "name", "formula", "exactmass", "rtime", "class", 
+  "std", "instd", "C", "db"))
 stds <- stds[stds$std == 1 & stds$instd == 0, ]
 stds <- stds[!stds$name %in% cmps$name, ]
 stds <- stds[stds$rtime > 0, ]
-stds$exactmass <- NA
-stds$NM <- NA
-for(i in seq(nrow(stds))){
-  stds$exactmass[i] <- Rdisop::getMolecule(stds$formula[i])$exactmass
-  myform <- countElements(stds$formula[i])
-  pippo <- ref[names(myform[[1]])]
-  stds$NM[i] <- t(pippo) %*% myform[[1]]
+if(nrow(stds) > 0){
+  stds$exactmass <- NA
+  stds$NM <- NA
+  for(i in seq(nrow(stds))){
+    stds$exactmass[i] <- calculateMass(stds$formula[i])
+    myform <- countElements(stds$formula[i])
+    pippo <- ref[names(myform[[1]])]
+    stds$NM[i] <- t(pippo) %*% myform[[1]]
+  }
+  stds$KMD_H <- stds$NM - (stds$exactmass * ref["H"] / calculateMass("H"))
+  stds$RT <- stds$rtime
 }
-stds$KMD_H <- stds$NM - (
-  stds$exactmass * ref["H"] / 
-    MonoisotopicMass(formula = ListFormula("H")))
-stds$RT <- stds$rtime
 
-cmps$class <- factor(cmps$class, levels = c(
-  "FFA", "CAR", "LPA", "LPC", "LPE", "LPG", "LPI", "LPS", 
-  "PA", "PC", "PE", "PG", "PI","PS",
-  "SM", "Cer", "HexCer", "LactCer", 
-  "MGDG", "DGDG", "SQDG", "MG", "DG", "TG"))
+cmps$class <- factor(cmps$class, levels = cmps_levels)
 cl <- unique(cmps$class[cmps$instd == 0])
+cl <- cl[!cl %in% c("others", "nonFA")]
 pdf("output/KMD.pdf", paper = "a4", height = 4*3, width = 2*4)
-par(mfrow = c(4, 2), mar = c(4, 3.5, 2, 0.5))
+par(mfrow = c(2, 1), mar = c(4, 3.5, 2, 0.5))
 for(i in seq(length(cl))){
   # get the data from compounds of class "i":
   tmp <- rbind(
     cmps[cmps$class == cl[i], c("compound_id", "class", "name", "RT", 
                                 "KMD_H", "std", "instd", "C", "db")],
     stds[stds$class == cl[i], c("compound_id", "class", "name", "RT", 
-                                "KMD_H", "std", "instd", "C", "db")])
+                                "KMD_H", "std", "instd", "C", "db")]
+  )
   tmp <- tmp[tmp$instd == 0, ]
   if(nrow(tmp) > 1){
     # define ylims:
-    if(cl[i] %in% c("CAR", "LPC", "PE", "PG", 
-                    "SM", "Cer", "HexCer", "LactCer", "MGDG", "DGDG", 
-                    "MG", "DG")){
-      y <- 0.06
-    } else if(cl[i] %in% c("FFA", "PA")){
-      y <- 0.07
-    }else if(cl[i] %in% c("TG")){
+    if(cl[i] %in% c("TG")){
       y <- 0.1
     } else {
       y <- 0.05
@@ -456,366 +479,22 @@ for(i in seq(length(cl))){
   } # close "if(nrow(tmp) > 0)"
 } # close cl "i"
 dev.off()
-
-
-# Equivalent carbon number
-cmps$ECN <- cmps$C - 2*cmps$db
-stds$ECN <- stds$C - 2*stds$db
-
-cmps$RT <- as.numeric(cmps$RT)
-cmps$rRT <- cmps$RT/max(cmps$RT)
-cmps$rECN <- cmps$ECN/max(cmps$ECN)
-mylm <- lm(rRT ~ poly(rECN, degree = 2), data = cmps)
-newdata <- data.frame(
-  rECN = seq(min(cmps$rECN) - 0.01, max(cmps$rECN) + 0.01, by = 0.01)
-)
-plot(cmps$rECN, cmps$rRT, bty="l", pch = 16, col = col_cmps[cmps$class],
-     xlab = "Relative ECN", ylab = "Relative RT")
-lines(x = newdata$rECN, 
-      y = predict(lm(rRT ~ poly(rECN, degree = 2), data = cmps), 
-                  newdata = newdata))
-text(cmps$rECN, cmps$rRT, paste0(cmps$class, cmps$C, ":", cmps$db), 
-     cex = 0.5, pos = 1)
-
-pdf("output/ECN.pdf", paper = "a4", height = 4*3, width = 2*4)
-par(mfrow = c(4, 2), mar = c(4, 3.5, 2, 0.5))
-for(i in seq(length(cl))){
-  # get the data from compounds of class "i":
-  tmp <- rbind(
-    cmps[cmps$class == cl[i], c("compound_id", "class", "name", "RT", 
-                                "KMD_H", "std", "instd", "C", "db", "ECN")],
-    stds[stds$class == cl[i], c("compound_id", "class", "name", "RT", 
-                                "KMD_H", "std", "instd", "C", "db", "ECN")])
-  tmp <- tmp[tmp$instd == 0, ]
-  tmp$RT <- as.numeric(tmp$RT)
-  tmp$ECN <- as.numeric(tmp$ECN)
-  tmp <- tmp[order(tmp$ECN),]
-  tmp$rRT <- tmp$RT/max(tmp$RT)
-  tmp$rECN <- tmp$ECN/max(tmp$ECN)
-  if(length(unique(tmp$ECN)) > 2){
-    tmp_lm <- lm(rRT ~ poly(rECN, degree = 2), data = tmp)
-    newdata <- data.frame(
-      rECN = seq(min(tmp$rECN) - 0.01, max(tmp$rECN) + 0.01, by = 0.01)
-    )
-    plot(tmp$rECN, tmp$rRT, bty="l", pch = 16,
-         xlab = "Relative ECN", ylab = "Relative RT")
-    lines(x = newdata$rECN, 
-          y = predict(lm(rRT ~ poly(rECN, degree = 2), data = tmp), 
-                      newdata = newdata))
-    text(tmp$rECN, tmp$rRT, paste0(tmp$C, ":", tmp$db), 
-     cex = 0.5, pos = 1)
-    title(cl[i], line = 0)
-  } # close "if(length(unique(tmp$ECN)) > 2)"
-} # close cl "i"
-dev.off()
-
-rm(ref, i, myform, pippo, mycols, cl, tmp, y, idx, j)
 ```
 
-
-## MS2 spectra
-
-```{r ms2, eval = FALSE}
-cdb <- CompDb(db_file, flags = RSQLite::SQLITE_RW)
-# join data from study compounds & 
-# standards from the classes included in study compounds
-stds <- stds[stds$class %in% unique(cmps$class[cmps$instd == 0]),]
-cmps$study <- 1
-stds$study <- 0
-stds$tissues <- ""
-stds$maturation <- ""
-cmps <- rbind(
-  cmps[,c("compound_id", "name", "class", "RT", "formula", 
-          "tissues", "maturation", "std", "instd", "study")], 
-  stds[,c("compound_id", "name", "class", "RT", "formula", 
-          "tissues", "maturation", "std", "instd", "study")])
-cmps <- cmps[cmps$instd == 0, ]
-cmps$class <- factor(cmps$class, levels = c(
-  "FFA", "CAR", "LPA", "LPC", "LPE", "LPG", "LPI", "LPS", 
-  "PA", "PC", "PE", "PG", "PI","PS",
-  "SM", "Cer", "HexCer", "LactCer", 
-  "MGDG", "DGDG", "SQDG", "MG", "DG", "TG"))
-cmps$RT <- as.numeric(cmps$RT)
-cmps <- cmps[order(cmps$class, cmps$name, cmps$RT, cmps$compound),]
-
-
-# function to annotate the MS2 fragments:
-ms2_ann <- function(mz, i, add, nl){
-  sps <- data.frame(cbind(mz = mz, i = i))
-  sps$i <- sps$i/max(sps$i)
-  # annotate fragments:
-  sps$ann <- NA
-  for(j in seq(nrow(nl))){
-    idx <- which(MsCoreUtils::between(
-      sps$mz,
-      as.numeric(mass2mz(mz2mass(i_mz, add), nl[j,])) + 0.01 * c(-1,1)
-    ))
-    if(length(idx) > 0){
-      sps$ann[idx] <- paste(sps$ann[idx], rownames(nl)[j])
-    }
-  }
-  sps$ann <- gsub("NA ", "", sps$ann)
-  return(sps)
-}
-
-# adducts of neutral losses:
-nl <- data.frame(rbind(
-  c("[M+H]+", 1.007276, TRUE),
-  c("[M+H-H2O]+", (getMolecule("H2O")$exactmass*(-1))+1.007276, TRUE),
-  c("[M+H-C2H2]+", (getMolecule("C2H2")$exactmass*(-1))+1.007276, TRUE),
-  c("[M+H-hexose]+", (getMolecule("C6H10O5")$exactmass*(-1))+1.007276, TRUE),
-  c("[M+H-hexose-H2O]+", (getMolecule("C6H12O6")$exactmass*(-1))+1.007276, TRUE),
-  c("[M+H-PA]+", (getMolecule("H3PO4")$exactmass*(-1))+1.007276, TRUE),
-  c("[M+H-mPA]+", (getMolecule(addElements("H3PO4", "CH2"))$exactmass*(-1))+1.007276, TRUE),
-  c("[M+H-dmPA]+", (getMolecule(addElements("H3PO4", "CH2CH2"))$exactmass*(-1))+1.007276, TRUE),
-  c("[M+H-PA-C2H2]+", (getMolecule(addElements("H3PO4", "C2H2"))$exactmass*(-1))+1.007276, TRUE),
-  c("[M+H-157.0504]+", 157.0504*(-1)+1.007276, TRUE),
-  c("[M+H-PE]+", (getMolecule("C2H8NO4P")$exactmass*(-1))+1.007276, TRUE),
-  c("[M+NH4-C3H9O6]+", (getMolecule("C3H9O6")$exactmass*(-1))+getMolecule("NH4")$exactmass, TRUE),
-  c("[M+H-PI]+", (getMolecule("C6H13O9P")$exactmass*(-1))+1.007276, TRUE),
-  c("[M-H]-", -1.007276, FALSE),
-  c("[M-CH3]-", (getMolecule("CH3")$exactmass*(-1)), FALSE),
-  c("[M-H-hexose]-", (getMolecule("C6H10O5")$exactmass*(-1))-1.007276, TRUE),
-  c("[M-H-hexose-H2O]-", (getMolecule("C6H12O6")$exactmass*(-1))-1.007276, TRUE)
-))
-# add losses of fatty-acyl chains:
-C <- seq(from = 14, to = 24, by = 1)
-db <- seq(from = 0, to = 3, by = 1)
-sn <- paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
-            sep = ":")
-sn <- cbind(sn, 
-            paste0("C", gsub(":.*", "", sn), 
-                   "H", as.numeric(gsub(":.*", "", sn))*2 - 
-                     2*as.numeric(gsub(".*:", "", sn)), 
-                   "O2"))
-colnames(sn) <- c("sn", "formula")
-for(i in seq(nrow(sn))){
-  nl <- rbind(
-    nl,
-    # [M+H-18:2-H2O]+
-    c(paste0("[M+H-", sn[i, "sn"],"-H2O]+"), getMolecule(sn[i, "formula"])$exactmass*(-1)+1.007276, TRUE),
-    # [M-H-18:2-H2O]-
-    c(paste0("[M-H-", sn[i, "sn"],"-H2O]-"), getMolecule(sn[i, "formula"])$exactmass*(-1)-1.007276, FALSE),
-    # [M-H-18:2-H2O-glycerol]-
-    c(paste0("[M-H-", sn[i, "sn"],"-H2O-glycerol]-"), getMolecule(subtractElements(addElements(sn[i, "formula"], "C3H8O3"), "H2O"))$exactmas*(-1)-1.007276, FALSE),
-    # [M-H-18:2-H2O-inositol]-
-    c(paste0("[M-H-", sn[i, "sn"],"-H2O-inositol]-"), getMolecule(subtractElements(addElements(sn[i, "formula"], "C6H12O6"), "H2O"))$exactmas*(-1)-1.007276, FALSE),
-    # [M+H-18:2]+
-    c(paste0("[M+H-", sn[i, "sn"],"]+"), getMolecule(subtractElements(sn[i, "formula"], "H2O"))$exactmass*(-1)+1.007276, TRUE),
-    # [M-H-18:2]-
-    c(paste0("[M-H-", sn[i, "sn"],"]-"), getMolecule(subtractElements(sn[i, "formula"], "H2O"))$exactmass*(-1)-1.007276, FALSE)
-  )}
-colnames(nl) <- c("name", "mass_add", "positive")
-nl$mass_add <- as.numeric(nl$mass_add)
-nl$mass_multi <- 1
-nl$charge <- 1
-nl$formula_add <- "X"
-nl$formula_sub <- "X"
-nl <- nl[, c("name", "mass_multi", "mass_add", "formula_add", "formula_sub", 
-             "charge", "positive")]
-rownames(nl) <- nl$name
-
-# diagnostic ions:
-ions <- data.frame(rbind(
-  c(mass2mz(getMolecule("C5H14NO4P")$exactmass, "[M+H]+"), "[PC+H]+", TRUE)
-))
-colnames(ions) <- c("mz", "name", "positive")
-for(i in seq(nrow(sn))){
-  ions <- rbind(
-    ions,
-    c(mass2mz(getMolecule(sn[i, "formula"])$exactmass, "[M-H]-"), 
-      paste0("[",sn[i, "sn"], "-H]-"), FALSE))
-}
-ions$mz <- as.numeric(ions$mz)
-
-pdf("output/MS2.pdf", paper = "a4", height = 4*3, width = 2*4)
-par(mfrow = c(3, 2), mar = c(4, 4, 3, 0.5))
-for(i in seq(nrow(cmps))){
-  for(p in c("POS", "NEG")){
-    if(p == "POS"){
-      tmp_ionsdb <- ionsdb[
-        ionsdb$ion_adduct %in% adducts("positive")[,"name"],]
-      tmp_nl <- nl[nl$positive == TRUE,]
-      tmp_ions <- ions[ions$positive == TRUE, ]
-    } else if(p == "NEG"){
-      tmp_ionsdb <- ionsdb[
-        ionsdb$ion_adduct %in% adducts("negative")[,"name"],]
-      tmp_nl <- nl[nl$positive == FALSE,]
-      tmp_ions <- ions[ions$positive == FALSE, ]
-    }
-    # get the mz-value of the compound "i":
-    tmp <- tmp_ionsdb[tmp_ionsdb$compound_id == cmps$compound_id[i], ]
-    if(p == "POS" & cmps$class[i] %in% c(
-      "CAR", "LPC", "LPE", "LPS", "PC", "PE", "PS", "SM", "Cer", "HexCer", "LactCer")){
-      tmp_add <- "[M+H]+"
-    } else if(p == "POS" & cmps$class[i] %in% c(
-      "FFA", "LPA", "LPG", "LPI", "PA", "PG", "PI", "MGDG", "DGDG", "MG", "DG", "TG")){
-      tmp_add <- "[M+NH4]+"
-    } else if(p == "NEG" & cmps$class[i] %in% c(
-      "FFA", "LPA", "LPE", "LPG", "LPI", "LPS", "PA", "PE", "PG", "PI", "PS", "MG", "DG", "TG")){
-      tmp_add <- "[M-H]-"
-    } else if(p == "NEG" & cmps$class[i] %in% c(
-      "CAR", "LPC", "PC", "MGDG", "DGDG", "SM", "Cer", "HexCer", "LactCer")){
-      tmp_add <- "[M+CHO2]-"
-    } 
-    tmp <- tmp[tmp$ion_adduct %in% tmp_add, ]
-    i_mz <- tmp[, "ion_mz"]
-    if(cmps$study[i] == 1){
-      i_spectra <- dda_spectra_tissues_POS[dda_spectra_tissues_POS$peak_id %in% "9999"]
-      for(s in c("tissues", "maturation")){
-        dda_xdata <- get(paste("dda_xdata", s, p, sep = "_"))
-        dda_spectra <- get(paste("dda_spectra", s, p, sep = "_"))
-        # get the feature ID of the compound "i":
-        i_ft <- pks$FT[
-          # select pks from study "s" and polarity "p":
-          pks$dataset == paste(s, p, sep = "_") & 
-            # pks from compound "i"
-            pks$target_compound_id == cmps$compound_id[i] & 
-            # pks from adduct "tmp_add"
-            pks$target_ion_adduct == tmp_add]
-        if(length(i_ft) > 0){
-          ft <- get(paste("ft", s, p, sep = "_"))
-          # get the peak IDs of the feature "i":
-          i_id <- rownames(
-            chromPeaks(dda_xdata)[ft[i_ft, "peakidx"][[1]],])
-          # get the MS2 spectras of the peaks:
-          is_spectra <- dda_spectra[dda_spectra$peak_id %in% i_id]
-          if(p == "NEG" & cmps$compound[i] == "PA 18:1_18:1"){
-            sps_2 <- addProcessing(is_spectra, max_peak)
-            idx <- which(MsCoreUtils::between(unlist(mz(sps_2)), 417.241149 + 0.01 * c(-1, 1)))
-            is_spectra <- is_spectra[idx]
-          } else if(p == "NEG" & cmps$compound[i] == "PA 18:0_18:2"){
-            i_ft <- pks$FT[pks$dataset == paste(s, p, sep = "_") & 
-                             pks$target_name == "PA 36:2" & 
-                             pks$target_ion_adduct == tmp_add]
-            i_id <- rownames(
-              chromPeaks(dda_xdata)[ft[i_ft, "peakidx"][[1]],])
-            is_spectra <- dda_spectra[dda_spectra$peak_id %in% i_id]
-            sps_2 <- addProcessing(is_spectra, max_peak)
-            idx <- which(MsCoreUtils::between(unlist(mz(sps_2)), 419.256800 + 0.01 * c(-1, 1)))
-            is_spectra <- is_spectra[idx]
-          } 
-          i_spectra <- c(i_spectra, is_spectra)
-        } # close "if(length(i_ft) > 0)"
-      } # close study "s"
-      mycol <- 1
-      h <- 0
-    } else {
-      i_spectra <- filterPrecursorMzRange(ms2, i_mz + 0.01 * c(-1, 1))
-      i_spectra <- filterRt(i_spectra, cmps$RT[i]*60 + 10 * c(-1, 1))
-      mycol <- 2
-      h <- 0
-    }
-    # when for the study compound "i" there was also the standard:
-    if(cmps$study[i] == 1 & cmps$std[i] == 1){
-      i_std <- filterPrecursorMzRange(ms2, i_mz + 0.01 * c(-1, 1))
-      i_std <- filterRt(i_std, cmps$RT[i]*60 + 10 * c(-1, 1))
-      i_std <- Spectra::combineSpectra(
-        i_std, intensityFun = base::sum, mzFun = base::mean, 
-        tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
-        weighted = TRUE)
-      if(length(i_std) > 0){
-        i_std <- ms2_ann(mz = unlist(mz(i_std)), 
-                         i = unlist(intensity(i_std)),
-                         add = tmp_add, nl = tmp_nl)
-        h <- -1.05
-      } else {
-        h <- 0
-      }
-      if(length(i_spectra) == 0){
-        i_std <- filterPrecursorMzRange(ms2, i_mz + 0.01 * c(-1, 1))
-        i_spectra <- filterRt(i_std, cmps$RT[i]*60 + 10 * c(-1, 1))
-        mycol <- 2
-        h <- 0
-      }
-    }
-    if(length(i_spectra) > 0){
-      # combine the MS2 spectras:
-      register(SerialParam())
-      ms2comb <- Spectra::combineSpectra(
-        i_spectra, intensityFun = base::sum, mzFun = base::mean, 
-        tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
-        weighted = TRUE)
-      if(length(ms2comb) > 1){
-        ms2comb <- Spectra::combineSpectra(
-          ms2comb, intensityFun = base::sum, mzFun = base::mean, 
-          tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
-          weighted = TRUE)
-      }
-      ms2comb$compound <- cmps$compound[i]
-      ms2comb$adduct <- tmp_add
-      sps <- ms2_ann(mz = mz(ms2comb)[[1]], 
-                     i = intensity(ms2comb)[[1]],
-                     add = tmp_add, nl = tmp_nl)
-      ins <- matchWithPpm(sps$mz, tmp_ions$mz, ppm = 10)
-      names(ins) <- seq(nrow(sps))
-      ins <- ins[lapply(ins,length)>0]
-      if(length(ins) > 0){
-        for(j in seq(length(ins))){
-          sps$ann[as.numeric(names(ins)[j])] <- tmp_ions$name[ins[[j]]]
-        }
-      }
-      if(cmps$class[i] %in% c("mPA", "dmPA", "PE", "PG", "PI")){
-        xmin <- 200
-      } else {
-        xmin <- min(sps$mz)
-      }
-      # plot the MS2:
-      plot(sps$mz, sps$i, type = "h", bty = "l", col = mycol, 
-           xlab = "m/z", ylab = "intensity", 
-           xlim = c(xmin, precursorMz(ms2comb)), ylim = c(h, 1.15),
-           main = paste("\n", 
-                        sprintf("%.4f", precursorMz(ms2comb)), "@",
-                        sprintf("%.2f", rtime(ms2comb)/60)))
-      idx <- which(sps$i > 0.2)
-      ann <- as.character(sps$ann[idx])
-      ann[is.na(ann)] <- ""
-      text(sps$mz[idx], sps$i[idx], 
-           paste(round(sps$mz[idx], 4), "\n", ann), 
-           cex = 0.8, pos = 3, offset = 0, col = mycol)
-      df <- DataFrame(
-        msLevel = 2L, 
-        precursorMz = precursorMz(ms2comb),
-        rtime = rtime(ms2comb),
-        compound_id = cmps$compound_id[i],
-        instrument = "orbitrap"
-      )
-      if(p == "POS"){
-        df$polarity <- 1L
-      } else if(p == "NEG"){
-        df$polarity <- 0L
-      }
-      df$mz <- list(c(sps$mz))
-      df$intensity <- list(c(sps$i))
-      df <- Spectra(df)
-      cdb <- insertSpectra(cdb, spectra = df,
-                           columns = c("compound_id", "msLevel",
-                                       "precursorMz", "instrument"))
-      # when for the study compound "i" there is also the standard:
-      if(cmps$study[i] == 1 & cmps$std[i] == 1 & h < 0){
-        if(length(i_std) > 0){
-          points(i_std$mz, i_std$i*(-1), type = "h", col = 2)
-          idx <- which(i_std$i > 0.1)
-          text(i_std$mz[idx], i_std$i[idx]*(-1), 
-               round(i_std$mz[idx], 4), 
-               cex = 0.8, pos = 1, offset = 0, col = 2)
-        }
-      }
-      # add the name of the compound
-      title(paste(cmps$name[i], tmp_add), adj = 0, line = 2)
-      rm(ms2comb, sps)
-    } # close if(length(i_spectra) > 0)
-    rm(tmp_add, i_spectra)
-  } # close polarity "p"
-} # end "i"
-dev.off()
-```
 
 # Save output
 
-```{r}
-save(pks_maturation_NEG, pks_maturation_POS, 
-     pks_tissues_NEG, pks_tissues_POS, file = "output/pks.RData")
+```{r save}
+pks <- rbind(pks_tissues_POS, pks_maturation_POS,
+             pks_tissues_NEG, pks_maturation_NEG)
+save(pks, db_file, cmps,
+     dda_xdata_tissues_POS, dda_xdata_tissues_NEG,
+     dda_xdata_maturation_POS, dda_xdata_maturation_NEG,
+     dda_spectra_tissues_POS, dda_spectra_tissues_NEG,
+     dda_spectra_maturation_POS, dda_spectra_maturation_NEG,
+     ft_tissues_POS, ft_tissues_NEG,
+     ft_maturation_POS, ft_maturation_NEG, 
+     file = "output/identifications.RData")
 ```
 
 
