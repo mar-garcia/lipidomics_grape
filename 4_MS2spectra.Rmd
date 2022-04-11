@@ -1,0 +1,505 @@
+---
+title: "MS2 spectra"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r startpoint, include = FALSE}
+startpoint <- Sys.time()
+```
+
+# Libraries
+
+```{r libraries, message = FALSE}
+library(CompoundDb)
+library(xcms)
+library(Spectra)
+library(MetaboCoreUtils)
+library(MsCoreUtils)
+
+.ppm <- function(x, ppm = 10) {
+  ppm * x / 1e6
+}
+matchWithPpm <- function(x, y, ppm = 0) {
+  lapply(x, function(z, ppm) {
+    which(abs(z - y) <= (.ppm(z, ppm)) + 1e-9)
+  }, ppm = force(ppm))
+}
+max_peak <- function(x, ...) {
+  x[which.max(x[, 2]), , drop = FALSE]
+}
+norm_intensities <- function(x, ...) {
+  x[, 2] <- x[, 2] / max(x[,2])
+  x
+}
+```
+
+
+# Load the data
+
+```{r load}
+load("output/identifications.RData")
+load("data/ionsdb.RData")
+load("data/MS2_STDmix.RData")
+load("data/colors.RData")
+load("data/MS2_Annotation.RData")
+```
+
+
+## Prepare necessary objects
+
+Join data from study compounds & standards from the classes included in 
+study compounds:
+
+```{r}
+cdb <- CompDb(db_file, flags = RSQLite::SQLITE_RW)
+
+stds <- compounds(CompDb(db_file), c(
+  "compound_id", "name", "formula", "exactmass", "rtime", "class", 
+  "std", "instd", "C", "db"))
+stds <- stds[stds$std == 1 & stds$instd == 0, ]
+stds <- stds[!stds$name %in% cmps$name, ]
+stds <- stds[stds$rtime > 0, ]
+stds <- stds[stds$class %in% unique(cmps$class[cmps$instd == 0]),]
+
+cmps$study <- 1
+if(nrow(stds) > 0){
+  stds$RT <- stds$rtime
+  stds$study <- 0
+  stds$tissues <- ""
+  stds$maturation <- ""
+  cmps <- rbind(
+    cmps[,c("compound_id", "name", "class", "RT", "formula", 
+            "tissues", "maturation", "std", "instd", "study", "C", "db")], 
+    stds[,c("compound_id", "name", "class", "RT", "formula", 
+            "tissues", "maturation", "std", "instd", "study", "C", "db")])
+}
+
+cmps <- cmps[cmps$instd == 0, ]
+cmps$class <- factor(cmps$class, levels = cmps_levels)
+cmps$RT <- as.numeric(cmps$RT)
+cmps <- cmps[order(cmps$class, cmps$C, cmps$db, cmps$RT, cmps$compound),]
+```
+
+
+# Exclude noisy MS2
+
+```{r ms2-exclusion, eval = !file.exists("data/tmp/dda_spectra_excluded.RData")}
+ms2_exclude <- read.csv("data/MS2_exclude.csv")
+for(s in c("tissues", "maturation")){
+  for(p in c("POS", "NEG")){
+    tmp_ms2_exclude <- ms2_exclude[grep(p, ms2_exclude$File),]
+    if(s == "tissues"){
+      tmp_ms2_exclude <- tmp_ms2_exclude[
+        grepl("tissues", tmp_ms2_exclude$File),]
+    } else if(s == "maturation"){
+      tmp_ms2_exclude <- tmp_ms2_exclude[
+        !grepl("tissues", tmp_ms2_exclude$File),]
+    }
+    dda_xdata <- get(paste("dda_xdata", s, p, sep = "_"))
+    dda_spectra <- get(paste("dda_spectra", s, p, sep = "_"))
+    if(nrow(tmp_ms2_exclude) > 0){
+      idx <- rep(NA, nrow(tmp_ms2_exclude))
+      for(i in seq(length(idx))){
+        x <- which(
+          basename(
+            dda_spectra@backend@spectraData@listData$dataOrigin
+          ) == tmp_ms2_exclude$File[i] & 
+            dda_spectra@backend@spectraData@listData$scanIndex == 
+            tmp_ms2_exclude$scan[i]
+        )
+        if(length(x) > 0){
+          idx[i] <- x
+        }
+      }
+      idx <- idx[!is.na(idx)]
+      dda_spectra <- dda_spectra[-idx]
+    }
+    assign(paste("dda_spectra", s, p, sep = "_"), dda_spectra)
+  }}
+save(dda_spectra_tissues_POS, dda_spectra_tissues_NEG,
+     dda_spectra_maturation_POS, dda_spectra_maturation_NEG, 
+     file = "data/tmp/dda_spectra_excluded.RData")
+```
+
+
+# MS2 plot
+
+```{r, eval = file.exists("data/tmp/dda_spectra_excluded.RData")}
+load("data/tmp/dda_spectra_excluded.RData")
+```
+
+
+```{r ms2-plot}
+pdf("output/MS2.pdf", paper = "a4", height = 4*3, width = 2*4)
+par(mfrow = c(3, 2), mar = c(4, 4, 3, 0.5))
+for(i in seq(nrow(cmps))){
+  
+  # Exclusion list of compounds for which NOT to plot the MS2:
+  if(!(
+    (cmps$class[i] %in% c("FFA", "DGMG")) |
+    (cmps$name[i] %in% c(
+      "LPC 18:3", "mPA 18:1_18:1", "mPA 18:2_23:0",
+      "PC 30:0", "PC 31:3", "PC 32:3", "PC 33:2", "PC 33:3", "PC 33:4", 
+      "PC 33:5", "PC 34:0", "PC 34:4", "PC 35:1", "PC 35:3", "PC 35:4", 
+      "PC 35:5", "PC 38:3", "PG 18:1_18:3", "PS 34:0", "PS 18:1_18:3",
+      "HexCer;O3 38:2", "HexCer;O3 40:2", "HexCer;O3 41:2", "HexCer;O3 44:2",
+      "HexCer;O4 45:1", "MGDG 16:1_18:3", "MGDG 16:3_18:2", "MGDG 36:0",
+      "MGDG 18:0_18:3", "DGDG 34:0", "DGDG 34:2", "DGDG 16:0_18:3", 
+      "DGDG 18:1_18:2", "DG 18:0_18:1", "TG 14:0_14:0_14:0", "TG 49:2", 
+      "ST 20:3", "Glc−ST 14:0", "Glc−ST 15:0", "Glc−ST 16:1", "Glc−ST 17:0", 
+      "Glc−ST 17:1",  "Glc−ST 17:2",  "Glc−ST 17:3", "Glc−ST 18:1", 
+      "Glc−ST 22:0",
+      "Hexose"
+    ))
+  )){
+    for(p in c("POS", "NEG")){
+      
+      # exclusion list based on polarity:
+      if((!paste(p, cmps$name[i]) %in% c(
+        "NEG LPC 18:0", "POS mPA 18:1_18:1 / mPA 18:0_18:2", 
+        "POS mPA 18:1_18:2", "POS mPA 18:2_22:0",
+        "POS dmPA 18:2_18:2", "POS PG 16:0_18:3", "POS PI 16:0_18:3",
+        "POS PI 18:2_18:3", "NEG Cer;O4 44:1", "NEG SQDG 18:2_18:3"
+      )) & (!paste(p, cmps$class[i]) %in% c("NEG TG", "NEG Glc-ST"))){
+        if(p == "POS"){
+          tmp_ionsdb <- ionsdb[
+            ionsdb$ion_adduct %in% adds[adds$positive, "name"],]
+          tmp_nl <- nl[nl$positive == TRUE,]
+          tmp_ions <- ions[ions$positive == TRUE, ]
+        } else if(p == "NEG"){
+          tmp_ionsdb <- ionsdb[
+            ionsdb$ion_adduct %in% adds[!adds$positive, "name"],]
+          tmp_nl <- nl[nl$positive == FALSE,]
+          tmp_ions <- ions[ions$positive == FALSE, ]
+        }
+        if(cmps$class %in% c("DG", "TG")){
+          tmp_ions <- tmp_ions[!grepl("C3H4O", tmp_ions$name),]
+          tmp_ions <- tmp_ions[!grepl("DAG\\(", tmp_ions$name),]
+        }
+        
+        # get the mz-value of the compound "i":
+        tmp <- tmp_ionsdb[tmp_ionsdb$compound_id == cmps$compound_id[i], ]
+        if(p == "POS" & cmps$class[i] %in% c(
+          "CAR", "LPC", "LPE", "LPS", "PC", "PE", "PS", 
+          "SM", "Cer", "Cer;O3", "Cer;O4", "HexCer", "HexCer;O3", "HexCer;O4", 
+          "LactCer", "others", "nonFA")){
+          tmp_add <- "[M+H]+"
+        } else if(p == "POS" & cmps$class[i] %in% c(
+          "FFA", "LPA", "LPG", "LPI", "PA", "mPA","dmPA", "PG", "PI", 
+          "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "MG", "DG", "TG", "ST", "Glc-ST")){
+          tmp_add <- "[M+NH4]+"
+        } else if(p == "NEG" & cmps$class[i] %in% c(
+          "FFA", "LPA", "LPE", "LPG", "LPI", "LPS", "PA", "mPA", "dmPA", 
+          "PE", "PG", "PI", "PS", "SQDG", "MG", "DG", "others", "nonFA")){
+          tmp_add <- "[M-H]-"
+        } else if(p == "NEG" & cmps$class[i] %in% c(
+          "CAR", "LPC", "PC", "DGMG", "MGDG", "DGDG", "SM", 
+          "Cer", "Cer;O3", "Cer;O4", "HexCer", "HexCer;O3", "HexCer;O4", 
+          "LactCer", "acMGDG", "TG", "ST", "Glc-ST")){
+          tmp_add <- "[M+CHO2]-"
+        } 
+        tmp <- tmp[tmp$ion_adduct %in% tmp_add, ]
+        i_mz <- tmp[, "ion_mz"]
+        if(cmps$study[i] == 1){
+          i_spectra <- dda_spectra_tissues_POS[
+            dda_spectra_tissues_POS$peak_id %in% "9999"]
+          if(paste(cmps$name[i], p) %in% c(
+            "mPA 18:1_18:1 / mPA 18:0_18:2 NEG")){
+            j_spectra <- dda_spectra_tissues_POS[
+              dda_spectra_tissues_POS$peak_id %in% "9999"]
+          }
+          for(s in c("tissues", "maturation")){
+            if(!paste(cmps$name[i], p, s) %in% c(
+              "PA 18:2_22:0 POS maturation")){
+              dda_xdata <- get(paste("dda_xdata", s, p, sep = "_"))
+              dda_spectra <- get(paste("dda_spectra", s, p, sep = "_"))
+              
+              # get the feature ID of the compound "i":
+              i_ft <- pks$FT[
+                # select pks from study "s" and polarity "p":
+                pks$dataset == paste(s, p, sep = "_") & 
+                  # pks from compound "i"
+                  pks$target_compound_id == cmps$compound_id[i] & 
+                  # pks from adduct "tmp_add"
+                  pks$target_ion_adduct == tmp_add]
+              if(length(i_ft) > 0){
+                ft <- get(paste("ft", s, p, sep = "_"))
+                # get the peak IDs of the feature "i":
+                i_id <- rownames(
+                  chromPeaks(dda_xdata)[ft[i_ft, "peakidx"][[1]],])
+                # get the MS2 spectras of the peaks:
+                is_spectra <- dda_spectra[dda_spectra$peak_id %in% i_id]
+                if(p == "NEG" & cmps$name[i] %in% c(
+                  "PA 18:1_18:1", "PA 18:1_18:2")){
+                  sps_2 <- addProcessing(is_spectra, max_peak)
+                  idx <- which(between(
+                    unlist(mz(sps_2)), 417.241149 + 0.01 * c(-1, 1)))
+                  is_spectra <- is_spectra[idx]
+                } else if(p == "NEG" & cmps$name[i] %in% c(
+                  "PA 18:0_18:2", "PA 18:0_18:3")){
+                  sps_2 <- addProcessing(is_spectra, max_peak)
+                  idx <- which(between(unlist(mz(sps_2)), 
+                                       419.256800 + 0.01 * c(-1, 1)))
+                  is_spectra <- is_spectra[idx]
+                } else if(p == "NEG" & cmps$name[i] %in% c(
+                  "mPA 18:1_18:1 / mPA 18:0_18:2")){
+                  sps_2 <- addProcessing(is_spectra, max_peak)
+                  idx <- which(between(unlist(mz(sps_2)), 
+                                       281.248604 + 0.01 * c(-1, 1)))
+                  
+                  idx2 <- which(between(unlist(mz(sps_2)), 
+                                        279.232954 + 0.01 * c(-1, 1)))
+                  js_spectra <- is_spectra[idx2]
+                  is_spectra <- is_spectra[idx]
+                } else if(paste(p, cmps$class[i]) %in% c("POS PC")){
+                  sps_2 <- addProcessing(is_spectra, norm_intensities)
+                  sps_2 <- replaceIntensitiesBelow(
+                    sps_2, threshold = 0.1, value = 0)
+                  sps_2 <- filterIntensity(sps_2, intensity = c(0.1, Inf))
+                  l <- lapply(mz(sps_2), function(x) {
+                    unlist(matchWithPpm(
+                      x, 
+                      c(450.297901, 468.308465, 476.313551, 478.329201, 
+                        492.344851, 494.324115, 496.339765, 500.313551, 
+                        502.329201, 504.344851, 506.360501, 510.355416, 
+                        518.324110, 520.339765, 522.355416, 524.371066), 
+                      ppm = 10))})
+                  idx <- which(unlist(lapply(l, function(x){length(x) > 0})))
+                  is_spectra <- is_spectra[idx]
+                } else if(p == "POS" & cmps$name[i] %in% c(
+                  "HexCer;O3 34:1")){
+                  sps_2 <- addProcessing(is_spectra, max_peak)
+                  idx <- which(between(unlist(mz(sps_2)), 
+                                       554.5143 + 0.01 * c(-1, 1)))
+                  is_spectra <- is_spectra[idx]
+                } else if(p == "POS" & cmps$name[i] %in% c(
+                  "HexCer;O4 40:1")){
+                  sps_2 <- addProcessing(is_spectra, max_peak)
+                  idx <- which(between(unlist(mz(sps_2)), 
+                                       654.6031 + 0.01 * c(-1, 1)))
+                  is_spectra <- is_spectra[idx]
+                } else if(p == "POS" & cmps$name[i] %in% c("DG 18:1_18:1")){
+                  sps_2 <- addProcessing(is_spectra, max_peak)
+                  idx <- which(between(unlist(mz(sps_2)), 
+                                       339.289371 + 0.01 * c(-1, 1)))
+                  is_spectra <- is_spectra[idx]
+                } else if(p == "POS" & cmps$name[i] %in% c("DG 18:0_18:2")){
+                  sps_2 <- addProcessing(is_spectra, max_peak)
+                  idx <- which(between(unlist(mz(sps_2)), 
+                                       341.305021 + 0.01 * c(-1, 1)))
+                  is_spectra <- is_spectra[idx]
+                }
+                i_spectra <- c(i_spectra, is_spectra)
+                if(exists("js_spectra")){
+                  j_spectra <- c(j_spectra, js_spectra)
+                }
+              } # close "if(length(i_ft) > 0)"
+            } 
+          } # close study "s"
+          mycol <- 1
+          h <- 0
+        } else {
+          i_spectra <- filterPrecursorMzRange(ms2, i_mz + 0.01 * c(-1, 1))
+          i_spectra <- filterRt(i_spectra, cmps$RT[i]*60 + 10 * c(-1, 1))
+          mycol <- 2
+          h <- 0
+        }
+        
+        # when for the study compound "i" there was also the standard:
+        if(cmps$study[i] == 1 & cmps$std[i] == 1){
+          i_std <- filterPrecursorMzRange(ms2, i_mz + 0.01 * c(-1, 1))
+          i_std <- filterRt(i_std, cmps$RT[i]*60 + 10 * c(-1, 1))
+          i_std <- i_std[grep(p, basename(
+            i_std@backend@spectraData@listData$dataOrigin))]
+          i_std <- Spectra::combineSpectra(
+            i_std, intensityFun = base::sum, mzFun = base::mean, 
+            tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+            weighted = TRUE)
+          if(length(i_std) > 0){
+            i_std <- ms2_ann(mz = unlist(mz(i_std)), 
+                             i = unlist(intensity(i_std)),
+                             add = tmp_add, nl = tmp_nl)
+            h <- -1.05
+          } else {
+            h <- 0
+          }
+          if(length(i_spectra) == 0){
+            i_std <- filterPrecursorMzRange(ms2, i_mz + 0.01 * c(-1, 1))
+            i_spectra <- filterRt(i_std, cmps$RT[i]*60 + 10 * c(-1, 1))
+            mycol <- 2
+            h <- 0
+          }
+        }
+        if(length(i_spectra) > 0){
+          # combine the MS2 spectras:
+          register(SerialParam())
+          ms2comb <- Spectra::combineSpectra(
+            i_spectra, intensityFun = base::sum, mzFun = base::mean, 
+            tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+            weighted = TRUE)
+          if(length(ms2comb) > 1){
+            ms2comb <- Spectra::combineSpectra(
+              ms2comb, intensityFun = base::sum, mzFun = base::mean, 
+              tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+              weighted = TRUE)
+          }
+          if((paste(p,cmps$class[i]) %in% c("POS PC")) |
+             (paste(p, cmps$name[i]) %in% c("POS MGDG 18:1_18:2"))){
+            ms2comb <- filterMzValues(ms2comb, 283.7007, 
+                                      ppm = 20, keep = FALSE)
+          }
+          if(cmps$name[i] %in% c("DG 16:0_16:0")){
+            ms2comb <- filterMzValues(ms2comb, 569.4389, 
+                                      ppm = 10, keep = FALSE)
+          } else if(cmps$name[i] %in% c("DG 18:2_20:1")){
+            ms2comb <- filterMzValues(ms2comb, 647.4385, 
+                                      ppm = 10, keep = FALSE)
+          } else if(cmps$name[i] == "Malic acid"){
+            idx <- which(unlist(mz(ms2comb)) > 60)
+            ms2comb@backend@spectraData@listData$mz[[1]] <- unlist(mz(
+              ms2comb))[idx]
+            ms2comb@backend@spectraData@listData$intensity[[1]] <- unlist(
+              intensity(ms2comb))[idx]
+          } else if(paste(cmps$name[i], p) == "Catechin NEG"){
+            idx <- which(unlist(mz(ms2comb)) > 70)
+            ms2comb@backend@spectraData@listData$mz[[1]] <- unlist(mz(
+              ms2comb))[idx]
+            ms2comb@backend@spectraData@listData$intensity[[1]] <- unlist(
+              intensity(ms2comb))[idx]
+          }
+          ms2comb$compound <- cmps$compound[i]
+          ms2comb$adduct <- tmp_add
+          sps <- ms2_ann(mz = unlist(mz(ms2comb)), 
+                         i = unlist(intensity(ms2comb)),
+                         add = tmp_add, nl = tmp_nl)
+          if(cmps$class[i] == "mPA"){
+            sps$ann <- gsub("\\[M\\+H-PA-C2H2]\\+", NA, sps$ann)
+          }
+          sps$ann[is.na(sps$ann)] <- ""
+          if(exists("j_spectra")){
+            register(SerialParam())
+            ms2comb2 <- Spectra::combineSpectra(
+              j_spectra, intensityFun = base::sum, mzFun = base::mean, 
+              tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+              weighted = TRUE)
+            if(length(ms2comb2) > 1){
+              ms2comb2 <- Spectra::combineSpectra(
+                ms2comb2, intensityFun = base::sum, mzFun = base::mean, 
+                tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+                weighted = TRUE)
+            }
+            sps2 <- ms2_ann(mz = unlist(mz(ms2comb2)), 
+                            i = unlist(intensity(ms2comb2)),
+                            add = tmp_add, nl = tmp_nl)
+            
+          }
+          if(cmps$class[i] %in% c("PC")){
+            xmin <- 400
+          } else if(cmps$class[i] %in% c("TG", "ST")){
+            xmin <- 300
+          } else if(cmps$class[i] %in% c(
+            "PA", "mPA", "dmPA", "PE", "PG", "PI", "MGDG", "SQDG")){
+            xmin <- 200
+          } else if(cmps$class[i] %in% c("LPC") & p == "POS"){
+            xmin <- 170
+          } else {
+            xmin <- min(sps$mz)
+          }
+          
+          # plot the MS2:
+          plot(sps$mz, sps$i, type = "h", bty = "l", col = mycol, 
+               xlab = "m/z", ylab = "intensity", 
+               xlim = c(xmin, precursorMz(ms2comb)), ylim = c(h, 1.15),
+               main = paste("\n", 
+                            sprintf("%.4f", precursorMz(ms2comb)), "@",
+                            sprintf("%.2f", rtime(ms2comb)/60)))
+          if((paste(cmps$name[i], p) %in% c(
+            "PA 17:1_18:2 / PA 17:0_18:3 POS", "PA 18:1_18:2 POS", 
+            "PA 18:0_18:3 NEG", "PA 18:2_20:0 POS", "MGDG 18:2_18:2 POS")) | 
+            (cmps$class[i] %in% c("PG", "PI", "TG"))){
+            idx <- which(sps$i > 0.2)
+          } else if(grepl("HexCer", cmps$class[i])){
+            idx <- which(sps$i > 0.2 | grepl("hexose", sps$ann))
+          }else {
+            idx <- which(sps$i > 0.2 | (sps$i > 0.05 & sps$ann != ""))
+          }
+          ann <- as.character(sps$ann[idx])
+          ann[is.na(ann)] <- ""
+          text(sps$mz[idx], sps$i[idx], 
+               paste(round(sps$mz[idx], 4), "\n", ann), 
+               cex = 0.8, pos = 3, offset = 0, col = mycol)
+          if(exists("j_spectra")){
+            title(paste(gsub("\\ /.*", "", cmps$name[i]), tmp_add), 
+                  adj = 0, line = 2)
+            plot(sps2$mz, sps2$i, type = "h", bty = "l", col = mycol, 
+                 xlab = "m/z", ylab = "intensity", 
+                 xlim = c(xmin, precursorMz(ms2comb2)), ylim = c(h, 1.15),
+                 main = paste("\n", 
+                              sprintf("%.4f", precursorMz(ms2comb2)), "@",
+                              sprintf("%.2f", rtime(ms2comb2)/60)))
+            idx <- which(sps2$i > 0.2 | sps2$i > 0.05 & sps2$ann != "")
+            ann <- as.character(sps2$ann[idx])
+            ann[is.na(ann)] <- ""
+            text(sps2$mz[idx], sps2$i[idx], 
+                 paste(round(sps2$mz[idx], 4), "\n", ann), 
+                 cex = 0.8, pos = 3, offset = 0, col = mycol)
+            title(paste(gsub(".*/\\ ", "", cmps$name[i]), tmp_add), 
+                  adj = 0, line = 2)
+          } else {
+            title(paste(cmps$name[i], tmp_add), adj = 0, line = 2)
+          }
+          df <- DataFrame(
+            msLevel = 2L, 
+            precursorMz = precursorMz(ms2comb),
+            rtime = rtime(ms2comb),
+            compound_id = cmps$compound_id[i],
+            instrument = "orbitrap"
+          )
+          if(p == "POS"){
+            df$polarity <- 1L
+          } else if(p == "NEG"){
+            df$polarity <- 0L
+          }
+          df$mz <- list(c(sps$mz))
+          df$intensity <- list(c(sps$i))
+          df <- Spectra(df)
+          cdb <- insertSpectra(cdb, spectra = df,
+                               columns = c("compound_id", "msLevel",
+                                           "precursorMz", "instrument"))
+          
+          # when for the study compound "i" there is also the standard:
+          if(cmps$study[i] == 1 & cmps$std[i] == 1 & h < 0){
+            if(length(i_std) > 0){
+              points(i_std$mz, i_std$i*(-1), type = "h", col = 2)
+              idx <- which(i_std$i > 0.2)
+              text(i_std$mz[idx], i_std$i[idx]*(-1), 
+                   round(i_std$mz[idx], 4), 
+                   cex = 0.8, pos = 1, offset = 0, col = 2)
+            }
+          }
+          rm(ms2comb, sps)
+        } # close if(length(i_spectra) > 0)
+        rm(tmp_add, i_spectra)
+        if(exists("j_spectra")){
+          rm(j_spectra, js_spectra)
+        }
+      } # close exclusion list based on plarity
+    } # close polarity "p"
+  } # close exclusion list
+} # end "i"
+dev.off()
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
+
