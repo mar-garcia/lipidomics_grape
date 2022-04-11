@@ -10,16 +10,15 @@ output:
 
 https://rformassspectrometry.github.io/CompoundDb/articles/create-compounddb.html#compdb-from-custom-data
 
-```{r, include=FALSE}
+```{r, include = FALSE}
 startpoint <- Sys.time()
 ```
 
 # Libraries
 
-```{r, message=FALSE}
+```{r, message = FALSE}
 library(tidyverse)
 library(Rdisop)
-library(OrgMassSpecR)
 library(CompoundDb)
 library(MetaboCoreUtils)
 ```
@@ -27,45 +26,65 @@ library(MetaboCoreUtils)
 
 # Main code
 
-Define a function that allows to calculate molecular formulas according to each lipid class structure/backbone and the total number of carbons and double bonds of their fatty acyl chains.
+Define a function that allows to calculate molecular formulas according to 
+each lipid class structure/backbone and the total number of carbons and 
+double bonds of their fatty acyl chains.
 
 ```{r}
 fml_maker <- function(class, C, db){
   case_when(
+    # 1 FA chain -----------------------------------------------------------
     class == "FFA" ~ paste0("C", C, "H", C*2 - (2*db), "O2"),
     class == "CAR" ~ paste0("C", C + 7, "H", C*2 - (2*db) + 13, "NO4"),
-    
     class == "LPC" ~ paste0("C", C + 8, "H", C*2 - (2*db) + 18, "NO7P"),
+    class == "LPE" ~ paste0("C", C + 5, "H", C*2 - (2*db) + 12, "NO7P"),
     class == "LPI" ~ paste0("C", C + 9, "H", C*2 - (2*db) + 17, "O12P"),
+    class == "DGMG" ~ paste0("C", C + 15, "H", C*2 - (2*db) + 26, "O14"),
+    class == "MG"   ~ paste0("C", C +  3, "H", C*2 - (2*db) +  6, "O4"),
+    class == "ST" ~ paste0("C", C +  29, "H", C*2 - (2*db) + 48, "O2"),
+    class == "Glc-ST" ~ paste0("C", C +  35, "H", C*2 - (2*db) + 58, "O7"),
     
+    # 2 FA chain -----------------------------------------------------------
     class == "PA"  ~ paste0("C", C + 3, "H", C*2 - (2*db) +  5, "O8P"),
+    class == "mPA" ~ paste0("C", C + 4, "H", C*2 - (2*db) +  7, "O8P"),
+    class == "dmPA"~ paste0("C", C + 5, "H", C*2 - (2*db) +  9, "O8P"),
     class == "PC"  ~ paste0("C", C + 8, "H", C*2 - (2*db) + 16, "NO8P"),
     class == "PE"  ~ paste0("C", C + 5, "H", C*2 - (2*db) + 10, "NO8P"),
     class == "PG"  ~ paste0("C", C + 6, "H", C*2 - (2*db) + 11, "O10P"),
     class == "PI"  ~ paste0("C", C + 9, "H", C*2 - (2*db) + 15, "O13P"),
     class == "PS"  ~ paste0("C", C + 6, "H", C*2 - (2*db) + 10, "NO10P"),
     
-    class == "SM"      ~ paste0("C", C + 4, "H", C*2 - (2*db) + 11, "N2O6P"),
-    class == "Cer"     ~ paste0("C", C,     "H", C*2 - (2*db) +  1, "NO3"),
-    class == "HexCer"  ~ paste0("C", C + 6, "H", C*2 - (2*db) + 11, "NO8"),
-    class == "LactCer" ~ paste0("C", C +12, "H", C*2 - (2*db) + 21, "NO13"),
+    class == "SM"       ~ paste0("C", C + 4, "H", C*2 - (2*db) + 11,"N2O6P"),
+    class == "Cer"      ~ paste0("C", C,     "H", C*2 - (2*db) +  1, "NO3"),
+    class == "Cer;O3"   ~ paste0("C", C,     "H", C*2 - (2*db) +  1, "NO4"),
+    class == "Cer;O4"   ~ paste0("C", C,     "H", C*2 - (2*db) +  1, "NO5"),
+    class == "HexCer"   ~ paste0("C", C + 6, "H", C*2 - (2*db) + 11, "NO8"),
+    class == "HexCer;O3"~ paste0("C", C + 6, "H", C*2 - (2*db) + 11, "NO9"),
+    class == "HexCer;O4"~ paste0("C", C + 6, "H", C*2 - (2*db) + 11, "NO10"),
+    class == "LactCer"  ~ paste0("C", C +12, "H", C*2 - (2*db) + 21, "NO13"),
     
     class == "MGDG" ~ paste0("C", C +  9, "H", C*2 - (2*db) + 14, "O10"),
     class == "DGDG" ~ paste0("C", C + 15, "H", C*2 - (2*db) + 24, "O15"),
+    class == "SQDG" ~ paste0("C", C +  9, "H", C*2 - (2*db) + 14, "O12S"),
+    class == "acMGDG"~paste0("C", C +  9, "H", C*2 - (2*db) + 12, "O11"),
     
-    class == "MG"   ~ paste0("C", C +  3, "H", C*2 - (2*db) +  6, "O4"),
     class == "DG"   ~ paste0("C", C +  3, "H", C*2 - (2*db) +  4, "O5"),
+    
+    # 3 FA chain -----------------------------------------------------------
     class == "TG"   ~ paste0("C", C +  3, "H", C*2 - (2*db) +  2, "O6")
   )
 }
 ```
 
-Generate all potential lipid species build with fatty acyl chains with a number of carbons between 12 and 24, and with up to 6 unsaturations, except for sphingolipids for which the potential number of carbons of fatty acyl chains is extended until 28.
+Generate all potential lipid species build with fatty acyl chains with a 
+number of carbons between 12 and 24, and with up to 6 unsaturations, except 
+for sphingolipids for which the potential number of carbons of fatty acyl 
+chains is extended until 28.
 
 ```{r}
 cmps <- c()
 
-cls <- c("FFA", "CAR", "LPC", "LPI", "MG")
+cls <- c("FFA", "CAR", "LPC", "LPE", "LPI", "MG", "DGMG", "ST", "Glc-ST")
 C <- seq(from = 12, to = 24, by = 1)
 db <- seq(from = 0, to = 6, by = 1)
 sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
@@ -74,7 +93,8 @@ for(i in cls){
   cmps <- c(cmps, paste(i, sn))
 }
 
-cls <- c("PA", "PC", "PE", "PG", "PI", "PS", "MGDG", "DGDG", "DG")
+cls <- c("PA", "mPA", "dmPA", "PC", "PE", "PG", "PI", "PS", 
+         "MGDG", "DGDG", "SQDG", "DG")
 C <- seq(from = 12*2, to = 24*2, by = 1)
 db <- seq(from = 0, to = 6*2, by = 1)
 sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
@@ -83,7 +103,8 @@ for(i in cls){
   cmps <- c(cmps, paste(i, sn))
 }
 
-cls <- c("SM", "Cer", "HexCer", "LactCer")
+cls <- c("SM", "Cer", "Cer;O3", "Cer;O4", 
+         "HexCer", "HexCer;O3", "HexCer;O4", "LactCer")
 C <- seq(from = 12*2, to = 28*2, by = 1)
 db <- seq(from = 0, to = 6*2, by = 1)
 sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
@@ -92,7 +113,7 @@ for(i in cls){
   cmps <- c(cmps, paste(i, sn))
 }
 
-cls <- c("TG")
+cls <- c("TG", "acMGDG")
 C <- seq(from = 12*3, to = 24*3, by = 1)
 db <- seq(from = 0, to = 6*3, by = 1)
 sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
@@ -107,7 +128,8 @@ rm(cls, C, db, sn, i)
 
 Create a `CompDb` database from automatically defined compounds.  
 Create a `data.frame` with compound information of candidate lipids.   
-The data needs to have the following information "compound_id", "name", "inchi", "inchikey", "formula", "exactmass", "synonyms".  
+The data needs to have the following information "compound_id", "name", 
+"inchi", "inchikey", "formula", "exactmass", "synonyms".  
 All columns except "compound_id" can also contain missing values.    
 It is also possible to define additional columns.  
 
@@ -122,13 +144,16 @@ cmps <- data.frame(
   exactmass = NA,
   synonyms = NA_character_,
   class = gsub("\\ .*", "", cmps),
-  adduct = c("[M+H]+ ; [2M+H]+ ; [M-H]- ; [2M-H]-"), # LPE - LPS - PE - PS 
-  # ¿Chol?
+  adduct = c("[M+H]+ ; [2M+H]+ ; [M-H]- ; [2M-H]-"), 
   rtime = NA,
   std = FALSE,
   instd = FALSE,
   C = gsub(":.*", "", gsub(".*\\ ", "", cmps)),
-  db = gsub(".*:", "", gsub(".*\\ ", "", cmps))
+  db = gsub(".*:", "", gsub(".*\\ ", "", cmps)),
+  t_min = NA,
+  t_max = NA,
+  m_min = NA,
+  m_max = NA
 )
 cmps$C <- as.numeric(cmps$C)
 cmps$db <- as.numeric(cmps$db)
@@ -143,70 +168,120 @@ Add manual curated data:
 ```{r}
 cmps_RT <- read.csv("data/compounds.csv")
 cmps_RT <- cmps_RT[!cmps_RT$compound %in% c(
-  #"FFA(22:0)", 
-  "PA 18:1_18:3"#, "PC(18:1/18:3)", "PE(18:1/18:1)", "PE(18:1/18:3)", "PG(18:1/18:3)"
-  ),]
+  "PA 18:1_18:3", "PC 18:1_18:3",  "PE 18:1_18:3"#, #"PE 18:1_18:1","PG 18:1_18:3"
+),]
 cmps_RT$name <- paste0(cmps_RT$class, " ", cmps_RT$C, ":", cmps_RT$db)
 cmps_RT_IS <- cmps_RT[cmps_RT$IS == TRUE, ]
+cmps_RT_others <- cmps_RT[cmps_RT$IS == FALSE, ]
+cmps_RT_others <- cmps_RT_others[!cmps_RT_others$class %in% cmps$class,]
 cmps_RT <- cmps_RT[cmps_RT$IS == FALSE, ]
+cmps_RT <- cmps_RT[cmps_RT$class %in% cmps$class,]
 for(i in seq(nrow(cmps))){
   idx <- which(cmps$name[i] == cmps_RT$name)
   if(length(idx) > 1){
-    cmps <- rbind(cmps, cmps[i,])
-    cmps$compound_id[nrow(cmps)] <- paste0(
-      "C", as.numeric(gsub("C", "", cmps$compound_id[nrow(cmps)-1])) + 1)
-    cmps$name[c(i, nrow(cmps))] <- cmps_RT$compound[idx]
-    cmps$rtime[c(i, nrow(cmps))] <- cmps_RT$rtime[idx]
-    cmps$std[c(i, nrow(cmps))] <- cmps_RT$standard[idx]
+    cmps <- rbind(
+      cmps, 
+      do.call("rbind", 
+              replicate(length(idx)-1, cmps[i,], simplify = FALSE)))
+    cmps$compound_id[(nrow(cmps) - (length(idx)-2)):nrow(cmps)] <- paste0(
+      "C", as.numeric(gsub(
+        "C", "", 
+        cmps$compound_id[nrow(cmps)-(length(idx)-1)])) + seq(length(idx)-1))
+    idx2 <- c(i, (nrow(cmps) - (length(idx)-2)):nrow(cmps))
+    cmps$name[idx2] <- cmps_RT$compound[idx]
+    cmps$rtime[idx2] <- cmps_RT$rtime[idx]
+    cmps$std[idx2] <- cmps_RT$standard[idx]
+    cmps$t_min[idx2] <- cmps_RT$t_min[idx]
+    cmps$t_max[idx2] <- cmps_RT$t_max[idx]
+    cmps$m_min[idx2] <- cmps_RT$m_min[idx]
+    cmps$m_max[idx2] <- cmps_RT$m_max[idx]
   } else if(length(idx) == 1){
     cmps$name[i] <- cmps_RT$compound[idx]
     cmps$rtime[i] <- cmps_RT$rtime[idx]
     cmps$std[i] <- cmps_RT$standard[idx]
+    cmps$t_min[i] <- cmps_RT$t_min[idx]
+    cmps$t_max[i] <- cmps_RT$t_max[idx]
+    cmps$m_min[i] <- cmps_RT$m_min[idx]
+    cmps$m_max[i] <- cmps_RT$m_max[idx]
   }
 }
-cmps <- rbind(cmps, 
-              data.frame(
-                compound_id = paste0("C", as.numeric(gsub("C", "", cmps$compound_id[nrow(cmps)])) + seq(nrow(cmps_RT_IS))),
-                name = cmps_RT_IS$compound,
-                inchi = NA_character_,
-                inchikey = NA_character_,
-                formula = cmps_RT_IS$formula,
-                exactmass = NA,
-                synonyms = cmps_RT_IS$name,
-                class = cmps_RT_IS$class,
-                adduct = rep(c("[M+H]+ ; [2M+H]+ ; [M-H]- ; [2M-H]-"), nrow(cmps_RT_IS)),
-                rtime = cmps_RT_IS$rtime,
-                std = TRUE,
-                instd = TRUE,
-                C = cmps_RT_IS$C,
-                db = cmps_RT_IS$db
-              ))
+cmps <- rbind(
+  cmps, 
+  data.frame(
+    compound_id = paste0(
+      "C", as.numeric(gsub("C", "", cmps$compound_id[nrow(cmps)])
+      ) + seq(nrow(cmps_RT_IS))),
+    name = cmps_RT_IS$compound,
+    inchi = NA_character_,
+    inchikey = NA_character_,
+    formula = cmps_RT_IS$formula,
+    exactmass = NA,
+    synonyms = cmps_RT_IS$name,
+    class = cmps_RT_IS$class,
+    adduct = rep(c("[M+H]+ ; [2M+H]+ ; [M-H]- ; [2M-H]-"), nrow(cmps_RT_IS)),
+    rtime = cmps_RT_IS$rtime,
+    std = TRUE,
+    instd = TRUE,
+    C = cmps_RT_IS$C,
+    db = cmps_RT_IS$db,
+    t_min = cmps_RT_IS$t_min,
+    t_max = cmps_RT_IS$t_max,
+    m_min = cmps_RT_IS$m_min,
+    m_max = cmps_RT_IS$m_max
+  ))
+cmps <- rbind(
+  cmps, 
+  data.frame(
+    compound_id = paste0(
+      "C", as.numeric(gsub(
+        "C", "", cmps$compound_id[nrow(cmps)])) + seq(nrow(cmps_RT_others))),
+    name = cmps_RT_others$compound,
+    inchi = NA_character_,
+    inchikey = NA_character_,
+    formula = cmps_RT_others$formula,
+    exactmass = NA,
+    synonyms = cmps_RT_others$name,
+    class = cmps_RT_others$class,
+    adduct = cmps_RT_others$comments,
+    rtime = cmps_RT_others$rtime,
+    std = FALSE,
+    instd = FALSE,
+    C = cmps_RT_others$C,
+    db = cmps_RT_others$db,
+    t_min = cmps_RT_others$t_min,
+    t_max = cmps_RT_others$t_max,
+    m_min = cmps_RT_others$m_min,
+    m_max = cmps_RT_others$m_max
+  ))
 for(i in seq(nrow(cmps))){
   if(cmps$instd[i] == "TRUE"){
     cmps$exactmass[i] <- getMolecule(cmps$formula[i])$exactmass
   } else {
-    cmps$exactmass[i] <- MonoisotopicMass(
-      formula = ListFormula(cmps$formula[i]))
+    cmps$exactmass[i] <- calculateMass(cmps$formula[i])
   }
   if(cmps$class[i] %in% c("FFA", "LPA", "LPG", "LPI", 
-                          "PA", "PG", "PI", "MG", "DG", "TG")){
+                          "PA", "mPA", "dmPA", "PG", "PI", "SQDG", 
+                          "MG", "DG", "TG")){
     cmps$adduct[i] <- "[M+NH4]+ ; [2M+NH4]+ ; [M-H]- ; [2M-H]-"
-  } else if(cmps$class[i] %in% c("MGDG", "DGDG")){
+  } else if(cmps$class[i] %in% c("MGDG", "DGDG", "acMGDG", "ST", "Glc-ST")){
     cmps$adduct[i] <- "[M+NH4]+ ; [2M+NH4]+ ; [M+CHO2]- ; [2M+CHO2]-"
   } else if(cmps$class[i] %in% c("CAR", "LPC", "PC", "SM")){
     cmps$adduct[i] <- "[M+H]+ ; [2M+H]+ ; [M+CHO2]- ; [2M+CHO2]-"
-  } else if(cmps$class[i] %in% c("Cer", "HexCer", "LactCer")){
+  } else if(cmps$class[i] %in% c("Cer", "Cer;O3", "Cer;O4", "HexCer", "LactCer")){
     cmps$adduct[i] <- paste(cmps$adduct[i], "; [M+CHO2]- ; [2M+CHO2]-")
+  } else if(cmps$class[i] %in% c("DGMG")){
+    cmps$adduct[i] <- "[M+NH4]+ ; [2M+NH4]+ ; [M-H]- ; [2M-H]- ; [M+CHO2]- ; [2M+CHO2]-"
   }
 }
 rm(cmps_RT, cmps_RT_IS, i, idx)
 ```
 
 
-It is also required to define *metadata* for the database with the `make_metadata` function.
+It is also required to define *metadata* for the database with the 
+`make_metadata` function.
 
 ```{r}
-metad <- make_metadata(source = "lipcmps", url = "",
+metad <- make_metadata(source = "lipids", url = "",
                        source_version = "2", 
                        source_date = Sys.Date(),
                        organism = NA_character_)
@@ -216,25 +291,49 @@ With this information we can already create the `CompDb` database.
 
 ```{r}
 db_file <- createCompDb(cmps, metadata = metad, 
-                        path = "data/", dbFile = "CompDb_lipids_1.sqlite")
+                        path = "data/", dbFile = "CompDb_lipids_2.sqlite")
 ```
 
-Below we load this database using the `CompDb` function in read-write mode because we want to add more information to this database later.
+Below we load this database using the `CompDb` function in read-write mode 
+because we want to add more information to this database later.
 
 ```{r}
 (cdb <- CompDb(db_file, flags = RSQLite::SQLITE_RW))
 rm(db_file, metad)
 ```
 
-Next step is to create and `IonDb` database, which extends the `CompDb` by adding additional database tables to support ion annotations.
+Next step is to create and `IonDb` database, which extends the `CompDb` by 
+adding additional database tables to support ion annotations.
 
 ```{r}
 idb <- IonDb(cdb)
 ```
 
-Below we define a data frame with ion annotations and add that to the database with the `insertIon` function. The ion annotations are associated with the class of lipid. The column "compound_id" needs to contain the identifiers of the compounds to which the ion should be related to.
+Below we define a data frame with ion annotations and add that to the database 
+with the `insertIon` function. The ion annotations are associated with the 
+class of lipid. The column "compound_id" needs to contain the identifiers of 
+the compounds to which the ion should be related to.
 
-```{r}
+```{r iondb}
+adds <- rbind(
+  adducts("positive"),
+  adducts("negative"),
+  "[M+C2H8N]+" = c(
+    "[M+C2H8N]+", 1, calculateMass("C2H8N"), "C2H8N", "H", 1, TRUE
+  ),
+  "[M-H-CO2]-" = c(
+    "[M-H-CO2]-", 1, calculateMass("CO2")*(-1)-1.007276, 
+    "CO2", "H", -1, FALSE
+  ),
+  "[M-H-H2O]-" = c(
+    "[M-H-H2O]-", 1, calculateMass("H2O")*(-1)-1.007276, 
+    "H2O", "H", -1, FALSE
+  )
+)
+adds$mass_multi <- as.numeric(adds$mass_multi)
+adds$mass_add <- as.numeric(adds$mass_add)
+adds$positive <- as.logical(adds$positive)
+
 for(i in seq(nrow(cmps))){
   x <- unlist(strsplit(cmps$adduct[i], " ; "))
   ion <- data.frame(
@@ -244,7 +343,7 @@ for(i in seq(nrow(cmps))){
     ion_rt = rep(cmps$rtime[i], length(x))
   )
   for(j in seq(nrow(ion))){
-    ion$ion_mz[j] <- mass2mz(cmps$exactmass[i], x[j])
+    ion$ion_mz[j] <- mass2mz(cmps$exactmass[i], adds[x[j],])
   }
   idb <- insertIon(idb, ion)
 }
@@ -254,16 +353,17 @@ rm(i, x, ion, j)
 
 # Save the output
 
-```{r}
-ionsdb <- ions(idb, c("compound_id", "name", "ion_adduct", 
-                      "ion_mz", "ion_rt", "class"))
-save(ionsdb, file = "data/ionsdb.RData")
+```{r save}
+ionsdb <- ions(idb, c(
+  "compound_id", "name", "ion_adduct", "ion_mz", "ion_rt", "class", 
+  "t_min", "t_max", "m_min", "m_max"))
+save(ionsdb, adds, file = "data/ionsdb.RData")
 ```
 
 
 # Session info
 
-```{r}
+```{r session-info}
 Sys.time()-startpoint
 devtools::session_info()
 ```
