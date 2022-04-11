@@ -1,0 +1,53 @@
+---
+title: "Colors"
+author: "Mar Garcia-Aloy"
+output: 
+  html_document:
+    toc: false
+    number_sections: false
+    toc_float: false
+---
+
+
+```{r}
+library(RColorBrewer)
+library(MetBrewer)
+
+col_tissues <- c("#377EB8", "#4DAF4A", "#E41A1C", "#984EA3", "grey")
+names(col_tissues) <- c("skin", "pulp", "seeds", "entire", "QC")
+plot(0,0)
+legend("top", legend = names(col_tissues), col = col_tissues, pch = 16)
+
+col_maturation <- c(rev(met.brewer("Homer2", 13)), "grey")
+names(col_maturation) <- c(paste0("Pt", formatC(seq(13), width = 2, flag = "0")), "QC")
+plot(0,0)
+legend("top", legend = names(col_maturation), col = col_maturation, pch = 16)
+
+col_cmps <- c(brewer.pal(4, "YlOrRd"), brewer.pal(6, "RdPu")[-1],
+              brewer.pal(5, "Blues")[-1], 
+              brewer.pal(8, "Greens")[-1], 
+              brewer.pal(4, "Set1")[4], brewer.pal(3, "Dark2")[3], 
+              "grey", "black", "darkgrey")
+col_cmps[1] <- brewer.pal(6, "Set1")[6]
+names(col_cmps) <- c(
+  "LPC", 
+  "PA", "mPA", "dmPA", "PC", "PE", "PG", "PI", "PS", 
+  "Cer;O3", "Cer;O4", "HexCer;O3", "HexCer;O4", 
+  "MGDG", "DGDG", "SQDG", "DGMG", "acMGDG", "DG", "TG",
+  "ST", "Glc-ST", "FFA", "others", "IS")
+p <- rep(16, length(col_cmps))
+p[grep("unk", names(col_cmps))] <- 8
+plot(0,0)
+legend("top", legend = names(col_cmps), col = col_cmps, pch = p, ncol = 3)
+
+cmps_levels <- c(
+  "FFA", "CAR", "LPA", "LPC", "LPE", "LPG", "LPI", "LPS", 
+  "PA", "mPA", "dmPA", "PC", "PE", "PG", "PI","PS",
+  "SM", "Cer", "Cer;O3", "Cer;O4", "HexCer", "HexCer;O3", "HexCer;O4", 
+  "LactCer", 
+  "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "MG", "DG", "TG", 
+  "ST", "Glc-ST", "others", "nonFA")
+
+save.image("data/colors.RData")
+```
+
