@@ -1,0 +1,246 @@
+---
+title: "Data quality"
+author: "Mar Garcia-Aloy"
+output: 
+  BiocStyle::html_document:
+    toc: true
+    number_sections: false
+    toc_float: true
+---
+
+```{r, include = FALSE}
+startpoint <- Sys.time()
+```
+
+# Libraries
+
+```{r libraries, message = FALSE}
+library(tidyverse)
+library(effectsize)
+
+group_label <- function(x){
+  y <- rep(NA, length(x))
+  y[grep("solv|slv", x)] <- "solv"
+  y[grep("skin", x)] <- "skin"
+  y[grep("pulp", x)] <- "pulp"
+  y[grep("seeds", x)] <- "seeds"
+  y[grep("QC_rep|QC[0-9][0-9]", x)] <- "QC"
+  y[grep("QCdl_02uL", x)] <- "QCdl_02uL"
+  y[grep("QCdl_05uL", x)] <- "QCdl_05uL"
+  y[grep("QCdl_10uL", x)] <- "QCdl_10uL"
+  y[grep("QCrw_02uL", x)] <- "QCrw_02uL"
+  y[grep("QCrw_05uL", x)] <- "QCrw_05uL"
+  y[grep("QCrw_10uL", x)] <- "QCrw_10uL"
+  y[is.na(y)] <- gsub("_.*", "", x[is.na(y)])
+  return(y)
+}
+
+myimputer <- function(v){
+  set.seed(123)
+  if(sum(is.na(v)) == 0) {
+    return(v)
+  } else {
+    napos <- which(is.na(v))
+    newval <- runif(length(napos), 0, min(v, na.rm = TRUE))
+    out <- v
+    out[napos] <- newval
+    return(out)
+  }
+}
+
+CV <- function(x){(sd(log10(x), na.rm = T) / mean(log10(x), na.rm = T))*100}
+scaling.pareto <- function(x){(x - mean(x)) / sqrt(sd(x))}
+```
+
+
+# Data import
+
+```{r import}
+myfunction <- function(myfile){
+  dt <- read.csv(myfile, row.names = 1) 
+  dt <- dt[,!apply(dt, 2, function(x) sum(is.na(x)) == nrow(dt))]
+  dt <- dt[,!apply(dt, 2, function(x) min(x, na.rm = TRUE) < 0)]
+  dt <- dt %>%
+    # transform to "tibble" and create the column "sample" with row.names:
+    as_tibble(rownames = "sample") %>%
+    # create 1 row/compound:
+    pivot_longer(-sample, names_to = "cmp") %>% 
+    nest(data = !c("cmp"))
+  
+  dt <- dt %>%
+    mutate(data = map(data, function(t){
+      t %>%
+        mutate(val_imp = myimputer(value)) %>%
+        # create a column with the group of sample:
+        mutate(group = group_label(sample))
+    })) %>%
+    # Create a column with the dilution factor:
+    mutate(data = map(
+      data, ~.x %>%
+        mutate(
+          dil = recode(
+            group, 
+            "QCdl_02uL" = 0.25, "QCdl_05uL" = 0.5, "QCdl_10uL" = 1, 
+            "QCrw_02uL" = 2.5, "QCrw_05uL" = 5, "QCrw_10uL" = 10,
+            .default = 0)
+        )
+    )) 
+  
+  dt <- dt %>% 
+    mutate(
+      # Check that CV within QC samples < CV in study samples:
+      CV = map_dbl(data, function(t){
+        t$group[!grepl("QC|solv", t$group)] <- "study"
+        a <- t %>%
+          filter(group %in% c("study", "QC")) %>%
+          group_by(group) %>%
+          summarise(CV = CV(val_imp))
+        out <- a$CV[1] < a$CV[2]
+        return(out)
+      })) %>%
+    # linearity within QC dilution series:
+    mutate(
+      linearity = map_dbl(data, function(t){
+        a <- t %>%
+          filter(dil > 0)
+        if(sum(is.na(a$value)) < nrow(a)){
+          out <- summary(lm(log10(a$value)~log10(a$dil)))$r.squared
+        } else {
+          out <- 0
+        }
+        return(out)
+      })
+    ) %>%
+    mutate(ES = map_dbl(
+      data, function(t){
+        a <- t %>%
+          filter(group %in% c("solv", "QC")) #%>%
+        if(sum(is.na(a$value[a$group == "solv"])) == sum(a$group == "solv")){
+          out <- 9999
+        } else {
+          out <- cohens_d(log10(a$value), a$group)$Cohens_d
+        }
+        return(out)
+      }
+    ))
+}
+
+data <- list(
+  tissues = myfunction("output/data_tissues.csv"),
+  maturation = myfunction("output/data_maturation.csv")
+)
+
+for(i in seq(length(data))){
+  colnames(data[[i]])[-1] <- paste(
+    substr(names(data)[i], 1, 1), colnames(data[[i]])[-1], sep = "_")
+}
+
+dt <- left_join(data[[1]], data[[2]])
+
+ids <- read.csv("output/identifications.csv")
+dt <- left_join(dt, ids[,c("cmp", "name")])
+```
+
+
+# Output
+
+```{r output}
+par(mfrow = c(2, 2))
+for(i in c("t", "m")){
+  print(i)
+  print(table(dt[,paste(i, "CV", sep = "_")]))
+  
+  vals <- unlist(dt[,paste(i, "linearity", sep = "_")])
+  vals <- vals[order(vals, decreasing = TRUE)]
+  print(plot(vals, main = i, ylab = "Linearity"))
+  print(range(vals, na.rm = TRUE))
+  
+  vals <- unlist(dt[,paste(i, "ES", sep = "_")])
+  vals <- vals[order(vals)]
+  vals <- vals[vals < 900]
+  print(plot(vals, main = i, ylab = "Effect size"))
+  print(range(vals, na.rm = TRUE))
+}
+
+dt$t_CV <-  as.numeric(sprintf("%.1f", as.numeric(dt$t_CV)))
+dt$t_linearity <-  as.numeric(sprintf("%.3f", as.numeric(dt$t_linearity)))
+dt$t_ES <-  as.numeric(sprintf("%.1f", as.numeric(dt$t_ES)))
+dt$m_CV <-  as.numeric(sprintf("%.1f", as.numeric(dt$m_CV)))
+dt$m_linearity <-  as.numeric(sprintf("%.3f", as.numeric(dt$m_linearity)))
+dt$m_linearity[dt$m_linearity == 0] <- "ND"
+dt$m_ES <-  as.numeric(sprintf("%.1f", as.numeric(dt$m_ES)))
+DT::datatable(
+  dt[,c("cmp", "name", "t_linearity", "t_ES", "m_linearity", "m_ES")], 
+  rownames = FALSE, options = list(pageLength = nrow(dt)))
+```
+
+
+# PCA
+
+```{r pca, fig.width = 10}
+load("data/colors.RData")
+
+data <- dt %>%
+  unnest(t_data) %>%
+  filter(dil == 0 & group != "solv") %>%
+  select("cmp", "sample", "value") %>%
+  pivot_wider(names_from = "cmp", values_from = "value") %>%
+  column_to_rownames("sample")
+dt_class <- dt$t_data[[1]]$group[
+  dt$t_data[[1]]$dil == 0 & dt$t_data[[1]]$group != "solv"]
+col_smpls <- col_tissues
+
+do_pca <- function(data, dt_class, ttl){
+  data <- apply(data, 2, myimputer)
+  data <- log10(data)
+  data <- apply(data, 2, scaling.pareto)
+  pca <- prcomp(data, center = FALSE, scale. = FALSE)
+  pca_s <- data.frame(pca$x)
+  p <- rep(4, nrow(pca_s))
+  names(p) <- rownames(pca_s)
+  p[grep("pulp_rep1|Pt07_05", rownames(pca_s))] <- 3
+  p[grep("skin_rep3|pulp_rep3", rownames(pca_s))] <- 2
+  p[grep("Pt07_02", rownames(pca_s))] <- 1
+  plot(pca_s$PC1, pca_s$PC2, 
+       xlab = paste0(
+         "PC1 (", sprintf("%.1f", summary(pca)$importance[2,1]*100), "%)"), 
+       ylab = paste0(
+         "PC2 (", sprintf("%.1f", summary(pca)$importance[2,2]*100), "%)"), 
+       main = ttl, col = col_smpls[dt_class], 
+       bty = "l", pch = 16)
+  abline(v = 0, h = 0, lty = 2, col = "grey")
+  dt_names <- gsub("rep", "", gsub("pt11_", "", rownames(pca_s)))
+  dt_names <- gsub("QC.*", "", dt_names)
+  text(pca_s$PC1, pca_s$PC2, gsub("_0", "_", dt_names), pos = p, cex = 0.6)
+  plotrix::draw.circle(
+    mean(pca_s$PC1[grep("QC", rownames(pca_s))]), 
+    mean(pca_s$PC2[
+      grep("QC", rownames(pca_s))]), 1, border = "grey", lty = 2)
+  text(mean(pca_s$PC1[grep("QC", rownames(pca_s))]), 
+       mean(pca_s$PC2[grep("QC", rownames(pca_s))]) - 1.5, 
+       "QC samples", cex = 0.6)
+}
+par(mfrow = c(1, 2), mar = c(4.5, 4, 2.5, 0.5))
+do_pca(data, dt_class, ttl = "Tissues")
+
+
+data <- dt %>%
+  unnest(m_data) %>%
+  filter(dil == 0 & group != "solv") %>%
+  select("cmp", "sample", "value") %>%
+  pivot_wider(names_from = "cmp", values_from = "value") %>%
+  column_to_rownames("sample")
+dt_class <- dt$m_data[[1]]$group[
+  dt$m_data[[1]]$dil == 0 & dt$m_data[[1]]$group != "solv"]
+col_smpls <- col_maturation
+do_pca(data, dt_class, ttl = "Ripening")
+```
+
+
+# Session information
+
+```{r session}
+Sys.time()-startpoint
+devtools::session_info()
+```
+
