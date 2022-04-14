@@ -78,6 +78,52 @@ load("data/colors.RData")
 ``` 
 
 
+# PQN normalization
+
+```{r}
+data <- dt %>%
+  unnest(data)  %>% 
+  select("cmp", "sample", "group", "value") %>%
+  pivot_wider(names_from = "cmp", values_from = "value") %>%
+  column_to_rownames("sample")
+
+matplot(log10(t(data[,-1])), type = "p", 
+        ylab = "Intensity", xlab = "Metabolite",
+        col = col_maturation[data$group])
+
+ref <- which(rownames(data) == "QC10")
+dt_ref <- as.numeric(data[ref, -1])
+data <- data[-ref, -1]
+
+PQNratios <- apply(data, 1, function(r) r/dt_ref) %>% 
+  as_tibble() %>% 
+  pivot_longer(everything()) 
+
+med_pqn <- PQNratios %>% 
+  group_by(name) %>% 
+  summarise(median = median(value, na.rm = TRUE)) 
+
+PQNratios %>% 
+  ggplot() + 
+  geom_histogram(aes(x = value, fill = name), col  ="white") + 
+  geom_vline(data = med_pqn,mapping = aes(xintercept = median), lty = 2) + 
+  facet_wrap(~name, scales = "free_y") + #, ncol = 1
+  theme_light() + 
+  xlab("ratio") + 
+  theme(aspect.ratio = 0.5, legend.position = "none") +
+  xlim(0, 3)
+
+dt <- dt %>%
+  mutate(data_pqn = map(data, function(t){
+      t <- t[order(t$sample),]
+      t <- t[t$sample %in% med_pqn$name,]
+      t$val_pqn <- t$value / med_pqn$median
+      t$val_pqn_imp <- myimputer(t$val_pqn)
+      return(t)
+  }))
+rm(data, ref, dt_ref, PQNratios, med_pqn)
+```
+
 # Compound selection
 
 Take those compounds with the statistically significant correlations with brix degree
@@ -90,11 +136,11 @@ brix$sample <- paste0("Pt", formatC(as.numeric(factor(brix$data)),
                       formatC(brix$Replicate, width = 2, flag = "0"))
 
 dt <- dt %>%
-  mutate(lm = map(data, function(t){
+  mutate(lm = map(data_pqn, function(t){
     u <- t %>% 
       filter(group %in% paste0("Pt", formatC(seq(13), width = 2, flag = "0")))
     u <- u[order(u$sample),]
-    out <- lm(log10(u$value)~log10(brix$Brix))
+    out <- lm(log10(u$val_pqn)~log10(brix$Brix))
     return(out)
   }))
 
@@ -131,13 +177,13 @@ dt <- dt[order(dt$ripening, dt$class),]
 
 is <- grep("d7", ids$name)[length(grep("d7", ids$name))]
 data <- dt %>%
-  unnest(data) %>%
+  unnest(data_pqn) %>%
   filter(group %in% paste0(
     "Pt", formatC(seq(13), width = 2, flag = "0"))) %>%
   filter(cmp %in% dt$cmp[dt$padj < 0.05]) %>%
   filter(cmp %in% ids$cmp[-is]) %>%
-  select("cmp", "sample", "value") %>%
-  pivot_wider(names_from = "cmp", values_from = "value") %>%
+  select("cmp", "sample", "val_pqn") %>%
+  pivot_wider(names_from = "cmp", values_from = "val_pqn") %>%
   column_to_rownames("sample")
 data <- data[order(rownames(data)),]
 all(rownames(data) == brix$sample)
