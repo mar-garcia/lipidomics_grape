@@ -154,7 +154,7 @@ for(i in seq(nrow(ids))){
       i.add <- "[M+H]+"
       i.p <- "POS"
     } else if(i.class %in% c(
-      "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "DG", "TG", "ST", "Glc-ST")){
+      "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "DG", "TG", "TG;O", "ST", "Glc-ST")){
       i.add <- "[M+NH4]+"
       i.p <- "POS"
     } else if(i.class %in% c(
