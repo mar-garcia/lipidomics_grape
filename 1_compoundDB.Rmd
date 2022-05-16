@@ -71,7 +71,8 @@ fml_maker <- function(class, C, db){
     class == "DG"   ~ paste0("C", C +  3, "H", C*2 - (2*db) +  4, "O5"),
     
     # 3 FA chain -----------------------------------------------------------
-    class == "TG"   ~ paste0("C", C +  3, "H", C*2 - (2*db) +  2, "O6")
+    class == "TG"   ~ paste0("C", C +  3, "H", C*2 - (2*db) +  2, "O6"),
+    class == "TG;O" ~ paste0("C", C +  3, "H", C*2 - (2*db) +  2, "O7")
   )
 }
 ```
@@ -113,7 +114,7 @@ for(i in cls){
   cmps <- c(cmps, paste(i, sn))
 }
 
-cls <- c("TG", "acMGDG")
+cls <- c("TG", "TG;O", "acMGDG")
 C <- seq(from = 12*3, to = 24*3, by = 1)
 db <- seq(from = 0, to = 6*3, by = 1)
 sn <-  paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
@@ -261,7 +262,7 @@ for(i in seq(nrow(cmps))){
   }
   if(cmps$class[i] %in% c("FFA", "LPA", "LPG", "LPI", 
                           "PA", "mPA", "dmPA", "PG", "PI", "SQDG", 
-                          "MG", "DG", "TG")){
+                          "MG", "DG", "TG", "TG;O")){
     cmps$adduct[i] <- "[M+NH4]+ ; [2M+NH4]+ ; [M-H]- ; [2M-H]-"
   } else if(cmps$class[i] %in% c("MGDG", "DGDG", "acMGDG", "ST", "Glc-ST")){
     cmps$adduct[i] <- "[M+NH4]+ ; [2M+NH4]+ ; [M+CHO2]- ; [2M+CHO2]-"
