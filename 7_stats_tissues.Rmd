@@ -129,6 +129,22 @@ dt <- dt %>%
 rm(data, ref, dt_ref, PQNratios, med_pqn)
 ```
 
+# Sample reduction
+
+```{r}
+dt <- dt %>% 
+  mutate(data_r = map(
+    data_pqn, function(t){
+      t %>%
+        filter(group %in% c("skin", "pulp", "seeds"))
+    })) %>% 
+  mutate(data_r = map(data_r, ~ .x %>% 
+                        group_by(group) %>% 
+                        summarise(val_pqn_imp_mean = mean(val_pqn_imp, na.rm = TRUE)) %>% 
+                        ungroup()
+  ))
+```
+
 
 # Compound selection
 
@@ -136,33 +152,34 @@ Take those compounds for which a huge CV within study samples
 
 ```{r, fig.width = 15, fig.height = 5.5}
 dt <- dt %>%
-  mutate(CV = map_dbl(data_pqn, function(t){
+  mutate(CV = map_dbl(data_r, function(t){
     t %>% 
-      filter(group %in% c("skin", "pulp", "seeds")) %>%
-      pull(val_pqn_imp) %>%
+      #filter(group %in% c("skin", "pulp", "seeds")) %>%
+      pull(val_pqn_imp_mean) %>%
       CV(.)
   })) 
 h <- hist(dt$CV, breaks = 50)
-thr <- 7
+thr <- 8
 cuts <- cut(h$breaks, c(-Inf, -1, thr, Inf))
 plot(h, col = cuts)
 quantile(dt$CV)
 
 is <- 1:grep("d7", ids$name)[length(grep("d7", ids$name))]
+dt <- dt[-is,]
 data <- dt %>%
-  unnest(data_pqn) %>%
-  filter(group %in% c("skin", "pulp", "seeds")) %>%
+  unnest(data_r) %>%
+  #filter(group %in% c("skin", "pulp", "seeds")) %>%
   filter(cmp %in% dt$cmp[dt$CV > thr]) %>%
-  filter(cmp %in% ids$cmp[-is]) %>%
-  select("cmp", "sample", "val_pqn_imp") %>%
-  pivot_wider(names_from = "cmp", values_from = "val_pqn_imp") %>%
-  column_to_rownames("sample")
+  filter(cmp %in% ids$cmp) %>%
+  select("cmp", "group", "val_pqn_imp_mean") %>%
+  pivot_wider(names_from = "cmp", values_from = "val_pqn_imp_mean") %>%
+  column_to_rownames("group")
 data <- log10(data)
 data <- apply(data, 2, scaling.pareto)
 
 dt <- left_join(dt, ids[,c("cmp", "name")])
 
-idx <- which(dt$CV > thr & (dt$cmp %in% ids$cmp[-is]))
+idx <- which(dt$CV > thr & (dt$cmp %in% ids$cmp))
 length(idx)
 (length(idx)/nrow(dt))*100
 mycols <- list(class = col_cmps[
@@ -173,10 +190,11 @@ dt_cmp$class[dt_cmp$class %in% c(
 dt_cmp$class <- as.factor(dt_cmp$class)
 rownames(dt_cmp) <- colnames(data)
 pm <- pheatmap::pheatmap(
-  data, cutree_rows = 3, cutree_cols = 3,
+  data, cutree_rows = 3, cutree_cols = 5,
   annotation_col = dt_cmp, annotation_colors = mycols)
+pm
 
-dtx <- cbind(pm$tree_col$labels, cutree(pm$tree_col, k = 3))
+dtx <- cbind(pm$tree_col$labels, cutree(pm$tree_col, k = 5))
 colnames(dtx) <- c("cmp", "cluster")
 dtx <- as.data.frame(dtx[
   match(colnames(data)[pm$tree_col$order], rownames(dtx)),])
@@ -205,12 +223,12 @@ data <- dt %>%
   unnest(data_pqn) %>%
   filter(group %in% c("skin", "pulp", "seeds")) %>%
   filter(cmp %in% dt$cmp[dt$CV > thr]) %>%
-  filter(cmp %in% ids$cmp[-is]) %>%
+  filter(cmp %in% ids$cmp) %>%
   select("cmp", "sample", "val_pqn") %>%
   pivot_wider(names_from = "cmp", values_from = "val_pqn") %>%
   column_to_rownames("sample")
 cl <- gsub("_.*", "", gsub("pt11_", "", rownames(data)))
-pdf("output/tissues.pdf", paper = "a4", height = 4*3, width = 2*4)
+pdf("output/FS6_tissues.pdf", paper = "a4", height = 4*3, width = 2*4)
 par(mfrow = c(4, 3))
 for(i in seq(nrow(dt))){
   if(dt$cluster2[i] != "x"){
