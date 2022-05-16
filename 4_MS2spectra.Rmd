@@ -135,7 +135,7 @@ load("data/tmp/dda_spectra_excluded.RData")
 
 
 ```{r ms2-plot}
-pdf("output/MS2.pdf", paper = "a4", height = 4*3, width = 2*4)
+pdf("output/FS2_MS2.pdf", paper = "a4", height = 4*3, width = 2*4)
 par(mfrow = c(3, 2), mar = c(4, 4, 3, 0.5))
 for(i in seq(nrow(cmps))){
   
@@ -143,29 +143,42 @@ for(i in seq(nrow(cmps))){
   if(!(
     (cmps$class[i] %in% c("FFA", "DGMG")) |
     (cmps$name[i] %in% c(
+      # Low quality:
       "LPC 18:3", "mPA 18:1_18:1", "mPA 18:2_23:0",
       "PC 30:0", "PC 31:3", "PC 32:3", "PC 33:2", "PC 33:3", "PC 33:4", 
       "PC 33:5", "PC 34:0", "PC 34:4", "PC 35:1", "PC 35:3", "PC 35:4", 
       "PC 35:5", "PC 38:3", "PG 18:1_18:3", "PS 34:0", "PS 18:1_18:3",
       "HexCer;O3 38:2", "HexCer;O3 40:2", "HexCer;O3 41:2", "HexCer;O3 44:2",
-      "HexCer;O4 45:1", "MGDG 16:1_18:3", "MGDG 16:3_18:2", "MGDG 36:0",
-      "MGDG 18:0_18:3", "DGDG 34:0", "DGDG 34:2", "DGDG 16:0_18:3", 
-      "DGDG 18:1_18:2", "DG 18:0_18:1", "TG 14:0_14:0_14:0", "TG 49:2", 
+      "HexCer;O4 44:1", "HexCer;O4 45:1", 
+      "MGDG 16:1_18:3", "MGDG 16:3_18:2", "MGDG 36:0", "MGDG 18:0_18:3", 
+      "DGDG 34:0", "DGDG 34:2", "DGDG 16:0_18:3", "DGDG 18:1_18:2", 
+      "acMGDG 18:3_18:3_18:3",
+      "DG 18:0_18:1", "TG 14:0_14:0_14:0", "TG 49:2", 
+      "TG;O 48:3", "TG;O 54:4",
       "ST 20:3", "Glc−ST 14:0", "Glc−ST 15:0", "Glc−ST 16:1", "Glc−ST 17:0", 
       "Glc−ST 17:1",  "Glc−ST 17:2",  "Glc−ST 17:3", "Glc−ST 18:1", 
       "Glc−ST 22:0",
-      "Hexose"
+      "Hexose",
+      
+      # Medium quality:
+      "PA 16:0_16:1", "PA 15:1_18:2 / PA 15:0_18:3", "TG;O 18:2_18:2_18:3"
     ))
   )){
     for(p in c("POS", "NEG")){
       
       # exclusion list based on polarity:
       if((!paste(p, cmps$name[i]) %in% c(
+        # Low quality:
         "NEG LPC 18:0", "POS mPA 18:1_18:1 / mPA 18:0_18:2", 
         "POS mPA 18:1_18:2", "POS mPA 18:2_22:0",
         "POS dmPA 18:2_18:2", "POS PG 16:0_18:3", "POS PI 16:0_18:3",
-        "POS PI 18:2_18:3", "NEG Cer;O4 44:1", "NEG SQDG 18:2_18:3"
-      )) & (!paste(p, cmps$class[i]) %in% c("NEG TG", "NEG Glc-ST"))){
+        "POS PI 18:2_18:3", "NEG Cer;O4 44:1", "NEG SQDG 18:2_18:3",
+        
+        # Medium quality:
+        "POS PA 14:0_18:3", "NEG PA 17:1_18:2 / PA 17:0_18:3",
+        "NEG MGDG 18:1_18:1", "POS MGDG 18:1_18:2"
+      )) & (!paste(p, cmps$class[i]) %in% c(
+        "NEG acMGDG", "NEG TG", "NEG Glc-ST"))){
         if(p == "POS"){
           tmp_ionsdb <- ionsdb[
             ionsdb$ion_adduct %in% adds[adds$positive, "name"],]
@@ -177,7 +190,9 @@ for(i in seq(nrow(cmps))){
           tmp_nl <- nl[nl$positive == FALSE,]
           tmp_ions <- ions[ions$positive == FALSE, ]
         }
-        if(cmps$class %in% c("DG", "TG")){
+        if(cmps$class[i] %in% c(
+          "LPE", "PA", "mPA", "dmPA", "PE", "PG", "PI", "PS", "HexCer;O3", 
+          "DG", "TG")){
           tmp_ions <- tmp_ions[!grepl("C3H4O", tmp_ions$name),]
           tmp_ions <- tmp_ions[!grepl("DAG\\(", tmp_ions$name),]
         }
@@ -191,7 +206,7 @@ for(i in seq(nrow(cmps))){
           tmp_add <- "[M+H]+"
         } else if(p == "POS" & cmps$class[i] %in% c(
           "FFA", "LPA", "LPG", "LPI", "PA", "mPA","dmPA", "PG", "PI", 
-          "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "MG", "DG", "TG", "ST", "Glc-ST")){
+          "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "MG", "DG", "TG", "TG;O", "ST", "Glc-ST")){
           tmp_add <- "[M+NH4]+"
         } else if(p == "NEG" & cmps$class[i] %in% c(
           "FFA", "LPA", "LPE", "LPG", "LPI", "LPS", "PA", "mPA", "dmPA", 
@@ -200,7 +215,7 @@ for(i in seq(nrow(cmps))){
         } else if(p == "NEG" & cmps$class[i] %in% c(
           "CAR", "LPC", "PC", "DGMG", "MGDG", "DGDG", "SM", 
           "Cer", "Cer;O3", "Cer;O4", "HexCer", "HexCer;O3", "HexCer;O4", 
-          "LactCer", "acMGDG", "TG", "ST", "Glc-ST")){
+          "LactCer", "acMGDG", "TG", "TG;O", "ST", "Glc-ST")){
           tmp_add <- "[M+CHO2]-"
         } 
         tmp <- tmp[tmp$ion_adduct %in% tmp_add, ]
@@ -208,8 +223,9 @@ for(i in seq(nrow(cmps))){
         if(cmps$study[i] == 1){
           i_spectra <- dda_spectra_tissues_POS[
             dda_spectra_tissues_POS$peak_id %in% "9999"]
-          if(paste(cmps$name[i], p) %in% c(
-            "mPA 18:1_18:1 / mPA 18:0_18:2 NEG")){
+          if((paste(cmps$name[i], p) %in% c(
+            "mPA 18:1_18:1 / mPA 18:0_18:2 NEG")) |
+            (grepl("Cer", cmps$class[i]) & p == "NEG")){
             j_spectra <- dda_spectra_tissues_POS[
               dda_spectra_tissues_POS$peak_id %in% "9999"]
           }
@@ -299,6 +315,20 @@ for(i in seq(nrow(cmps))){
                   j_spectra <- c(j_spectra, js_spectra)
                 }
               } # close "if(length(i_ft) > 0)"
+              if(grepl("Cer", cmps$class[i]) & p == "NEG"){
+                j_ft <- pks$FT[
+                  pks$dataset == paste(s, p, sep = "_") & 
+                    pks$target_compound_id == cmps$compound_id[i] & 
+                    pks$target_ion_adduct == "[M-H]-"]
+                if(length(j_ft) > 0){
+                  ft <- get(paste("ft", s, p, sep = "_"))
+                  i_id <- rownames(
+                    chromPeaks(dda_xdata)[ft[j_ft, "peakidx"][[1]],])
+                  is_spectra <- dda_spectra[dda_spectra$peak_id %in% i_id]
+                  j_spectra <- c(j_spectra, is_spectra)
+                }
+                rm(j_ft)
+              }
             } 
           } # close study "s"
           mycol <- 1
@@ -348,10 +378,14 @@ for(i in seq(nrow(cmps))){
               tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
               weighted = TRUE)
           }
-          if((paste(p,cmps$class[i]) %in% c("POS PC")) |
-             (paste(p, cmps$name[i]) %in% c("POS MGDG 18:1_18:2"))){
-            ms2comb <- filterMzValues(ms2comb, 283.7007, 
+          if(p == "POS"){
+            ms2comb <- filterMzValues(ms2comb, c(283.7007, 341.3360), 
                                       ppm = 20, keep = FALSE)
+          } else if(p == "NEG"){
+            ms2comb <- filterMzValues(ms2comb, c(283.8732, 341.7571, 341.7800), 
+                                      ppm = 20, keep = FALSE)
+          } else if(cmps$name[i] == "Disaccharide"){
+            ms2comb <- filterMzValues(ms2comb, 92.9878, ppm = 20, keep = FALSE)
           }
           if(cmps$name[i] %in% c("DG 16:0_16:0")){
             ms2comb <- filterMzValues(ms2comb, 569.4389, 
@@ -379,34 +413,47 @@ for(i in seq(nrow(cmps))){
                          add = tmp_add, nl = tmp_nl)
           if(cmps$class[i] == "mPA"){
             sps$ann <- gsub("\\[M\\+H-PA-C2H2]\\+", NA, sps$ann)
+          } else if(cmps$class[i] == "PC"){
+            sps$ann <- gsub("157.0504]\\+.*", "157.0504]\\+", sps$ann)
+          } else if(cmps$class[i] == "TG;O"){
+            sps$ann <- gsub("-H2O]\\+.*", "-H2O]\\+", sps$ann)
           }
           sps$ann[is.na(sps$ann)] <- ""
           if(exists("j_spectra")){
-            register(SerialParam())
-            ms2comb2 <- Spectra::combineSpectra(
-              j_spectra, intensityFun = base::sum, mzFun = base::mean, 
-              tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
-              weighted = TRUE)
-            if(length(ms2comb2) > 1){
+            if(length(j_spectra) > 0){
+              register(SerialParam())
               ms2comb2 <- Spectra::combineSpectra(
-                ms2comb2, intensityFun = base::sum, mzFun = base::mean, 
+                j_spectra, intensityFun = base::sum, mzFun = base::mean, 
                 tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
                 weighted = TRUE)
+              if(length(ms2comb2) > 1){
+                ms2comb2 <- Spectra::combineSpectra(
+                  ms2comb2, intensityFun = base::sum, mzFun = base::mean, 
+                  tolerance = 0.01, minProp = 0.5, peaks = "intersect", 
+                  weighted = TRUE)
+              }
+              sps2 <- ms2_ann(mz = unlist(mz(ms2comb2)), 
+                              i = unlist(intensity(ms2comb2)),
+                              add = tmp_add, nl = tmp_nl)
+              
+            } else{
+              rm(j_spectra)
             }
-            sps2 <- ms2_ann(mz = unlist(mz(ms2comb2)), 
-                            i = unlist(intensity(ms2comb2)),
-                            add = tmp_add, nl = tmp_nl)
-            
           }
           if(cmps$class[i] %in% c("PC")){
             xmin <- 400
-          } else if(cmps$class[i] %in% c("TG", "ST")){
+          } else if(cmps$class[i] %in% c("TG", "TG;O", "ST", "Glc−ST")){
             xmin <- 300
           } else if(cmps$class[i] %in% c(
-            "PA", "mPA", "dmPA", "PE", "PG", "PI", "MGDG", "SQDG")){
+            "PA", "mPA", "dmPA", "PE", "PG", "PI", "MGDG", "DGDG", "SQDG", "acMGDG",
+            "HexCer;O3", "HexCer;O4")){
             xmin <- 200
           } else if(cmps$class[i] %in% c("LPC") & p == "POS"){
             xmin <- 170
+          } else if(grepl("catechin", cmps$name[i])){
+            xmin <- 100
+          } else if(grepl("Disaccharide", cmps$name[i])){
+            xmin <- 70
           } else {
             xmin <- min(sps$mz)
           }
@@ -421,7 +468,7 @@ for(i in seq(nrow(cmps))){
           if((paste(cmps$name[i], p) %in% c(
             "PA 17:1_18:2 / PA 17:0_18:3 POS", "PA 18:1_18:2 POS", 
             "PA 18:0_18:3 NEG", "PA 18:2_20:0 POS", "MGDG 18:2_18:2 POS")) | 
-            (cmps$class[i] %in% c("PG", "PI", "TG"))){
+            (cmps$class[i] %in% c("PG", "PI", "TG", "TG;O"))){
             idx <- which(sps$i > 0.2)
           } else if(grepl("HexCer", cmps$class[i])){
             idx <- which(sps$i > 0.2 | grepl("hexose", sps$ann))
@@ -444,12 +491,18 @@ for(i in seq(nrow(cmps))){
                               sprintf("%.2f", rtime(ms2comb2)/60)))
             idx <- which(sps2$i > 0.2 | sps2$i > 0.05 & sps2$ann != "")
             ann <- as.character(sps2$ann[idx])
-            ann[is.na(ann)] <- ""
+            if(grepl("Cer", cmps$class[i]) & p == "NEG"){
+              ann <- ""
+              title(paste(gsub(".*/\\ ", "", cmps$name[i]), "[M-H]-"), 
+                    adj = 0, line = 2)
+            } else{
+              ann[is.na(ann)] <- ""
+              title(paste(gsub(".*/\\ ", "", cmps$name[i]), tmp_add), 
+                    adj = 0, line = 2) 
+            }
             text(sps2$mz[idx], sps2$i[idx], 
                  paste(round(sps2$mz[idx], 4), "\n", ann), 
                  cex = 0.8, pos = 3, offset = 0, col = mycol)
-            title(paste(gsub(".*/\\ ", "", cmps$name[i]), tmp_add), 
-                  adj = 0, line = 2)
           } else {
             title(paste(cmps$name[i], tmp_add), adj = 0, line = 2)
           }
