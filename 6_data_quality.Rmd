@@ -154,6 +154,7 @@ for(i in c("t", "m")){
   vals <- vals[order(vals, decreasing = TRUE)]
   print(plot(vals, main = i, ylab = "Linearity"))
   print(range(vals, na.rm = TRUE))
+  print(quantile(vals, na.rm = TRUE))
   
   vals <- unlist(dt[,paste(i, "ES", sep = "_")])
   vals <- vals[order(vals)]
@@ -161,6 +162,7 @@ for(i in c("t", "m")){
   print(plot(vals, main = i, ylab = "Effect size"))
   print(range(vals, na.rm = TRUE))
 }
+quantile(c(dt$t_linearity, dt$m_linearity), na.rm = TRUE)
 
 dt$t_CV <-  as.numeric(sprintf("%.1f", as.numeric(dt$t_CV)))
 dt$t_linearity <-  as.numeric(sprintf("%.3f", as.numeric(dt$t_linearity)))
@@ -172,6 +174,9 @@ dt$m_ES <-  as.numeric(sprintf("%.1f", as.numeric(dt$m_ES)))
 DT::datatable(
   dt[,c("cmp", "name", "t_linearity", "t_ES", "m_linearity", "m_ES")], 
   rownames = FALSE, options = list(pageLength = nrow(dt)))
+write.csv(
+  dt[,c("cmp", "name", "t_linearity", "t_ES", "m_linearity", "m_ES")], 
+  "output/Table_S1.csv", row.names = FALSE)
 ```
 
 
