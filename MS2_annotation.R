@@ -2,6 +2,7 @@ library(MetaboCoreUtils)
 
 nl <- data.frame(rbind(
   c("[M+H]+", 1.007276, TRUE),
+  c("[M+NH4]+", calculateMass("NH4")*1, TRUE),
   c("[M+H-H2O]+", (calculateMass("H2O")*(-1)) + 1.007276, TRUE),
   c("[M+H-C2H2]+", (calculateMass("C2H2")*(-1)) + 1.007276, TRUE),
   c("[M+H-hexose]+", (calculateMass("C6H10O5")*(-1)) + 1.007276, TRUE),
@@ -22,10 +23,16 @@ nl <- data.frame(rbind(
   c("[M+H-SQ-H2O]+", (calculateMass("C6H10O5SO3H2")*(-1)) + 1.007276, TRUE),
   
   c("[M-H]-",  - 1.007276, FALSE),
+  c("[M+CHO2]-", calculateMass("CHO2")*1, FALSE),
   c("[M-CH3]-", (calculateMass("CH3")*(-1)), FALSE),
+  c("[M-H-H2O]-", (calculateMass("H2O")*(-1)) - 1.007276, FALSE),
+  c("[M-H-CO2]-", (calculateMass("CO2")*(-1)) - 1.007276, FALSE),
   c("[M-H-serine]-", (calculateMass("C3H5NO2")*(-1)) - 1.007276, FALSE),
   c("[M-H-hexose]-", (calculateMass("C6H10O5")*(-1)) - 1.007276, FALSE),
-  c("[M-H-hexose-H2O]-", (calculateMass("C6H12O6")*(-1)) - 1.007276, FALSE)
+  c("[M-H-hexose-H2O]-", (calculateMass("C6H12O6")*(-1)) - 1.007276, FALSE),
+  c("[M-H-hexose-2(H2O)]-", (calculateMass("C6H12O6H2O")*(-1)) - 1.007276, FALSE),
+  c("[M-H-hexose-2(H2O)-CH2O]-", (calculateMass("C6H12O6H2OCH2O")*(-1)) - 1.007276, FALSE),
+  c("[M-H-CH4O2]-", (calculateMass("CH4O2")*(-1)) - 1.007276, FALSE)
 ))
 
 # add losses of fatty-acyl chains:
@@ -92,7 +99,7 @@ for(i in seq(nrow(sn))){
     c(mass2mz(calculateMass(addElements(sn[i, "formula"], "C3H4O")), "[M+H]+"), 
       paste0("[",sn[i, "sn"], "+H+C3H4O]+"), TRUE))
 }
-C <- seq(from = 34, to = 36, by = 2)
+C <- seq(from = 32, to = 40, by = 1)
 db <- seq(from = 0, to = 6, by = 1)
 sn <- paste(expand.grid(C, db)[,"Var1"], expand.grid(C, db)[,"Var2"], 
             sep = ":")
@@ -106,6 +113,8 @@ for(i in seq(nrow(sn))){
   ions <- rbind(
     ions,
     c(mass2mz(calculateMass(addElements(sn[i, "formula"], "C3H2O2")), "[M+H]+"), 
+      paste0("[DAG(", sn[i, "sn"], ")+H-H2O]+"), TRUE),
+    c(mass2mz(calculateMass(addElements(sn[i, "formula"], "C3H4O3")), "[M+H]+"), 
       paste0("[DAG(", sn[i, "sn"], ")+H]+"), TRUE)
   )
 }
