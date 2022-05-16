@@ -34,21 +34,21 @@ startpoint <- Sys.time()
 
 ```{r annotation}
 unify_dpls <- function(pks){
-      dpl <- unique(gsub("\\..*", "", rownames(pks)[grep(
-        "\\.", rownames(pks))]))
-      for(i in dpl){
-        idx <- c(which(rownames(pks) == i), grep(
-          paste0(i, "."), rownames(pks)))
-        tmp <- pks[idx,]
-        pks$target_compound_id[idx[1]] <- paste(
-          pks$target_compound_id[idx], collapse = "-")
-        pks$target_ion_adduct[idx[1]] <- paste(
-          unique(pks$target_ion_adduct[idx]), collapse = "-")
-        pks$target_name[idx[1]] <- paste(
-          unique(pks$target_name[idx]), collapse = "-")
-        pks <- pks[-idx[-1],]
-      }
-      return(pks)
+  dpl <- unique(gsub("\\..*", "", rownames(pks)[grep(
+    "\\.", rownames(pks))]))
+  for(i in dpl){
+    idx <- c(which(rownames(pks) == i), grep(
+      paste0(i, "."), rownames(pks)))
+    tmp <- pks[idx,]
+    pks$target_compound_id[idx[1]] <- paste(
+      pks$target_compound_id[idx], collapse = "-")
+    pks$target_ion_adduct[idx[1]] <- paste(
+      unique(pks$target_ion_adduct[idx]), collapse = "-")
+    pks$target_name[idx[1]] <- paste(
+      unique(pks$target_name[idx]), collapse = "-")
+    pks <- pks[-idx[-1],]
+  }
+  return(pks)
 }
 
 ionsdb$ion_rt <- ionsdb$ion_rt*60
@@ -130,6 +130,8 @@ for(s in c("tissues", "maturation")){
     print(paste(s, p))
     print(paste("Detected features in MS1 data:", 
                 nrow(featureDefinitions(dda_xdata))))
+    print(paste0("Isotopes: ", sum(ft$is_isotope), "(",
+                round((sum(ft$is_isotope)*100)/nrow(ft), 1), "%)"))
     print(paste("Non-isotopic MS1 features:", sum(!ft$is_isotope)))
     pks <- pks[!pks$is_isotope,]
     print(paste("Non-isotopic MS1 features with at least one MS2 spectra:", 
@@ -181,14 +183,23 @@ for(s in c("tissues", "maturation")){
   print("###########################################")
 }
 cmps$RT <- sprintf("%.2f", cmps$RT)
+
+# TGs >3 possibilities
+tg <- read.csv("data/compounds.csv")
+tg <- tg[grep("TG", tg$compound),]
+tg <- tg[grep("TG", tg$comments),]
+for(i in seq(nrow(tg))){
+  cmps$name[which(cmps$name == tg$compound[i])] <- tg$comments[i]
+}
+
 DT::datatable(
   cmps[,c("cmp", "name", "formula", "RT", "tissues", "maturation")],
   rownames = FALSE,
   options = list(pageLength = nrow(cmps))
-  )
+)
 rm(i, tmp)
 write.csv(cmps[,c("cmp", "name", "formula", "RT", "tissues", "maturation")], 
-          "output/identifications.csv", row.names = FALSE)
+          "output/Table_3.csv", row.names = FALSE)
 ```
 
 
@@ -236,7 +247,7 @@ cmps$class_super[which(
                     "PA", "mPA", "dmPA", "PC", "PE", "PI", "PG", 
                     "PS"))] <- "(lyso)PL"
 cmps$class_super[which(cmps$class %in% c(
-  "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "MG", "DG", "TG"))] <- "GL"
+  "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "MG", "DG", "TG", "TG;O"))] <- "GL"
 cmps$class_super[which(cmps$class %in% c(
   "SM", "Cer", "Cer;O3", "Cer;O4", 
   "HexCer", "HexCer;O3", "HexCer;O4", "LactCer"))] <- "SP"
@@ -386,7 +397,7 @@ pippo <- ref[names(myform[[1]])]
 cmps$KMD_CH2 <- cmps$NM - (
   cmps$exactmass * as.numeric(
     t(pippo) %*% myform[[1]]) / calculateMass("CH2")
-  )
+)
 
 
 idx <- which(cmps$instd == 0) # discard IS
@@ -423,7 +434,7 @@ if(nrow(stds) > 0){
 cmps$class <- factor(cmps$class, levels = cmps_levels)
 cl <- unique(cmps$class[cmps$instd == 0])
 cl <- cl[!cl %in% c("others", "nonFA")]
-pdf("output/KMD.pdf", paper = "a4", height = 4*3, width = 2*4)
+pdf("output/FS1_KMD.pdf", paper = "a4", height = 4*3, width = 2*4)
 par(mfrow = c(2, 1), mar = c(4, 3.5, 2, 0.5))
 for(i in seq(length(cl))){
   # get the data from compounds of class "i":
@@ -471,9 +482,11 @@ for(i in seq(length(cl))){
       idx <- which(tmp$db == j)
       # only if there is >1 non-isomeric compound with "j" double bonds:
       if(length(unique(round(tmp$KMD_H[idx], 2))) > 1){
-        lines(as.numeric(tmp$RT[idx]), 
-              predict(lm(tmp$KMD_H[idx]~as.numeric(tmp$RT[idx]))), lwd = 4, 
-              col = paste0(mycols[as.character(j)], "60"))
+        if(!(cl[i] == "TG;O" & j > 3)){
+          lines(as.numeric(tmp$RT[idx]), 
+                predict(lm(tmp$KMD_H[idx]~as.numeric(tmp$RT[idx]))), lwd = 4, 
+                col = paste0(mycols[as.character(j)], "60"))
+        }
       }
     } # close db "j"
   } # close "if(nrow(tmp) > 0)"
