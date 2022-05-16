@@ -188,7 +188,7 @@ data <- dt %>%
 data <- data[order(rownames(data)),]
 all(rownames(data) == brix$sample)
 cl <- gsub("_.*", "", gsub("_.*", "", rownames(data)))
-pdf("output/maturation.pdf", paper = "a4", height = 4*3, width = 2*4)
+pdf("output/FS7_ripening.pdf", paper = "a4", height = 4*3, width = 2*4)
 par(mfrow = c(4, 3))
 for(i in seq(nrow(dt))){
   if(dt$ripening[i] != "x"){
