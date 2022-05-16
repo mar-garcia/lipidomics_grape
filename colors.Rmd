@@ -25,7 +25,7 @@ legend("top", legend = names(col_maturation), col = col_maturation, pch = 16)
 
 col_cmps <- c(brewer.pal(4, "YlOrRd"), brewer.pal(6, "RdPu")[-1],
               brewer.pal(5, "Blues")[-1], 
-              brewer.pal(8, "Greens")[-1], 
+              brewer.pal(9, "Greens")[-1], 
               brewer.pal(4, "Set1")[4], brewer.pal(3, "Dark2")[3], 
               "grey", "black", "darkgrey")
 col_cmps[1] <- brewer.pal(6, "Set1")[6]
@@ -33,7 +33,7 @@ names(col_cmps) <- c(
   "LPC", 
   "PA", "mPA", "dmPA", "PC", "PE", "PG", "PI", "PS", 
   "Cer;O3", "Cer;O4", "HexCer;O3", "HexCer;O4", 
-  "MGDG", "DGDG", "SQDG", "DGMG", "acMGDG", "DG", "TG",
+  "MGDG", "DGDG", "SQDG", "DGMG", "acMGDG", "DG", "TG","TG;O",
   "ST", "Glc-ST", "FFA", "others", "IS")
 p <- rep(16, length(col_cmps))
 p[grep("unk", names(col_cmps))] <- 8
@@ -45,7 +45,7 @@ cmps_levels <- c(
   "PA", "mPA", "dmPA", "PC", "PE", "PG", "PI","PS",
   "SM", "Cer", "Cer;O3", "Cer;O4", "HexCer", "HexCer;O3", "HexCer;O4", 
   "LactCer", 
-  "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "MG", "DG", "TG", 
+  "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "MG", "DG", "TG","TG;O", 
   "ST", "Glc-ST", "others", "nonFA")
 
 save.image("data/colors.RData")
