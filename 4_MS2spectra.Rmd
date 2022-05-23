@@ -46,7 +46,7 @@ load("output/identifications.RData")
 load("data/ionsdb.RData")
 load("data/MS2_STDmix.RData")
 load("data/colors.RData")
-load("data/MS2_Annotation.RData")
+load("data/MS2_annotation.RData")
 ```
 
 
