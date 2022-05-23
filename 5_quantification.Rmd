@@ -83,7 +83,7 @@ rm(injections, fln, mtd, rdata)
 ```{r load}
 load("output/identifications.RData")
 pksx <- pks
-ids <- read.csv("output/identifications.csv")
+ids <- read.csv("output/Table_3.csv")
 for(s in c("tissues", "maturation")){
   for(p in c("POS", "NEG")){
     if(file.exists(paste0("data/tmp/fs_data_", s, "_", p, ".RData"))){
@@ -138,11 +138,15 @@ for(s in c("tissues", "maturation")){
     assign(paste("smpl_name", s, p, sep = "_"), smpl_name)
   }}
 
-
+cmps <- read.csv("data/compounds.csv")
 for(i in seq(nrow(ids))){
   for(s in c("tissues", "maturation")){
     data <- get(paste("data", s, sep = "_"))
     idx <- which(ionsdb$name == ids$name[i])
+    if(length(idx) == 0){
+      idx <- which(ionsdb$name== cmps$compound[
+        which(cmps$comments == ids$name[i])])
+    }
     i.class <- unique(ionsdb$class[idx]) 
     if(ids$name[i] %in% c("PS 34:0")){
       i.add <- "[M+H]+"
@@ -154,7 +158,8 @@ for(i in seq(nrow(ids))){
       i.add <- "[M+H]+"
       i.p <- "POS"
     } else if(i.class %in% c(
-      "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "DG", "TG", "TG;O", "ST", "Glc-ST")){
+      "DGMG", "MGDG", "DGDG", "SQDG", "acMGDG", "DG", "TG", "TG;O", 
+      "ST", "Glc-ST")){
       i.add <- "[M+NH4]+"
       i.p <- "POS"
     } else if(i.class %in% c(
@@ -168,6 +173,10 @@ for(i in seq(nrow(ids))){
     }
     rdata <- get(paste("rdata", s, i.p, sep = "_"))
     idx <- which(ionsdb$name == ids$name[i] & ionsdb$ion_adduct == i.add)
+    if(length(idx) == 0){
+      idx <- which(ionsdb$name== cmps$compound[
+        which(cmps$comments == ids$name[i])] & ionsdb$ion_adduct == i.add)
+    }
     if(length(idx) > 1){
       idx <- idx[!is.na(ionsdb$ion_rt[idx])] # LPI 17:1, i=5
     }
