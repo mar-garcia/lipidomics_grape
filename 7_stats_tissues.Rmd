@@ -78,7 +78,7 @@ dt <- dt %>%
       mutate(val_imp = myimputer(value))
   }))
 load("data/colors.RData")
-ids <- read.csv("output/identifications.csv")
+ids <- read.csv("output/Table_3.csv")
 ``` 
 
 

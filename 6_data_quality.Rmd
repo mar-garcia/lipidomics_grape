@@ -137,7 +137,7 @@ for(i in seq(length(data))){
 
 dt <- left_join(data[[1]], data[[2]])
 
-ids <- read.csv("output/identifications.csv")
+ids <- read.csv("output/Table_3.csv")#"output/identifications.csv")
 dt <- left_join(dt, ids[,c("cmp", "name")])
 ```
 
