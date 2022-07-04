@@ -37,7 +37,7 @@ library(MetaboCoreUtils)
 for(s in c("tissues", "maturation")){
   for(p in c("POS", "NEG")){
     fln <- list.files(paste0("data/", s, "/", p, "_DDA_mzML/"))
-    fln <- fln[!grepl("MIX|QC|entire|STD", fln)]
+    fln <- fln[!grepl("MIX|QC|entire|STD|solv", fln)]
     mtd <- gsub("Rep_", "rep", fln)
     mtd <- gsub("Pt_", "pt", mtd)
     mtd <- gsub("lipidgrape_tissues", "lipidgrape", mtd)
