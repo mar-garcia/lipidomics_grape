@@ -164,10 +164,10 @@ cmps$maturation <- ""
 for(i in seq(nrow(cmps))){
   tmp <- pks[pks$target_compound_id == cmps$compound_id[i],]
   cmps$RT[i] <- mean(tmp$rtmed)
-  cmps$tissues[i] <- paste(tmp$target_ion_adduct[
-    grep("tissues", tmp$dataset)], collapse = "; ")
-  cmps$maturation[i] <- paste(tmp$target_ion_adduct[
-    grep("maturation", tmp$dataset)], collapse = "; ")
+  cmps$tissues[i] <- paste(unique(tmp$target_ion_adduct[
+    grep("tissues", tmp$dataset)]), collapse = "; ")
+  cmps$maturation[i] <- paste(unique(tmp$target_ion_adduct[
+    grep("maturation", tmp$dataset)]), collapse = "; ")
 }
 cmps$class <- factor(cmps$class, levels = cmps_levels)
 cmps <- cmps[order(-cmps$instd, cmps$class, cmps$C, cmps$db, cmps$RT),]
@@ -515,6 +515,6 @@ save(pks, db_file, cmps,
 
 ```{r session}
 Sys.time()-startpoint
-devtools::session_info()
+#devtools::session_info()
 ```
 
