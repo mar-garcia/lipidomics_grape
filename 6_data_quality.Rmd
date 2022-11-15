@@ -12,6 +12,7 @@ output:
 startpoint <- Sys.time()
 ```
 
+
 # Libraries
 
 ```{r libraries, message = FALSE}
@@ -49,6 +50,7 @@ myimputer <- function(v){
 }
 
 CV <- function(x){(sd(log10(x), na.rm = T) / mean(log10(x), na.rm = T))*100}
+CV_raw <- function(x){(sd(x, na.rm = T) / mean(x, na.rm = T))*100}
 scaling.pareto <- function(x){(x - mean(x)) / sqrt(sd(x))}
 ```
 
@@ -86,18 +88,22 @@ myfunction <- function(myfile){
         )
     )) 
   
-  dt <- dt %>% 
-    mutate(
-      # Check that CV within QC samples < CV in study samples:
-      CV = map_dbl(data, function(t){
-        t$group[!grepl("QC|solv", t$group)] <- "study"
-        a <- t %>%
-          filter(group %in% c("study", "QC")) %>%
-          group_by(group) %>%
-          summarise(CV = CV(val_imp))
-        out <- a$CV[1] < a$CV[2]
-        return(out)
-      })) %>%
+  dt <- dt %>%
+    mutate(CV_QC = map_dbl(data, function(t){
+      t %>%
+        filter(group == "QC") %>%
+        pull(val_imp) %>%
+        CV_raw(.)
+    })) %>%
+    mutate(CV_samples = map_dbl(data, function(t){
+      t$group[!grepl("QC|solv", t$group)] <- "study"
+      t %>%
+        filter(group == "study") %>%
+        pull(val_imp) %>%
+        CV_raw(.)
+    })) %>%
+    # Check that CV within QC samples < CV in study samples:
+   mutate(CV_criteria = ifelse(CV_QC < CV_samples, 1, 0)) %>%
     # linearity within QC dilution series:
     mutate(
       linearity = map_dbl(data, function(t){
@@ -148,7 +154,7 @@ dt <- left_join(dt, ids[,c("cmp", "name")])
 par(mfrow = c(2, 2))
 for(i in c("t", "m")){
   print(i)
-  print(table(dt[,paste(i, "CV", sep = "_")]))
+  print(table(dt[,paste(i, "CV_criteria", sep = "_")]))
   
   vals <- unlist(dt[,paste(i, "linearity", sep = "_")])
   vals <- vals[order(vals, decreasing = TRUE)]
@@ -162,20 +168,27 @@ for(i in c("t", "m")){
   print(plot(vals, main = i, ylab = "Effect size"))
   print(range(vals, na.rm = TRUE))
 }
-quantile(c(dt$t_linearity, dt$m_linearity), na.rm = TRUE)
+quantile(c(dt$t_CV_QC, dt$m_CV_QC), na.rm = TRUE)
+quantile(c(dt$t_CV_QC, dt$m_CV_QC), na.rm = TRUE)
 
-dt$t_CV <-  as.numeric(sprintf("%.1f", as.numeric(dt$t_CV)))
+dt$t_CV_QC <-  as.numeric(sprintf("%.1f", as.numeric(dt$t_CV_QC)))
+dt$t_CV_samples <-  as.numeric(sprintf("%.1f", as.numeric(dt$t_CV_samples)))
+dt$t_CV_criteria <-  as.numeric(sprintf("%.1f", as.numeric(dt$t_CV_criteria)))
 dt$t_linearity <-  as.numeric(sprintf("%.3f", as.numeric(dt$t_linearity)))
 dt$t_ES <-  as.numeric(sprintf("%.1f", as.numeric(dt$t_ES)))
-dt$m_CV <-  as.numeric(sprintf("%.1f", as.numeric(dt$m_CV)))
+dt$m_CV_QC <-  as.numeric(sprintf("%.1f", as.numeric(dt$m_CV_QC)))
+dt$m_CV_samples <-  as.numeric(sprintf("%.1f", as.numeric(dt$m_CV_samples)))
+dt$m_CV_criteria <-  as.numeric(sprintf("%.1f", as.numeric(dt$m_CV_criteria)))
 dt$m_linearity <-  as.numeric(sprintf("%.3f", as.numeric(dt$m_linearity)))
 dt$m_linearity[dt$m_linearity == 0] <- "ND"
 dt$m_ES <-  as.numeric(sprintf("%.1f", as.numeric(dt$m_ES)))
 DT::datatable(
-  dt[,c("cmp", "name", "t_linearity", "t_ES", "m_linearity", "m_ES")], 
+  dt[,c("cmp", "name", "t_CV_QC", "t_linearity", "t_ES", 
+        "m_CV_QC", "m_linearity", "m_ES")], 
   rownames = FALSE, options = list(pageLength = nrow(dt)))
 write.csv(
-  dt[,c("cmp", "name", "t_linearity", "t_ES", "m_linearity", "m_ES")], 
+  dt[,c("cmp", "name", "t_CV_QC","t_linearity", "t_ES", 
+        "m_CV_QC", "m_linearity", "m_ES")], 
   "output/Table_S1.csv", row.names = FALSE)
 ```
 
